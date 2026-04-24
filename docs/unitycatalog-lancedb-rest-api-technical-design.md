@@ -578,6 +578,19 @@ sequenceDiagram
 - `LanceArrowResponseWriter`
   - 输出 Arrow IPC file/stream
 
+与服务层直接协作、需要在设计中同步明确职责的 repository：
+
+- `LanceApiKeyRepository`
+  - 负责按 `key_hash` 查询 API key 绑定的 principal、状态与有效期
+  - 负责校验 key 是否处于可用状态，例如 active / expired / revoked
+  - 负责记录 `last_used_at` 等使用痕迹，供审计与风控使用
+  - 供 `LanceAuthDecorator` 在 `x-api-key` 鉴权分支中直接调用
+
+说明：
+
+- `LanceApiKeyRepository` 从分层上属于持久化层，而不是 service 层本身
+- 但由于它是 `LanceAuthDecorator` 的关键依赖，为避免实现时遗漏，这里在服务设计中显式列出其职责
+
 ## 5.2 认证与鉴权
 
 当前 `AuthDecorator` 只接受 UC 内部 issuer 的 Bearer token，不适合直接用于 Lance 路由。
@@ -929,7 +942,53 @@ DDL 时序建议：
 - `queued_at` / `started_at` / `finished_at` 用于排障和审计
 - `failure_reason` 用于记录异步构建失败原因
 
-## 6.6 Tag / Version 协议覆盖要求
+## 6.6 API Key 映射表
+
+为承接 `x-api-key -> UC principal` 的认证映射，建议新增：
+
+- `uc_lance_api_keys`
+
+最小字段建议：
+
+- `id`
+- `key_hash`
+- `principal_id`
+- `principal_type`
+- `status`
+- `created_at`
+- `created_by`
+- `updated_at`
+- `updated_by`
+- `expires_at`
+- `revoked_at`
+- `last_used_at`
+
+字段说明：
+
+- `key_hash`
+  - 只保存 API key 哈希，不保存明文
+  - 查询时由 `LanceAuthDecorator` 对传入 key 做同样哈希后匹配
+- `principal_id`
+  - 指向绑定的 user principal 或 service principal
+- `principal_type`
+  - 标识 principal 类型，至少支持 user / service principal
+- `status`
+  - 建议至少支持 `ACTIVE`、`EXPIRED`、`REVOKED`
+- `expires_at`
+  - 表示 key 的到期时间；为空时表示长期有效，但仍可被 `revoked_at` 撤销
+- `revoked_at`
+  - 表示 key 被主动吊销的时间
+- `last_used_at`
+  - 用于审计、风控与过期清理分析
+
+设计约束：
+
+- `key_hash` 需要全局唯一
+- API key 不属于 Lance 治理资产，不进入 `uc_lance_assets`
+- `uc_lance_api_keys` 属于认证辅助表，因此应在 Phase 0 / Phase 1 随基础模型一并落地
+- 如后续需要支持 key 轮换、前缀展示或多重哈希算法，可在不破坏主键模型的前提下扩展 `key_id`、`key_prefix`、`hash_algorithm` 等字段
+
+## 6.7 Tag / Version 协议覆盖要求
 
 技术设计中必须显式覆盖 Lance 的版本与标签端点，而不能只在资产模型里抽象提到 `version` / `tag`。
 
@@ -956,7 +1015,7 @@ Tag 端点至少包括：
 - 执行后端需要对变更类操作保持物理状态一致性
 - `batch-create versions` 与 `batch-commit tables` 必须分开建模
 
-## 6.7 Transaction 状态枚举
+## 6.8 Transaction 状态枚举
 
 事务状态应直接对齐 Lance 协议中的 `TransactionStatus`，并在 UC 内部保存一份规范化枚举：
 
