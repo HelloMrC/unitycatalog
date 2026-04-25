@@ -48,6 +48,7 @@ import io.unitycatalog.server.service.TemporaryPathCredentialsService;
 import io.unitycatalog.server.service.TemporaryTableCredentialsService;
 import io.unitycatalog.server.service.TemporaryVolumeCredentialsService;
 import io.unitycatalog.server.service.VolumeService;
+import io.unitycatalog.server.service.lance.LanceRestNamespaceService;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.service.delta.DeltaRestCatalogService;
@@ -69,6 +70,7 @@ public class UnityCatalogServer {
   private static final Logger LOGGER = LoggerFactory.getLogger(UnityCatalogServer.class);
   private static final String BASE_PATH = "/api/2.1/unity-catalog/";
   private static final String CONTROL_PATH = "/api/1.0/unity-control/";
+  private static final String LANCE_PATH = BASE_PATH + "lance/";
   private static final int DEFAULT_PORT = 8080;
   public static final String SERVER_PROPERTIES_FILE = "etc/conf/server.properties";
   private final Server server;
@@ -180,6 +182,8 @@ public class UnityCatalogServer {
         new ExternalLocationService(authorizer, repositories);
     DeltaCommitsService deltaCommitsService = new DeltaCommitsService(authorizer, repositories);
     MetastoreService metastoreService = new MetastoreService(repositories);
+    LanceRestNamespaceService lanceRestNamespaceService =
+        new LanceRestNamespaceService(repositories);
     // TODO: combine these into a single service in a follow-up PR
     TemporaryTableCredentialsService temporaryTableCredentialsService =
         new TemporaryTableCredentialsService(storageCredentialVendor, repositories);
@@ -244,7 +248,8 @@ public class UnityCatalogServer {
         .annotatedService(
             BASE_PATH + "delta/preview/commits", deltaCommitsService, requestConverterFunction)
         .annotatedService(
-            BASE_PATH + "external-locations", externalLocationService, requestConverterFunction);
+            BASE_PATH + "external-locations", externalLocationService, requestConverterFunction)
+        .annotatedService(LANCE_PATH, lanceRestNamespaceService, requestConverterFunction);
     addIcebergApiServices(
         armeriaServerBuilder,
         unityCatalogServerBuilder.serverProperties,
