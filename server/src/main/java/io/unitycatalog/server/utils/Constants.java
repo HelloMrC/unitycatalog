@@ -6,6 +6,7 @@ public class Constants {
   public static final String TABLE = "table";
   public static final String FUNCTION = "function";
   public static final String LANCE_NAMESPACE = "lance_namespace";
+  public static final String LANCE_TABLE = "lance_table";
 
   public static final String MANAGED_STORAGE_PREFIX = "__unitystorage";
   public static final String MANAGED_STORAGE_CATALOG_PREFIX = MANAGED_STORAGE_PREFIX + "/catalogs";
