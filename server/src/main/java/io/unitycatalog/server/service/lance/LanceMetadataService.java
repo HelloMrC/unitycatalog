@@ -58,14 +58,35 @@ public class LanceMetadataService {
   }
 
   public NamespaceListResponse listNamespaces(String identifier, String delimiter) {
+    return listNamespaces(identifier, delimiter, null, null);
+  }
+
+  public NamespaceListResponse listNamespaces(
+      String identifier, String delimiter, Integer limit, String pageToken) {
     UUID rootScopeId = metastoreRepository.getMetastoreId();
     String pathKey = identifierCodec.toPathKey(identifierCodec.decodeIdentifier(identifier, delimiter));
     LanceNamespaceDAO namespaceDAO = namespaceRepository.getNamespaceOrThrow(rootScopeId, pathKey);
+    Integer safeLimit = limit != null && limit > 0 ? limit : null;
+    List<LanceNamespaceDAO> children =
+        namespaceRepository.listChildNamespaces(
+            rootScopeId,
+            namespaceDAO.getId(),
+            safeLimit == null ? java.util.Optional.empty() : java.util.Optional.of(safeLimit),
+            pageToken == null || pageToken.isBlank()
+                ? java.util.Optional.empty()
+                : java.util.Optional.of(pageToken));
+
+    String nextPageToken = null;
+    if (safeLimit != null && children.size() > safeLimit) {
+      nextPageToken = children.get(safeLimit - 1).getName();
+      children = children.subList(0, safeLimit);
+    }
+
     List<String> childIds =
-        namespaceRepository.listChildNamespaces(rootScopeId, namespaceDAO.getId()).stream()
+        children.stream()
             .map(child -> identifierCodec.toExternalIdentifier(child.getPathKey(), delimiter))
             .toList();
-    return new NamespaceListResponse(childIds, null);
+    return new NamespaceListResponse(childIds, nextPageToken);
   }
 
   private NamespaceView toNamespaceView(

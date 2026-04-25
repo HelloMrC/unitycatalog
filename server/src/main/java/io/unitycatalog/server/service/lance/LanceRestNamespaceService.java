@@ -5,12 +5,11 @@ import com.linecorp.armeria.server.annotation.ExceptionHandler;
 import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Post;
-import io.unitycatalog.server.exception.GlobalExceptionHandler;
 import io.unitycatalog.server.persist.Repositories;
 import java.util.Map;
 import java.util.Optional;
 
-@ExceptionHandler(GlobalExceptionHandler.class)
+@ExceptionHandler(LanceExceptionHandler.class)
 public class LanceRestNamespaceService {
   private final LanceMetadataService metadataService;
 
@@ -41,8 +40,13 @@ public class LanceRestNamespaceService {
 
   @Get("/v1/namespace/{id}/list")
   public HttpResponse listNamespaces(
-      @Param("id") String id, @Param("delimiter") Optional<String> delimiter) {
-    return HttpResponse.ofJson(metadataService.listNamespaces(id, delimiter.orElse(null)));
+      @Param("id") String id,
+      @Param("delimiter") Optional<String> delimiter,
+      @Param("limit") Optional<Integer> limit,
+      @Param("pageToken") Optional<String> pageToken) {
+    return HttpResponse.ofJson(
+        metadataService.listNamespaces(
+            id, delimiter.orElse(null), limit.orElse(null), pageToken.orElse(null)));
   }
 
   public record NamespaceCreateRequest(Map<String, String> properties) {}

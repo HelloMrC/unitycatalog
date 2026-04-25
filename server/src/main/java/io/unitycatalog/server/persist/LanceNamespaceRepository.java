@@ -117,26 +117,50 @@ public class LanceNamespaceRepository {
   }
 
   public List<LanceNamespaceDAO> listChildNamespaces(UUID rootScopeId, UUID parentNamespaceId) {
+    return listChildNamespaces(rootScopeId, parentNamespaceId, Optional.empty(), Optional.empty());
+  }
+
+  public List<LanceNamespaceDAO> listChildNamespaces(
+      UUID rootScopeId,
+      UUID parentNamespaceId,
+      Optional<Integer> limit,
+      Optional<String> pageToken) {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
-        session -> listChildNamespaces(session, rootScopeId, parentNamespaceId),
+        session -> listChildNamespaces(session, rootScopeId, parentNamespaceId, limit, pageToken),
         "Failed to list Lance namespaces",
         true);
   }
 
   public List<LanceNamespaceDAO> listChildNamespaces(
       Session session, UUID rootScopeId, UUID parentNamespaceId) {
+    return listChildNamespaces(
+        session, rootScopeId, parentNamespaceId, Optional.empty(), Optional.empty());
+  }
+
+  public List<LanceNamespaceDAO> listChildNamespaces(
+      Session session,
+      UUID rootScopeId,
+      UUID parentNamespaceId,
+      Optional<Integer> limit,
+      Optional<String> pageToken) {
     String hql =
         parentNamespaceId == null
             ? "FROM LanceNamespaceDAO WHERE rootScopeId = :rootScopeId "
-                + "AND parentNamespaceId IS NULL ORDER BY name"
+                + "AND parentNamespaceId IS NULL "
             : "FROM LanceNamespaceDAO WHERE rootScopeId = :rootScopeId "
-                + "AND parentNamespaceId = :parentNamespaceId ORDER BY name";
+                + "AND parentNamespaceId = :parentNamespaceId ";
+    if (pageToken.isPresent()) {
+      hql += "AND name > :pageToken ";
+    }
+    hql += "ORDER BY name";
     Query<LanceNamespaceDAO> query = session.createQuery(hql, LanceNamespaceDAO.class);
     query.setParameter("rootScopeId", rootScopeId);
     if (parentNamespaceId != null) {
       query.setParameter("parentNamespaceId", parentNamespaceId);
     }
+    pageToken.ifPresent(token -> query.setParameter("pageToken", token));
+    limit.ifPresent(value -> query.setMaxResults(value + 1));
     return query.list();
   }
 

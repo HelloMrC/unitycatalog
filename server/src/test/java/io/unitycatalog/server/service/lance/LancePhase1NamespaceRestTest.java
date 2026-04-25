@@ -11,7 +11,6 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 @Tag("lance-phase1")
-@Disabled("Enable after Lance Phase 1 REST route, services, and persistence are implemented.")
 class LancePhase1NamespaceRestTest extends BaseLancePhase1RestTest {
 
   @Test
@@ -108,6 +107,7 @@ class LancePhase1NamespaceRestTest extends BaseLancePhase1RestTest {
   }
 
   @Test
+  @Disabled("Enable after Phase 1 table metadata endpoints are implemented.")
   @DisplayName("P1-NS-009/P1-NS-010/P1-NS-013 restrict drop enforces empty namespace semantics")
   void restrictDropRejectsNamespaceContainingChildOrDeclaredOnlyTable() throws Exception {
     createRootAndChildNamespaces();
@@ -127,6 +127,7 @@ class LancePhase1NamespaceRestTest extends BaseLancePhase1RestTest {
   }
 
   @Test
+  @Disabled("Enable after namespace drop and table register endpoints are implemented.")
   @DisplayName("P1-NS-011 cascade drop with registered table is not supported in Phase 1")
   void cascadeDropWithRegisteredTableReturnsPhaseLimitedError() throws Exception {
     createRootAndChildNamespaces();
@@ -140,6 +141,7 @@ class LancePhase1NamespaceRestTest extends BaseLancePhase1RestTest {
   }
 
   @Test
+  @Disabled("Enable after Lance-specific auth and authorization checks are implemented.")
   @DisplayName("P1-NS-012 child namespace creation checks parent namespace authorization")
   void childNamespaceCreationChecksParentAuthorization() throws Exception {
     assertSuccess(postJson("/v1/namespace/" + ROOT_NAMESPACE + "/create", createNamespaceRequest()));
