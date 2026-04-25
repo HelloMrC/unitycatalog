@@ -4,13 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.linecorp.armeria.common.AggregatedHttpResponse;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 @Tag("lance-phase1")
-@Disabled("Enable after Lance Phase 1 REST route, services, and persistence are implemented.")
 class LancePhase1TableRestTest extends BaseLancePhase1RestTest {
 
   @Test
@@ -50,7 +48,8 @@ class LancePhase1TableRestTest extends BaseLancePhase1RestTest {
   @DisplayName("P1-ID-007 table list emits protocol full path strings that round-trip")
   void tableListEmitsProtocolFullPathStringsThatRoundTrip() throws Exception {
     createRootAndChildNamespaces();
-    assertSuccess(postJson("/v1/table/" + TABLE_ID + "/register", declareTableRequest(TABLE_LOCATION)));
+    assertSuccess(
+        postJson("/v1/table/" + TABLE_ID + "/register", declareTableRequest(TABLE_LOCATION)));
 
     AggregatedHttpResponse list = getLance("/v1/namespace/prod.team_a/table/list?delimiter=.");
     assertSuccess(list);
@@ -108,7 +107,8 @@ class LancePhase1TableRestTest extends BaseLancePhase1RestTest {
   @DisplayName("P1-TBL-006 duplicate register returns already exists error")
   void duplicateRegisterReturnsAlreadyExistsError() throws Exception {
     createRootAndChildNamespaces();
-    assertSuccess(postJson("/v1/table/" + TABLE_ID + "/register", declareTableRequest(TABLE_LOCATION)));
+    assertSuccess(
+        postJson("/v1/table/" + TABLE_ID + "/register", declareTableRequest(TABLE_LOCATION)));
 
     AggregatedHttpResponse duplicate =
         postJson("/v1/table/" + TABLE_ID + "/register", declareTableRequest(TABLE_LOCATION));
@@ -126,7 +126,8 @@ class LancePhase1TableRestTest extends BaseLancePhase1RestTest {
             "/v1/table/" + DECLARED_TABLE_ID + "/declare",
             declareTableRequest(DECLARED_TABLE_LOCATION)));
 
-    AggregatedHttpResponse describe = postJson("/v1/table/" + DECLARED_TABLE_ID + "/describe", "{}");
+    AggregatedHttpResponse describe =
+        postJson("/v1/table/" + DECLARED_TABLE_ID + "/describe", "{}");
     assertSuccess(describe);
     assertThat(json(describe).path("is_only_declared").asBoolean()).isTrue();
 
@@ -143,9 +144,11 @@ class LancePhase1TableRestTest extends BaseLancePhase1RestTest {
         postJson(
             "/v1/table/" + DECLARED_TABLE_ID + "/declare",
             declareTableRequest(DECLARED_TABLE_LOCATION)));
-    assertSuccess(postJson("/v1/table/" + DECLARED_TABLE_ID + "/drop", "{\"mode\":\"metadata_only\"}"));
+    assertSuccess(
+        postJson("/v1/table/" + DECLARED_TABLE_ID + "/drop", "{\"mode\":\"metadata_only\"}"));
 
-    assertSuccess(postJson("/v1/table/" + TABLE_ID + "/register", declareTableRequest(TABLE_LOCATION)));
+    assertSuccess(
+        postJson("/v1/table/" + TABLE_ID + "/register", declareTableRequest(TABLE_LOCATION)));
     AggregatedHttpResponse registeredDrop =
         postJson("/v1/table/" + TABLE_ID + "/drop", "{\"mode\":\"metadata_only\"}");
     assertLanceErrorShape(registeredDrop, 501);
@@ -156,7 +159,8 @@ class LancePhase1TableRestTest extends BaseLancePhase1RestTest {
   @DisplayName("P1-TBL-014 deregister removes metadata without deleting physical data")
   void deregisterRemovesMetadataWithoutDeletingPhysicalData() throws Exception {
     createRootAndChildNamespaces();
-    assertSuccess(postJson("/v1/table/" + TABLE_ID + "/register", declareTableRequest(TABLE_LOCATION)));
+    assertSuccess(
+        postJson("/v1/table/" + TABLE_ID + "/register", declareTableRequest(TABLE_LOCATION)));
 
     AggregatedHttpResponse deregister =
         postJson("/v1/table/" + TABLE_ID + "/deregister", "{\"delete_physical_data\":false}");

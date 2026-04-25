@@ -166,14 +166,25 @@ public class LanceTableRepository {
   public Optional<LanceAssetDAO> findAssetByPathKey(String pathKey) {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
-        session -> findAsset(session, pathKey),
+        session -> findActiveAsset(session, pathKey),
         "Failed to find Lance table metadata",
         true);
   }
 
   private Optional<LanceAssetDAO> findAsset(Session session, String pathKey) {
+    // Used for duplicate check during creation - includes all states
     Query<LanceAssetDAO> query =
         session.createQuery("FROM LanceAssetDAO WHERE pathKey = :pathKey", LanceAssetDAO.class);
+    query.setParameter("pathKey", pathKey);
+    query.setMaxResults(1);
+    return query.uniqueResultOptional();
+  }
+
+  private Optional<LanceAssetDAO> findActiveAsset(Session session, String pathKey) {
+    // Only return assets that are ACTIVE or DECLARED, not DEREGISTERED or DROPPED
+    String hql =
+        "FROM LanceAssetDAO WHERE pathKey = :pathKey " + "AND state IN ('ACTIVE', 'DECLARED')";
+    Query<LanceAssetDAO> query = session.createQuery(hql, LanceAssetDAO.class);
     query.setParameter("pathKey", pathKey);
     query.setMaxResults(1);
     return query.uniqueResultOptional();
@@ -195,14 +206,19 @@ public class LanceTableRepository {
         true);
   }
 
-  private List<LanceAssetDAO> listTables(Session session, UUID namespaceId, boolean includeDeclared) {
-    String hql =
-        includeDeclared
-            ? "SELECT a FROM LanceAssetDAO a WHERE a.namespaceId = :namespaceId "
-                + "AND a.assetType = :assetType ORDER BY a.name"
-            : "SELECT a FROM LanceAssetDAO a, LanceTableDAO t WHERE a.id = t.assetId "
-                + "AND a.namespaceId = :namespaceId AND a.assetType = :assetType "
-                + "AND t.isOnlyDeclared = false ORDER BY a.name";
+  private List<LanceAssetDAO> listTables(
+      Session session, UUID namespaceId, boolean includeDeclared) {
+    String hql;
+    if (includeDeclared) {
+      hql =
+          "SELECT a FROM LanceAssetDAO a WHERE a.namespaceId = :namespaceId "
+              + "AND a.assetType = :assetType ORDER BY a.name";
+    } else {
+      hql =
+          "SELECT a FROM LanceAssetDAO a, LanceTableDAO t WHERE a.id = t.assetId "
+              + "AND a.namespaceId = :namespaceId AND a.assetType = :assetType "
+              + "AND t.isOnlyDeclared = false ORDER BY a.name";
+    }
     Query<LanceAssetDAO> query = session.createQuery(hql, LanceAssetDAO.class);
     query.setParameter("namespaceId", namespaceId);
     query.setParameter("assetType", TABLE_ASSET_TYPE);
@@ -212,9 +228,114 @@ public class LanceTableRepository {
   public Map<String, String> getTableProperties(UUID assetId) {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
-        session -> PropertyDAO.toMap(PropertyRepository.findProperties(
-            session, assetId, Constants.LANCE_TABLE)),
+        session ->
+            PropertyDAO.toMap(
+                PropertyRepository.findProperties(session, assetId, Constants.LANCE_TABLE)),
         "Failed to load Lance table properties",
         true);
+  }
+
+  public List<LanceAssetDAO> listTables(
+      UUID namespaceId,
+      boolean includeDeclared,
+      Optional<Integer> limit,
+      Optional<String> pageToken) {
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> listTablesPaged(session, namespaceId, includeDeclared, limit, pageToken),
+        "Failed to list Lance tables",
+        true);
+  }
+
+  private List<LanceAssetDAO> listTablesPaged(
+      Session session,
+      UUID namespaceId,
+      boolean includeDeclared,
+      Optional<Integer> limit,
+      Optional<String> pageToken) {
+    String baseHql;
+    if (includeDeclared) {
+      baseHql =
+          "SELECT a FROM LanceAssetDAO a WHERE a.namespaceId = :namespaceId "
+              + "AND a.assetType = :assetType";
+    } else {
+      baseHql =
+          "SELECT a FROM LanceAssetDAO a, LanceTableDAO t WHERE a.id = t.assetId "
+              + "AND a.namespaceId = :namespaceId AND a.assetType = :assetType "
+              + "AND t.isOnlyDeclared = false";
+    }
+
+    String hql = baseHql;
+    if (pageToken.isPresent()) {
+      hql += " AND a.name > :pageToken";
+    }
+    hql += " ORDER BY a.name";
+
+    Query<LanceAssetDAO> query = session.createQuery(hql, LanceAssetDAO.class);
+    query.setParameter("namespaceId", namespaceId);
+    query.setParameter("assetType", TABLE_ASSET_TYPE);
+    pageToken.ifPresent(token -> query.setParameter("pageToken", token));
+    limit.ifPresent(value -> query.setMaxResults(value + 1));
+    return query.list();
+  }
+
+  public void dropDeclaredTable(UUID assetId) {
+    TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          LanceAssetDAO assetDAO = session.get(LanceAssetDAO.class, assetId);
+          if (assetDAO == null) {
+            throw new BaseException(ErrorCode.NOT_FOUND, "Lance table asset not found: " + assetId);
+          }
+          LanceTableDAO tableDAO = session.get(LanceTableDAO.class, assetId);
+          if (tableDAO != null && !Boolean.TRUE.equals(tableDAO.getIsOnlyDeclared())) {
+            throw new BaseException(
+                ErrorCode.UNIMPLEMENTED,
+                "Dropping registered tables not supported. Use deregister instead.");
+          }
+
+          // Delete properties first
+          PropertyRepository.findProperties(session, assetId, Constants.LANCE_TABLE)
+              .forEach(session::remove);
+
+          // Delete table details
+          if (tableDAO != null) {
+            session.remove(tableDAO);
+          }
+
+          // Delete asset
+          session.remove(assetDAO);
+          return null;
+        },
+        "Failed to drop Lance declared table",
+        false);
+  }
+
+  public void deregisterTable(UUID assetId) {
+    TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          LanceAssetDAO assetDAO = session.get(LanceAssetDAO.class, assetId);
+          if (assetDAO == null) {
+            throw new BaseException(ErrorCode.NOT_FOUND, "Lance table asset not found: " + assetId);
+          }
+
+          // Delete properties first
+          PropertyRepository.findProperties(session, assetId, Constants.LANCE_TABLE)
+              .forEach(session::remove);
+
+          // Delete table details
+          LanceTableDAO tableDAO = session.get(LanceTableDAO.class, assetId);
+          if (tableDAO != null) {
+            session.remove(tableDAO);
+          }
+
+          // Delete asset metadata (but not physical data)
+          session.remove(assetDAO);
+
+          return null;
+        },
+        "Failed to deregister Lance table",
+        false);
   }
 }

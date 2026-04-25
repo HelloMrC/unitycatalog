@@ -48,7 +48,6 @@ import io.unitycatalog.server.service.TemporaryPathCredentialsService;
 import io.unitycatalog.server.service.TemporaryTableCredentialsService;
 import io.unitycatalog.server.service.TemporaryVolumeCredentialsService;
 import io.unitycatalog.server.service.VolumeService;
-import io.unitycatalog.server.service.lance.LanceRestNamespaceService;
 import io.unitycatalog.server.service.credential.CloudCredentialVendor;
 import io.unitycatalog.server.service.credential.StorageCredentialVendor;
 import io.unitycatalog.server.service.delta.DeltaRestCatalogService;
@@ -56,6 +55,8 @@ import io.unitycatalog.server.service.iceberg.FileIOFactory;
 import io.unitycatalog.server.service.iceberg.IcebergObjectMapper;
 import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.service.iceberg.TableConfigService;
+import io.unitycatalog.server.service.lance.LanceRestNamespaceService;
+import io.unitycatalog.server.service.lance.LanceRestTableService;
 import io.unitycatalog.server.utils.OptionParser;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.VersionUtils;
@@ -184,6 +185,7 @@ public class UnityCatalogServer {
     MetastoreService metastoreService = new MetastoreService(repositories);
     LanceRestNamespaceService lanceRestNamespaceService =
         new LanceRestNamespaceService(repositories);
+    LanceRestTableService lanceRestTableService = new LanceRestTableService(repositories);
     // TODO: combine these into a single service in a follow-up PR
     TemporaryTableCredentialsService temporaryTableCredentialsService =
         new TemporaryTableCredentialsService(storageCredentialVendor, repositories);
@@ -249,7 +251,8 @@ public class UnityCatalogServer {
             BASE_PATH + "delta/preview/commits", deltaCommitsService, requestConverterFunction)
         .annotatedService(
             BASE_PATH + "external-locations", externalLocationService, requestConverterFunction)
-        .annotatedService(LANCE_PATH, lanceRestNamespaceService, requestConverterFunction);
+        .annotatedService(LANCE_PATH, lanceRestNamespaceService, requestConverterFunction)
+        .annotatedService(LANCE_PATH, lanceRestTableService, requestConverterFunction);
     addIcebergApiServices(
         armeriaServerBuilder,
         unityCatalogServerBuilder.serverProperties,
