@@ -161,7 +161,6 @@ class LancePhase1AuthAndCredentialRestTest extends BaseLancePhase1RestTest {
   }
 
   @Test
-  @Disabled("Enable after Lance audit response metadata is implemented.")
   @DisplayName("P1-AUTH-011 declare and create-empty audit fields are distinguishable")
   void declareAndCreateEmptyAuditFieldsAreDistinguishable() throws Exception {
     createRootAndChildNamespaces();

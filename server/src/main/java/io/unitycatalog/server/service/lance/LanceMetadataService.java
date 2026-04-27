@@ -330,7 +330,8 @@ public class LanceMetadataService {
         vendCredentials,
         isDeprecatedAlias,
         isOnlyDeclared,
-        false);
+        false,
+        isOnlyDeclared ? buildDeclareAudit(isDeprecatedAlias) : null);
   }
 
   public TableView describeTable(String identifier, String delimiter, boolean vendCredentials) {
@@ -353,7 +354,14 @@ public class LanceMetadataService {
         tableDAO.isPresent() && Boolean.TRUE.equals(tableDAO.get().getIsOnlyDeclared());
 
     return toTableView(
-        assetDAO, tableDAO.orElse(null), delimiter, vendCredentials, false, isOnlyDeclared, false);
+        assetDAO,
+        tableDAO.orElse(null),
+        delimiter,
+        vendCredentials,
+        false,
+        isOnlyDeclared,
+        false,
+        null);
   }
 
   public ExistsResponse tableExists(String identifier, String delimiter) {
@@ -429,7 +437,8 @@ public class LanceMetadataService {
       boolean vendCredentials,
       boolean isDeprecatedAlias,
       boolean isOnlyDeclared,
-      boolean legacyBridge) {
+      boolean legacyBridge,
+      Map<String, Object> audit) {
     String location = tableDAO != null ? tableDAO.getStorageLocation() : null;
     String state = assetDAO.getState();
     Map<String, String> storageOptionsTemplate = parseStorageOptionsTemplate(tableDAO);
@@ -447,7 +456,8 @@ public class LanceMetadataService {
         isDeprecatedAlias,
         legacyBridge,
         isOnlyDeclared ? false : null,
-        LanceRequestContext.currentPrincipal());
+        LanceRequestContext.currentPrincipal(),
+        audit);
   }
 
   private TableView toLegacyTableView(
@@ -465,7 +475,18 @@ public class LanceMetadataService {
         false,
         true,
         false,
-        LanceRequestContext.currentPrincipal());
+        LanceRequestContext.currentPrincipal(),
+        null);
+  }
+
+  private Map<String, Object> buildDeclareAudit(boolean isDeprecatedAlias) {
+    return Map.of(
+        "protocol_operation",
+        "declare_table",
+        "protocol_variant",
+        isDeprecatedAlias ? "create-empty" : "declare",
+        "deprecated_alias_used",
+        isDeprecatedAlias);
   }
 
   private Optional<TableInfo> findLegacyTable(List<String> path) {
@@ -600,7 +621,8 @@ public class LanceMetadataService {
       @JsonProperty("deprecated_alias_used") boolean deprecatedAliasUsed,
       @JsonProperty("legacy_bridge") boolean legacyBridge,
       @JsonProperty("physical_metadata_loaded") Boolean physicalMetadataLoaded,
-      String principal) {}
+      String principal,
+      Map<String, Object> audit) {}
 
   public record DropTableResponse(boolean dropped) {}
 
