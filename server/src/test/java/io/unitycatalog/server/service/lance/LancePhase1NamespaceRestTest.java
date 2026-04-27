@@ -123,7 +123,6 @@ class LancePhase1NamespaceRestTest extends BaseLancePhase1RestTest {
   }
 
   @Test
-  @Disabled("Enable after Phase 1 table metadata endpoints are implemented.")
   @DisplayName("P1-NS-009/P1-NS-010/P1-NS-013 restrict drop enforces empty namespace semantics")
   void restrictDropRejectsNamespaceContainingChildOrDeclaredOnlyTable() throws Exception {
     createRootAndChildNamespaces();
@@ -144,7 +143,6 @@ class LancePhase1NamespaceRestTest extends BaseLancePhase1RestTest {
   }
 
   @Test
-  @Disabled("Enable after namespace drop and table register endpoints are implemented.")
   @DisplayName("P1-NS-011 cascade drop with registered table is not supported in Phase 1")
   void cascadeDropWithRegisteredTableReturnsPhaseLimitedError() throws Exception {
     createRootAndChildNamespaces();

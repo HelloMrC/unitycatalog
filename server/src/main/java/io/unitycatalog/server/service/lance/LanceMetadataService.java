@@ -116,6 +116,48 @@ public class LanceMetadataService {
     return new NamespaceListResponse(childIds, nextPageToken);
   }
 
+  public DropNamespaceResponse dropNamespace(String identifier, String delimiter, String mode) {
+    String effectiveMode = mode == null || mode.isBlank() ? "restrict" : mode;
+    if ("cascade".equalsIgnoreCase(effectiveMode)) {
+      throw new BaseException(
+          ErrorCode.UNIMPLEMENTED, "Cascade namespace drop not supported in current phase.");
+    }
+    if (!"restrict".equalsIgnoreCase(effectiveMode)) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, "Unsupported namespace drop mode: " + effectiveMode);
+    }
+
+    UUID rootScopeId = metastoreRepository.getMetastoreId();
+    List<String> path = identifierCodec.decodeIdentifier(identifier, delimiter);
+    String pathKey = identifierCodec.toPathKey(path);
+    LanceNamespaceDAO namespaceDAO = namespaceRepository.getNamespaceOrThrow(rootScopeId, pathKey);
+
+    if (hasChildNamespaces(rootScopeId, namespaceDAO.getId())
+        || hasLanceTables(namespaceDAO.getId())
+        || hasLegacyTables(path)) {
+      throw new BaseException(ErrorCode.ABORTED, "Lance namespace is not empty: " + identifier);
+    }
+
+    namespaceRepository.deleteNamespace(namespaceDAO.getId());
+    return new DropNamespaceResponse(true);
+  }
+
+  private boolean hasChildNamespaces(UUID rootScopeId, UUID namespaceId) {
+    return !namespaceRepository
+        .listChildNamespaces(rootScopeId, namespaceId, Optional.of(1), Optional.empty())
+        .isEmpty();
+  }
+
+  private boolean hasLanceTables(UUID namespaceId) {
+    return !tableRepository
+        .listTables(namespaceId, true, Optional.of(1), Optional.empty())
+        .isEmpty();
+  }
+
+  private boolean hasLegacyTables(List<String> namespacePath) {
+    return listLegacyTables(namespacePath).map(tables -> !tables.isEmpty()).orElse(false);
+  }
+
   private NamespaceView toNamespaceView(
       LanceNamespaceDAO namespaceDAO, String delimiter, Map<String, String> properties) {
     return new NamespaceView(
@@ -534,6 +576,8 @@ public class LanceMetadataService {
   public record ExistsResponse(boolean exists) {}
 
   public record NamespaceListResponse(List<String> namespaces, String nextPageToken) {}
+
+  public record DropNamespaceResponse(boolean dropped) {}
 
   public record TableListResponse(List<String> tables, String nextPageToken) {}
 

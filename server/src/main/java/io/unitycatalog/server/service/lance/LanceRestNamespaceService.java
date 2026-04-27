@@ -39,6 +39,17 @@ public class LanceRestNamespaceService {
     return HttpResponse.ofJson(metadataService.namespaceExists(id, delimiter.orElse(null)));
   }
 
+  @Post("/v1/namespace/{id}/drop")
+  public HttpResponse dropNamespace(
+      @Param("id") String id,
+      @Param("delimiter") Optional<String> delimiter,
+      @Param("mode") Optional<String> mode,
+      NamespaceDropRequest request) {
+    String effectiveMode = mode.orElse(request == null ? null : request.mode());
+    return HttpResponse.ofJson(
+        metadataService.dropNamespace(id, delimiter.orElse(null), effectiveMode));
+  }
+
   @Get("/v1/namespace/{id}/list")
   public HttpResponse listNamespaces(
       @Param("id") String id,
@@ -51,4 +62,6 @@ public class LanceRestNamespaceService {
   }
 
   public record NamespaceCreateRequest(Map<String, String> properties) {}
+
+  public record NamespaceDropRequest(String mode) {}
 }

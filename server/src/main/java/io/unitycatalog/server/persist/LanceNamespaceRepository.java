@@ -183,4 +183,23 @@ public class LanceNamespaceRepository {
         "Failed to load Lance namespace properties",
         true);
   }
+
+  public void deleteNamespace(UUID namespaceId) {
+    TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          LanceNamespaceDAO namespaceDAO = session.get(LanceNamespaceDAO.class, namespaceId);
+          if (namespaceDAO == null) {
+            throw new BaseException(
+                ErrorCode.NOT_FOUND, "Lance namespace not found: " + namespaceId);
+          }
+
+          PropertyRepository.findProperties(session, namespaceId, Constants.LANCE_NAMESPACE)
+              .forEach(session::remove);
+          session.remove(namespaceDAO);
+          return null;
+        },
+        "Failed to delete Lance namespace",
+        false);
+  }
 }
