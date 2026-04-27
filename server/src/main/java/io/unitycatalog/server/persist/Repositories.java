@@ -31,6 +31,7 @@ public class Repositories {
   private final DeltaCommitRepository deltaCommitRepository;
   private final LanceNamespaceRepository lanceNamespaceRepository;
   private final LanceTableRepository lanceTableRepository;
+  private final LanceApiKeyRepository lanceApiKeyRepository;
 
   private final KeyMapper keyMapper;
 
@@ -54,6 +55,7 @@ public class Repositories {
     this.deltaCommitRepository = new DeltaCommitRepository(sessionFactory, serverProperties);
     this.lanceNamespaceRepository = new LanceNamespaceRepository(this, sessionFactory);
     this.lanceTableRepository = new LanceTableRepository(this, sessionFactory);
+    this.lanceApiKeyRepository = new LanceApiKeyRepository(this, sessionFactory);
 
     // KeyMapper uses all the repositories above.
     this.keyMapper = new KeyMapper(this);
