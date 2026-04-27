@@ -6,7 +6,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.linecorp.armeria.common.AggregatedHttpResponse;
 import java.util.Map;
 import org.hibernate.Session;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -157,17 +156,24 @@ class LancePhase1NamespaceRestTest extends BaseLancePhase1RestTest {
   }
 
   @Test
-  @Disabled("Enable after Lance-specific auth and authorization checks are implemented.")
   @DisplayName("P1-NS-012 child namespace creation checks parent namespace authorization")
   void childNamespaceCreationChecksParentAuthorization() throws Exception {
-    assertSuccess(
-        postJson("/v1/namespace/" + ROOT_NAMESPACE + "/create", createNamespaceRequest()));
+    // Root namespace requires admin
+    String adminToken = createInternalBearerToken("admin");
+    String unauthorizedToken = createInternalBearerToken("unauthorized-phase1-user");
 
+    assertSuccess(
+        postJson(
+            "/v1/namespace/" + ROOT_NAMESPACE + "/create",
+            createNamespaceRequest(),
+            Map.of("Authorization", "Bearer " + adminToken)));
+
+    // Unauthorized user cannot create child namespace (admin is the owner)
     AggregatedHttpResponse response =
         postJson(
             "/v1/namespace/" + CHILD_NAMESPACE + "/create",
             createNamespaceRequest(),
-            Map.of("Authorization", "Bearer unauthorized-phase1-user"));
+            Map.of("Authorization", "Bearer " + unauthorizedToken));
 
     assertLanceErrorShape(response, 403);
     assertThat(json(response).path("message").asText()).contains("USE_NAMESPACE");

@@ -35,6 +35,7 @@ public class LanceMetadataService {
   private final TableRepository unityTableRepository;
   private final MetastoreRepository metastoreRepository;
   private final LanceIdentifierCodec identifierCodec;
+  private final LanceAuthorizationService authorizationService;
 
   public LanceMetadataService(Repositories repositories) {
     this.namespaceRepository = repositories.getLanceNamespaceRepository();
@@ -42,6 +43,7 @@ public class LanceMetadataService {
     this.unityTableRepository = repositories.getTableRepository();
     this.metastoreRepository = repositories.getMetastoreRepository();
     this.identifierCodec = new LanceIdentifierCodec();
+    this.authorizationService = new LanceAuthorizationService();
   }
 
   public NamespaceView createNamespace(
@@ -49,22 +51,21 @@ public class LanceMetadataService {
     List<String> path = identifierCodec.decodeIdentifier(identifier, delimiter);
     UUID rootScopeId = metastoreRepository.getMetastoreId();
     int lastIndex = path.size() - 1;
-    UUID parentNamespaceId =
+    LanceNamespaceDAO parentNamespace =
         path.size() == 1
             ? null
-            : namespaceRepository
-                .getNamespaceOrThrow(
-                    rootScopeId, identifierCodec.toPathKey(path.subList(0, lastIndex)))
-                .getId();
+            : namespaceRepository.getNamespaceOrThrow(
+                rootScopeId, identifierCodec.toPathKey(path.subList(0, lastIndex)));
+    authorizationService.authorizeCreateNamespace(parentNamespace);
     LanceNamespaceDAO namespaceDAO =
         namespaceRepository.createNamespace(
             rootScopeId,
-            parentNamespaceId,
+            parentNamespace == null ? null : parentNamespace.getId(),
             path.get(lastIndex),
             path.size(),
             identifierCodec.toPathKey(path),
             path.get(lastIndex),
-            IdentityUtils.findPrincipalEmailAddress(),
+            currentOwner(),
             properties);
     return toNamespaceView(namespaceDAO, delimiter, properties);
   }
@@ -74,6 +75,7 @@ public class LanceMetadataService {
     List<String> path = identifierCodec.decodeIdentifier(identifier, delimiter);
     String pathKey = identifierCodec.toPathKey(path);
     LanceNamespaceDAO namespaceDAO = namespaceRepository.getNamespaceOrThrow(rootScopeId, pathKey);
+    authorizationService.authorizeReadNamespace(namespaceDAO);
     return toNamespaceView(
         namespaceDAO, delimiter, namespaceRepository.getNamespaceProperties(namespaceDAO.getId()));
   }
@@ -82,7 +84,10 @@ public class LanceMetadataService {
     UUID rootScopeId = metastoreRepository.getMetastoreId();
     List<String> path = identifierCodec.decodeIdentifier(identifier, delimiter);
     String pathKey = identifierCodec.toPathKey(path);
-    return new ExistsResponse(namespaceRepository.findNamespace(rootScopeId, pathKey).isPresent());
+    Optional<LanceNamespaceDAO> namespaceDAO =
+        namespaceRepository.findNamespace(rootScopeId, pathKey);
+    namespaceDAO.ifPresent(authorizationService::authorizeReadNamespace);
+    return new ExistsResponse(namespaceDAO.isPresent());
   }
 
   public NamespaceListResponse listNamespaces(String identifier, String delimiter) {
@@ -95,6 +100,7 @@ public class LanceMetadataService {
     List<String> path = identifierCodec.decodeIdentifier(identifier, delimiter);
     String pathKey = identifierCodec.toPathKey(path);
     LanceNamespaceDAO namespaceDAO = namespaceRepository.getNamespaceOrThrow(rootScopeId, pathKey);
+    authorizationService.authorizeReadNamespace(namespaceDAO);
     Integer safeLimit = limit != null && limit > 0 ? limit : null;
     List<LanceNamespaceDAO> children =
         namespaceRepository.listChildNamespaces(
@@ -136,6 +142,7 @@ public class LanceMetadataService {
     List<String> path = identifierCodec.decodeIdentifier(identifier, delimiter);
     String pathKey = identifierCodec.toPathKey(path);
     LanceNamespaceDAO namespaceDAO = namespaceRepository.getNamespaceOrThrow(rootScopeId, pathKey);
+    authorizationService.authorizeModifyNamespace(namespaceDAO);
 
     if (hasChildNamespaces(rootScopeId, namespaceDAO.getId())
         || hasLanceTables(namespaceDAO.getId())
@@ -182,6 +189,7 @@ public class LanceMetadataService {
     String namespacePathKey = identifierCodec.toPathKey(namespacePath);
     Optional<LanceNamespaceDAO> namespaceOpt =
         namespaceRepository.findNamespace(rootScopeId, namespacePathKey);
+    namespaceOpt.ifPresent(authorizationService::authorizeReadNamespace);
 
     Integer safeLimit = limit != null && limit > 0 ? limit : null;
     List<String> tableIds = new ArrayList<>();
@@ -295,7 +303,8 @@ public class LanceMetadataService {
 
     LanceNamespaceDAO namespaceDAO =
         namespaceRepository.getNamespaceOrThrow(rootScopeId, namespacePathKey);
-    String owner = IdentityUtils.findPrincipalEmailAddress();
+    authorizationService.authorizeModifyNamespace(namespaceDAO);
+    String owner = currentOwner();
     String canonicalIdentifier = identifierCodec.toExternalIdentifier(tablePathKey, delimiter);
 
     LanceAssetDAO assetDAO;
@@ -352,6 +361,7 @@ public class LanceMetadataService {
     }
 
     LanceAssetDAO assetDAO = assetOpt.get();
+    authorizationService.authorizeReadTable(assetDAO);
     Optional<LanceTableDAO> tableDAO = tableRepository.findTableByAssetId(assetDAO.getId());
     boolean isOnlyDeclared =
         tableDAO.isPresent() && Boolean.TRUE.equals(tableDAO.get().getIsOnlyDeclared());
@@ -373,6 +383,7 @@ public class LanceMetadataService {
     String tablePathKey = identifierCodec.toPathKey(path);
 
     Optional<LanceAssetDAO> assetOpt = tableRepository.findAssetByPathKey(tablePathKey);
+    assetOpt.ifPresent(authorizationService::authorizeReadTable);
     return new ExistsResponse(assetOpt.isPresent() || findLegacyTable(path).isPresent());
   }
 
@@ -392,6 +403,7 @@ public class LanceMetadataService {
     }
 
     LanceAssetDAO assetDAO = assetOpt.get();
+    authorizationService.authorizeModifyTable(assetDAO);
     Optional<LanceTableDAO> tableDAO = tableRepository.findTableByAssetId(assetDAO.getId());
 
     // Phase 1 only supports dropping declared-only tables
@@ -422,6 +434,8 @@ public class LanceMetadataService {
       }
       throw new BaseException(ErrorCode.NOT_FOUND, "Lance table not found: " + identifier);
     }
+
+    authorizationService.authorizeModifyTable(assetOpt.get());
 
     // Phase 1 does not support delete_physical_data=true
     if (deletePhysicalData) {
@@ -460,6 +474,7 @@ public class LanceMetadataService {
         legacyBridge,
         isOnlyDeclared ? false : null,
         LanceRequestContext.currentPrincipal(),
+        authorizationService.authorizationMetadata(),
         audit);
   }
 
@@ -479,7 +494,13 @@ public class LanceMetadataService {
         true,
         false,
         LanceRequestContext.currentPrincipal(),
+        authorizationService.authorizationMetadata(),
         null);
+  }
+
+  private String currentOwner() {
+    String lancePrincipal = LanceRequestContext.currentPrincipal();
+    return lancePrincipal != null ? lancePrincipal : IdentityUtils.findPrincipalEmailAddress();
   }
 
   private Map<String, Object> buildDeclareAudit(boolean isDeprecatedAlias) {
@@ -629,6 +650,7 @@ public class LanceMetadataService {
       @JsonProperty("legacy_bridge") boolean legacyBridge,
       @JsonProperty("physical_metadata_loaded") Boolean physicalMetadataLoaded,
       String principal,
+      Map<String, Object> authorization,
       Map<String, Object> audit) {}
 
   public record DropTableResponse(boolean dropped) {}

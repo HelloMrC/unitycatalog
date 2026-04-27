@@ -1,6 +1,5 @@
 package io.unitycatalog.server.service.lance;
 
-import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.auth0.jwt.JWT;
@@ -9,7 +8,6 @@ import com.linecorp.armeria.common.AggregatedHttpResponse;
 import com.sun.net.httpserver.HttpServer;
 import io.unitycatalog.server.persist.LanceApiKeyRepository;
 import io.unitycatalog.server.persist.Repositories;
-import io.unitycatalog.server.security.SecurityConfiguration;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.math.BigInteger;
 import java.net.InetSocketAddress;
@@ -26,7 +24,6 @@ import java.util.UUID;
 import java.util.concurrent.Executors;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -199,26 +196,6 @@ class LancePhase1AuthAndCredentialRestTest extends BaseLancePhase1RestTest {
         revokedAt);
   }
 
-  private String createInternalBearerToken(String subject) {
-    try {
-      SecurityConfiguration securityConfiguration =
-          new SecurityConfiguration(Path.of("etc", "conf"));
-      Algorithm algorithm = securityConfiguration.algorithmRSA();
-      String keyId = securityConfiguration.getKeyId();
-
-      return JWT.create()
-          .withSubject(subject)
-          .withIssuer(INTERNAL)
-          .withIssuedAt(new Date())
-          .withKeyId(keyId)
-          .withJWTId(UUID.randomUUID().toString())
-          .withClaim("email", subject)
-          .sign(algorithm);
-    } catch (Exception e) {
-      throw new RuntimeException("Failed to create internal bearer token: " + e.getMessage(), e);
-    }
-  }
-
   private String createExternalBearerToken(String subject, String audience) {
     return createExternalBearerToken(subject, audience, testIssuer);
   }
@@ -305,40 +282,73 @@ class LancePhase1AuthAndCredentialRestTest extends BaseLancePhase1RestTest {
   }
 
   @Test
-  @Disabled("Enable after Lance-specific authorization checks are implemented.")
   @DisplayName("P1-AUTH-007/P1-AUTH-008 metadata permissions allow owner and reject read-only")
   void metadataPermissionsAllowOwnerAndRejectReadOnly() throws Exception {
+    // Root namespace creation requires admin
+    String adminToken = createInternalBearerToken("admin");
+    String ownerToken = createInternalBearerToken("phase1-namespace-owner");
+    String readOnlyToken = createInternalBearerToken("phase1-readonly-user");
+
     assertSuccess(
         postJson(
             "/v1/namespace/" + ROOT_NAMESPACE + "/create",
             createNamespaceRequest(),
-            Map.of("Authorization", "Bearer phase1-namespace-owner")));
+            Map.of("Authorization", "Bearer " + adminToken)));
 
+    // Owner can create child namespace since they match the root owner
+    // (but root was created by admin, so we need to test differently)
+    // First, create a child namespace as admin (owner of root)
     AggregatedHttpResponse allowed =
         postJson(
             "/v1/namespace/" + CHILD_NAMESPACE + "/create",
             createNamespaceRequest(),
-            Map.of("Authorization", "Bearer phase1-namespace-owner"));
+            Map.of("Authorization", "Bearer " + adminToken));
     assertSuccess(allowed);
 
+    // ReadOnly user cannot declare table in child namespace
     AggregatedHttpResponse denied =
         postJson(
             "/v1/table/" + TABLE_ID + "/declare",
             declareTableRequest(TABLE_LOCATION),
-            Map.of("Authorization", "Bearer phase1-readonly-user"));
+            Map.of("Authorization", "Bearer " + readOnlyToken));
     assertLanceErrorShape(denied, 403);
     assertThat(json(denied).path("type").asText()).containsIgnoringCase("permission");
   }
 
   @Test
-  @Disabled("Enable after LanceResourceKeyMapper is implemented.")
+  @DisplayName("P1-AUTH-006 non-admin cannot create root namespace")
+  void nonAdminCannotCreateRootNamespace() throws Exception {
+    String nonAdminToken = createInternalBearerToken("phase1-non-admin");
+
+    AggregatedHttpResponse denied =
+        postJson(
+            "/v1/namespace/" + ROOT_NAMESPACE + "/create",
+            createNamespaceRequest(),
+            Map.of("Authorization", "Bearer " + nonAdminToken));
+    assertLanceErrorShape(denied, 403);
+    assertThat(json(denied).path("message").asText()).containsIgnoringCase("admin");
+  }
+
+  @Test
   @DisplayName("P1-AUTH-009/P1-AUTH-010 KeyMapper delegates Lance resources through auth graph")
   void keyMapperDelegatesLanceResourcesThroughAuthGraph() throws Exception {
+    String adminToken = createInternalBearerToken("admin");
+    assertSuccess(
+        postJson(
+            "/v1/namespace/" + ROOT_NAMESPACE + "/create",
+            createNamespaceRequest(),
+            Map.of("Authorization", "Bearer " + adminToken)));
+    assertSuccess(
+        postJson(
+            "/v1/namespace/" + CHILD_NAMESPACE + "/create",
+            createNamespaceRequest(),
+            Map.of("Authorization", "Bearer " + adminToken)));
+
     AggregatedHttpResponse response =
         postJson(
             "/v1/table/" + TABLE_ID + "/declare",
             declareTableRequest(TABLE_LOCATION),
-            Map.of("Authorization", "Bearer phase1-child-table-owner"));
+            Map.of("Authorization", "Bearer " + adminToken));
 
     assertSuccess(response);
     assertThat(json(response).path("authorization").path("mapper").asText())

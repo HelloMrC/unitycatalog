@@ -1,7 +1,10 @@
 package io.unitycatalog.server.service.lance;
 
+import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.auth0.jwt.JWT;
+import com.auth0.jwt.algorithms.Algorithm;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linecorp.armeria.client.WebClient;
@@ -27,10 +30,14 @@ import io.unitycatalog.server.base.table.TableOperations;
 import io.unitycatalog.server.sdk.catalog.SdkCatalogOperations;
 import io.unitycatalog.server.sdk.schema.SdkSchemaOperations;
 import io.unitycatalog.server.sdk.tables.SdkTableOperations;
+import io.unitycatalog.server.security.SecurityConfiguration;
 import io.unitycatalog.server.utils.TestUtils;
 import java.io.IOException;
+import java.nio.file.Path;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 
 abstract class BaseLancePhase1RestTest extends BaseServerTest {
@@ -139,6 +146,26 @@ abstract class BaseLancePhase1RestTest extends BaseServerTest {
         postJson("/v1/namespace/" + ROOT_NAMESPACE + "/create", createNamespaceRequest()));
     assertSuccess(
         postJson("/v1/namespace/" + CHILD_NAMESPACE + "/create", createNamespaceRequest()));
+  }
+
+  protected String createInternalBearerToken(String subject) {
+    try {
+      SecurityConfiguration securityConfiguration =
+          new SecurityConfiguration(Path.of("etc", "conf"));
+      Algorithm algorithm = securityConfiguration.algorithmRSA();
+      String keyId = securityConfiguration.getKeyId();
+
+      return JWT.create()
+          .withSubject(subject)
+          .withIssuer(INTERNAL)
+          .withIssuedAt(new Date())
+          .withKeyId(keyId)
+          .withJWTId(UUID.randomUUID().toString())
+          .withClaim("email", subject)
+          .sign(algorithm);
+    } catch (Exception e) {
+      throw new RuntimeException("Failed to create internal bearer token: " + e.getMessage(), e);
+    }
   }
 
   protected void createUcCatalogAndSchema() throws Exception {

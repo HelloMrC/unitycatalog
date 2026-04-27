@@ -4,7 +4,6 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.linecorp.armeria.common.AggregatedHttpResponse;
 import java.util.Map;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
@@ -91,14 +90,27 @@ class LancePhase1ErrorAndRegressionRestTest extends BaseLancePhase1RestTest {
   }
 
   @Test
-  @Disabled("Enable after Lance-specific auth and authorization checks are implemented.")
   @DisplayName("P1-ERROR-004 permission denied has stable status and body")
   void permissionDeniedHasStableStatusAndBody() throws Exception {
+    // Root namespace requires admin
+    String adminToken = createInternalBearerToken("admin");
+    String deniedToken = createInternalBearerToken("unauthorized-phase1-user");
+    assertSuccess(
+        postJson(
+            "/v1/namespace/" + ROOT_NAMESPACE + "/create",
+            createNamespaceRequest(),
+            Map.of("Authorization", "Bearer " + adminToken)));
+    assertSuccess(
+        postJson(
+            "/v1/namespace/" + CHILD_NAMESPACE + "/create",
+            createNamespaceRequest(),
+            Map.of("Authorization", "Bearer " + adminToken)));
+
     AggregatedHttpResponse response =
         postJson(
             "/v1/table/" + TABLE_ID + "/declare",
             declareTableRequest(TABLE_LOCATION),
-            Map.of("Authorization", "Bearer unauthorized-phase1-user"));
+            Map.of("Authorization", "Bearer " + deniedToken));
 
     assertLanceErrorShape(response, 403);
     assertThat(json(response).path("type").asText()).containsIgnoringCase("permission");
