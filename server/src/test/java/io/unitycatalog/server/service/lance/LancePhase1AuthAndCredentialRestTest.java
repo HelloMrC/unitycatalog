@@ -121,6 +121,30 @@ class LancePhase1AuthAndCredentialRestTest extends BaseLancePhase1RestTest {
     assertThat(json(expired).path("message").asText()).containsIgnoringCase("expired");
   }
 
+  @Test
+  @DisplayName("P1-AUTH-013 Bearer and x-api-key are mutually exclusive")
+  void bearerAndApiKeyAreMutuallyExclusive() throws Exception {
+    assertSuccess(
+        postJson("/v1/namespace/" + ROOT_NAMESPACE + "/create", createNamespaceRequest()));
+    String bearerToken = createInternalBearerToken("phase1-internal-user@example.com");
+    createApiKey("phase1-valid-api-key", LanceApiKeyRepository.ACTIVE_STATUS, null, null);
+
+    AggregatedHttpResponse validApiKey =
+        getLance(
+            "/v1/namespace/" + ROOT_NAMESPACE + "/list",
+            Map.of("Authorization", "Bearer " + bearerToken, "x-api-key", "phase1-valid-api-key"));
+    assertLanceErrorShape(validApiKey, 401);
+    assertThat(json(validApiKey).path("message").asText()).containsIgnoringCase("exclusive");
+
+    AggregatedHttpResponse invalidApiKey =
+        getLance(
+            "/v1/namespace/" + ROOT_NAMESPACE + "/list",
+            Map.of(
+                "Authorization", "Bearer " + bearerToken, "x-api-key", "phase1-invalid-api-key"));
+    assertLanceErrorShape(invalidApiKey, 401);
+    assertThat(json(invalidApiKey).path("message").asText()).containsIgnoringCase("exclusive");
+  }
+
   private void createApiKey(String plainTextKey, String status, Date expiresAt, Date revokedAt) {
     lanceApiKeyRepository.createApiKey(
         plainTextKey,

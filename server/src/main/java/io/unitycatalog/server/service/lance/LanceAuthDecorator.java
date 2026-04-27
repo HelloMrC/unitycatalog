@@ -43,13 +43,21 @@ public class LanceAuthDecorator implements DecoratingHttpServiceFunction {
     if (!contextHeaders.isEmpty()) {
       ctx.setAttr(LanceRequestContext.CONTEXT_HEADERS_ATTR, contextHeaders);
     }
-    String bearerPrincipal = principalFromInternalBearer(req);
+    Optional<String> bearerToken = bearerToken(req);
+    String apiKey = req.headers().get(X_API_KEY);
+    boolean hasApiKey = apiKey != null && !apiKey.isBlank();
+    if (bearerToken.isPresent() && hasApiKey) {
+      return unauthenticated(
+          "Authentication methods are mutually exclusive: provide either Authorization Bearer or"
+              + " x-api-key.");
+    }
+
+    String bearerPrincipal = bearerToken.map(this::principalFromInternalBearer).orElse(null);
     if (bearerPrincipal != null) {
       ctx.setAttr(LanceRequestContext.PRINCIPAL_ATTR, bearerPrincipal);
     }
 
-    String apiKey = req.headers().get(X_API_KEY);
-    if (apiKey == null || apiKey.isBlank()) {
+    if (!hasApiKey) {
       return delegate.serve(ctx, req);
     }
 
@@ -83,17 +91,17 @@ public class LanceAuthDecorator implements DecoratingHttpServiceFunction {
     return contextHeaders;
   }
 
-  private String principalFromInternalBearer(HttpRequest req) {
+  private Optional<String> bearerToken(HttpRequest req) {
     String authorization = req.headers().get(HttpHeaderNames.AUTHORIZATION);
     if (authorization == null || !authorization.startsWith(BEARER_PREFIX)) {
-      return null;
+      return Optional.empty();
     }
 
     String accessToken = authorization.substring(BEARER_PREFIX.length()).trim();
-    if (accessToken.isEmpty()) {
-      return null;
-    }
+    return accessToken.isEmpty() ? Optional.empty() : Optional.of(accessToken);
+  }
 
+  private String principalFromInternalBearer(String accessToken) {
     try {
       DecodedJWT decodedJWT = JWT.decode(accessToken);
       if (!INTERNAL.equals(decodedJWT.getIssuer())) {
