@@ -1,15 +1,20 @@
 package io.unitycatalog.server.service.lance;
 
+import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.auth0.jwt.JWT;
+import com.auth0.jwt.algorithms.Algorithm;
 import com.linecorp.armeria.common.AggregatedHttpResponse;
 import io.unitycatalog.server.persist.LanceApiKeyRepository;
 import io.unitycatalog.server.persist.Repositories;
+import io.unitycatalog.server.security.SecurityConfiguration;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Date;
 import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
@@ -31,16 +36,19 @@ class LancePhase1AuthAndCredentialRestTest extends BaseLancePhase1RestTest {
   }
 
   @Test
-  @Disabled("Enable after Lance-specific auth context is implemented.")
   @DisplayName("P1-AUTH-001 internal Bearer principal enters Lance request context")
   void internalBearerPrincipalEntersRequestContext() throws Exception {
+    assertSuccess(
+        postJson("/v1/namespace/" + ROOT_NAMESPACE + "/create", createNamespaceRequest()));
+    String principal = "phase1-internal-user@example.com";
+
     AggregatedHttpResponse response =
         getLance(
             "/v1/namespace/" + ROOT_NAMESPACE + "/list",
-            Map.of("Authorization", "Bearer " + serverConfig.getAuthToken()));
+            Map.of("Authorization", "Bearer " + createInternalBearerToken(principal)));
 
     assertSuccess(response);
-    assertThat(json(response).path("principal").asText()).isNotBlank();
+    assertThat(json(response).path("principal").asText()).isEqualTo(principal);
   }
 
   @Test
@@ -122,6 +130,26 @@ class LancePhase1AuthAndCredentialRestTest extends BaseLancePhase1RestTest {
         "phase1-test",
         expiresAt,
         revokedAt);
+  }
+
+  private String createInternalBearerToken(String subject) {
+    try {
+      SecurityConfiguration securityConfiguration =
+          new SecurityConfiguration(Path.of("etc", "conf"));
+      Algorithm algorithm = securityConfiguration.algorithmRSA();
+      String keyId = securityConfiguration.getKeyId();
+
+      return JWT.create()
+          .withSubject(subject)
+          .withIssuer(INTERNAL)
+          .withIssuedAt(new Date())
+          .withKeyId(keyId)
+          .withJWTId(UUID.randomUUID().toString())
+          .withClaim("email", subject)
+          .sign(algorithm);
+    } catch (Exception e) {
+      throw new RuntimeException("Failed to create internal bearer token: " + e.getMessage(), e);
+    }
   }
 
   @Test

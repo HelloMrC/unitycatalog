@@ -115,7 +115,10 @@ public class LanceMetadataService {
             .toList();
     Map<String, String> contextHeaders = LanceRequestContext.currentContextHeaders();
     return new NamespaceListResponse(
-        childIds, nextPageToken, contextHeaders.isEmpty() ? null : contextHeaders);
+        childIds,
+        nextPageToken,
+        contextHeaders.isEmpty() ? null : contextHeaders,
+        LanceRequestContext.currentPrincipal());
   }
 
   public DropNamespaceResponse dropNamespace(String identifier, String delimiter, String mode) {
@@ -600,8 +603,12 @@ public class LanceMetadataService {
 
   public record ExistsResponse(boolean exists) {}
 
+  @JsonInclude(JsonInclude.Include.NON_NULL)
   public record NamespaceListResponse(
-      List<String> namespaces, String nextPageToken, Map<String, String> context) {}
+      List<String> namespaces,
+      String nextPageToken,
+      Map<String, String> context,
+      String principal) {}
 
   public record DropNamespaceResponse(boolean dropped) {}
 

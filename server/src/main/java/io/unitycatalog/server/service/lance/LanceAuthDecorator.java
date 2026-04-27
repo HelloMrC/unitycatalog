@@ -1,5 +1,12 @@
 package io.unitycatalog.server.service.lance;
 
+import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
+
+import com.auth0.jwt.JWT;
+import com.auth0.jwt.JWTVerifier;
+import com.auth0.jwt.exceptions.JWTVerificationException;
+import com.auth0.jwt.interfaces.DecodedJWT;
+import com.linecorp.armeria.common.HttpHeaderNames;
 import com.linecorp.armeria.common.HttpRequest;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.server.DecoratingHttpServiceFunction;
@@ -9,18 +16,24 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.LanceApiKeyRepository;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.dao.LanceApiKeyDAO;
+import io.unitycatalog.server.security.SecurityContext;
+import io.unitycatalog.server.utils.JwksOperations;
 import java.util.Date;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
 public class LanceAuthDecorator implements DecoratingHttpServiceFunction {
   private static final String X_API_KEY = "x-api-key";
+  private static final String BEARER_PREFIX = "Bearer ";
 
   private final LanceApiKeyRepository apiKeyRepository;
+  private final JwksOperations jwksOperations;
 
-  public LanceAuthDecorator(Repositories repositories) {
+  public LanceAuthDecorator(SecurityContext securityContext, Repositories repositories) {
     this.apiKeyRepository = repositories.getLanceApiKeyRepository();
+    this.jwksOperations = new JwksOperations(securityContext);
   }
 
   @Override
@@ -29,6 +42,10 @@ public class LanceAuthDecorator implements DecoratingHttpServiceFunction {
     Map<String, String> contextHeaders = extractContextHeaders(req);
     if (!contextHeaders.isEmpty()) {
       ctx.setAttr(LanceRequestContext.CONTEXT_HEADERS_ATTR, contextHeaders);
+    }
+    String bearerPrincipal = principalFromInternalBearer(req);
+    if (bearerPrincipal != null) {
+      ctx.setAttr(LanceRequestContext.PRINCIPAL_ATTR, bearerPrincipal);
     }
 
     String apiKey = req.headers().get(X_API_KEY);
@@ -64,6 +81,37 @@ public class LanceAuthDecorator implements DecoratingHttpServiceFunction {
               }
             });
     return contextHeaders;
+  }
+
+  private String principalFromInternalBearer(HttpRequest req) {
+    String authorization = req.headers().get(HttpHeaderNames.AUTHORIZATION);
+    if (authorization == null || !authorization.startsWith(BEARER_PREFIX)) {
+      return null;
+    }
+
+    String accessToken = authorization.substring(BEARER_PREFIX.length()).trim();
+    if (accessToken.isEmpty()) {
+      return null;
+    }
+
+    try {
+      DecodedJWT decodedJWT = JWT.decode(accessToken);
+      if (!INTERNAL.equals(decodedJWT.getIssuer())) {
+        return null;
+      }
+      JWTVerifier jwtVerifier =
+          jwksOperations.verifierForIssuerAndKey(
+              decodedJWT.getIssuer(), decodedJWT.getKeyId(), decodedJWT.getAlgorithm(), List.of());
+      DecodedJWT verifiedJWT = jwtVerifier.verify(decodedJWT);
+      String email = verifiedJWT.getClaim("email").asString();
+      return isBlank(email) ? verifiedJWT.getSubject() : email;
+    } catch (JWTVerificationException e) {
+      return null;
+    }
+  }
+
+  private boolean isBlank(String value) {
+    return value == null || value.isBlank();
   }
 
   private boolean isRevoked(LanceApiKeyDAO apiKeyDAO) {
