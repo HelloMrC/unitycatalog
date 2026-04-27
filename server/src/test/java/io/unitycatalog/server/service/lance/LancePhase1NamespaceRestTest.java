@@ -52,6 +52,106 @@ class LancePhase1NamespaceRestTest extends BaseLancePhase1RestTest {
   }
 
   @Test
+  @DisplayName("P1-ID-001 default $ delimiter creates namespace with correct path segments")
+  void defaultDollarDelimiterCreatesNamespaceWithCorrectPathSegments() throws Exception {
+    assertSuccess(postJson("/v1/namespace/prod/create", createNamespaceRequest()));
+    assertSuccess(postJson("/v1/namespace/prod$team_a/create", createNamespaceRequest()));
+
+    // Verify internal path_key uses canonical form (slash-separated, not dollar)
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      Object rootPathKey =
+          session
+              .createNativeQuery("select path_key from uc_lance_namespaces where name = 'prod'")
+              .getSingleResult();
+      assertThat(rootPathKey.toString()).isEqualTo("prod");
+
+      Object childPathKey =
+          session
+              .createNativeQuery("select path_key from uc_lance_namespaces where name = 'team_a'")
+              .getSingleResult();
+      assertThat(childPathKey.toString()).isEqualTo("prod/team_a");
+    }
+
+    // Describe returns identifier with default dollar delimiter
+    AggregatedHttpResponse describe = postJson("/v1/namespace/prod$team_a/describe", "{}");
+    assertSuccess(describe);
+    assertThat(json(describe).path("id").asText()).isEqualTo("prod$team_a");
+  }
+
+  @Test
+  @DisplayName("P1-ID-003 deep 4-layer namespace has correct depth and parent-child relations")
+  void deepFourLayerNamespaceHasCorrectDepthAndParentChildRelations() throws Exception {
+    // Create 4-layer namespace: prod/team_a/ml/embeddings
+    assertSuccess(postJson("/v1/namespace/prod/create", createNamespaceRequest()));
+    assertSuccess(postJson("/v1/namespace/prod$team_a/create", createNamespaceRequest()));
+    assertSuccess(postJson("/v1/namespace/prod$team_a$ml/create", createNamespaceRequest()));
+    assertSuccess(
+        postJson("/v1/namespace/prod$team_a$ml$embeddings/create", createNamespaceRequest()));
+
+    // Verify depth and path_key in database
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      // Verify embeddings namespace
+      Object[] embeddingsRow =
+          (Object[])
+              session
+                  .createNativeQuery(
+                      "select depth, path_key from uc_lance_namespaces "
+                          + "where path_key = 'prod/team_a/ml/embeddings'")
+                  .getSingleResult();
+      assertThat(embeddingsRow[0]).isEqualTo(4);
+      assertThat(embeddingsRow[1].toString()).isEqualTo("prod/team_a/ml/embeddings");
+
+      // Verify ml namespace
+      Object[] mlRow =
+          (Object[])
+              session
+                  .createNativeQuery(
+                      "select depth, path_key from uc_lance_namespaces "
+                          + "where path_key = 'prod/team_a/ml'")
+                  .getSingleResult();
+      assertThat(mlRow[0]).isEqualTo(3);
+      assertThat(mlRow[1].toString()).isEqualTo("prod/team_a/ml");
+
+      // Verify team_a namespace
+      Object[] teamARow =
+          (Object[])
+              session
+                  .createNativeQuery(
+                      "select depth, path_key from uc_lance_namespaces "
+                          + "where path_key = 'prod/team_a'")
+                  .getSingleResult();
+      assertThat(teamARow[0]).isEqualTo(2);
+      assertThat(teamARow[1].toString()).isEqualTo("prod/team_a");
+
+      // Verify prod namespace
+      Object[] prodRow =
+          (Object[])
+              session
+                  .createNativeQuery(
+                      "select depth, path_key from uc_lance_namespaces "
+                          + "where path_key = 'prod'")
+                  .getSingleResult();
+      assertThat(prodRow[0]).isEqualTo(1);
+      assertThat(prodRow[1].toString()).isEqualTo("prod");
+    }
+
+    // List returns only direct children at each level
+    AggregatedHttpResponse listMl = getLance("/v1/namespace/prod$team_a$ml/list");
+    assertSuccess(listMl);
+    assertThat(json(listMl).path("namespaces").toString()).contains("embeddings");
+
+    AggregatedHttpResponse listTeamA = getLance("/v1/namespace/prod$team_a/list");
+    assertSuccess(listTeamA);
+    assertThat(json(listTeamA).path("namespaces").toString()).contains("ml");
+    assertThat(json(listTeamA).path("namespaces").toString()).doesNotContain("embeddings");
+
+    AggregatedHttpResponse listProd = getLance("/v1/namespace/prod/list");
+    assertSuccess(listProd);
+    assertThat(json(listProd).path("namespaces").toString()).contains("team_a");
+    assertThat(json(listProd).path("namespaces").toString()).doesNotContain("ml", "embeddings");
+  }
+
+  @Test
   @DisplayName("P1-ID-002 custom delimiter resolves to the same canonical namespace path")
   void customDelimiterResolvesToSameCanonicalNamespacePath() throws Exception {
     assertSuccess(postJson("/v1/namespace/prod/create", createNamespaceRequest()));

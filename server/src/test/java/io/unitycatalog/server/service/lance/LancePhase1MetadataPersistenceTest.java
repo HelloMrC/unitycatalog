@@ -2,6 +2,7 @@ package io.unitycatalog.server.service.lance;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.linecorp.armeria.common.AggregatedHttpResponse;
 import io.unitycatalog.server.persist.LanceApiKeyRepository;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -20,7 +21,7 @@ import org.junit.jupiter.api.Test;
 class LancePhase1MetadataPersistenceTest extends BaseLancePhase1RestTest {
 
   @Test
-  @DisplayName("P1-META-001 Phase 1 DDL creates only required Lance metadata tables")
+  @DisplayName("P1-META-001/P1-META-002 Phase 1 DDL creates only required Lance metadata tables")
   void phase1DdlCreatesRequiredMetadataTables() {
     try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
       List<?> tables =
@@ -35,6 +36,30 @@ class LancePhase1MetadataPersistenceTest extends BaseLancePhase1RestTest {
       assertThat(tables.toString())
           .doesNotContain(
               "UC_LANCE_INDICES", "UC_LANCE_VERSIONS", "UC_LANCE_TAGS", "UC_LANCE_TRANSACTIONS");
+    }
+  }
+
+  @Test
+  @DisplayName("P1-META-003 namespace unique key prevents duplicate parent/name combinations")
+  void namespaceUniqueKeyPreventsDuplicateParentNameCombinations() throws Exception {
+    assertSuccess(postJson("/v1/namespace/prod/create", createNamespaceRequest()));
+    assertSuccess(postJson("/v1/namespace/prod$team_a/create", createNamespaceRequest()));
+
+    // Attempt to create duplicate namespace with same parent and name
+    AggregatedHttpResponse duplicate =
+        postJson("/v1/namespace/prod$team_a/create", createNamespaceRequest());
+    assertLanceErrorShape(duplicate, 409);
+    assertThat(json(duplicate).path("type").asText()).containsIgnoringCase("already");
+
+    // Verify only one namespace exists in database
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      Number count =
+          (Number)
+              session
+                  .createNativeQuery(
+                      "select count(*) from uc_lance_namespaces where path_key = 'prod/team_a'")
+                  .getSingleResult();
+      assertThat(count.intValue()).isEqualTo(1);
     }
   }
 
