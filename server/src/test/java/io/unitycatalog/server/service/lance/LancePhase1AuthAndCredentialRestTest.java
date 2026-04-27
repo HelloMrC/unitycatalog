@@ -3,8 +3,12 @@ package io.unitycatalog.server.service.lance;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.linecorp.armeria.common.AggregatedHttpResponse;
+import io.unitycatalog.server.persist.LanceApiKeyRepository;
+import io.unitycatalog.server.persist.Repositories;
+import io.unitycatalog.server.utils.ServerProperties;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Date;
 import java.util.Map;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
@@ -54,16 +58,21 @@ class LancePhase1AuthAndCredentialRestTest extends BaseLancePhase1RestTest {
   }
 
   @Test
-  @Disabled("Enable after Lance x-api-key authentication is implemented.")
   @DisplayName("P1-AUTH-004/P1-AUTH-005 x-api-key resolves principal and rejects revoked key")
   void apiKeyResolvesPrincipalAndRejectsRevokedKey() throws Exception {
+    createRootAndChildNamespaces();
+    assertSuccess(
+        postJson("/v1/table/" + TABLE_ID + "/register", declareTableRequest(TABLE_LOCATION)));
+    createApiKey("phase1-valid-api-key", LanceApiKeyRepository.ACTIVE_STATUS, null);
+    createApiKey("phase1-revoked-api-key", LanceApiKeyRepository.REVOKED_STATUS, new Date());
+
     AggregatedHttpResponse accepted =
         postJson(
             "/v1/table/" + TABLE_ID + "/describe",
             "{}",
             Map.of("x-api-key", "phase1-valid-api-key"));
     assertSuccess(accepted);
-    assertThat(json(accepted).path("principal").asText()).isNotBlank();
+    assertThat(json(accepted).path("principal").asText()).isEqualTo("phase1-service-principal");
 
     AggregatedHttpResponse revoked =
         postJson(
@@ -72,6 +81,22 @@ class LancePhase1AuthAndCredentialRestTest extends BaseLancePhase1RestTest {
             Map.of("x-api-key", "phase1-revoked-api-key"));
     assertLanceErrorShape(revoked, 401);
     assertThat(json(revoked).path("message").asText()).containsIgnoringCase("revoked");
+  }
+
+  private void createApiKey(String plainTextKey, String status, Date revokedAt) {
+    Repositories repositories =
+        new Repositories(
+            hibernateConfigurator.getSessionFactory(), new ServerProperties(serverProperties));
+    repositories
+        .getLanceApiKeyRepository()
+        .createApiKey(
+            plainTextKey,
+            "phase1-service-principal",
+            "SERVICE_PRINCIPAL",
+            status,
+            "phase1-test",
+            null,
+            revokedAt);
   }
 
   @Test

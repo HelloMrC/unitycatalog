@@ -55,6 +55,7 @@ import io.unitycatalog.server.service.iceberg.FileIOFactory;
 import io.unitycatalog.server.service.iceberg.IcebergObjectMapper;
 import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.service.iceberg.TableConfigService;
+import io.unitycatalog.server.service.lance.LanceAuthDecorator;
 import io.unitycatalog.server.service.lance.LanceRestNamespaceService;
 import io.unitycatalog.server.service.lance.LanceRestTableService;
 import io.unitycatalog.server.utils.OptionParser;
@@ -126,6 +127,7 @@ public class UnityCatalogServer {
         unityCatalogServerBuilder.serverProperties.isIncludeStackTraceInError());
     // Init services
     addApiServices(armeriaServerBuilder, unityCatalogServerBuilder, authorizer, repositories);
+    addLanceDecorators(armeriaServerBuilder, repositories);
     // Init security decorators
     addSecurityDecorators(
         armeriaServerBuilder, unityCatalogServerBuilder.serverProperties, authorizer, repositories);
@@ -309,6 +311,13 @@ public class UnityCatalogServer {
         deltaRestService,
         new JacksonRequestConverterFunction(deltaMapper),
         new JacksonResponseConverterFunction(deltaMapper));
+  }
+
+  private void addLanceDecorators(ServerBuilder armeriaServerBuilder, Repositories repositories) {
+    armeriaServerBuilder
+        .routeDecorator()
+        .pathPrefix(LANCE_PATH)
+        .build(new LanceAuthDecorator(repositories));
   }
 
   private void addSecurityDecorators(

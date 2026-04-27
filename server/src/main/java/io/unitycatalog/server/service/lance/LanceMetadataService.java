@@ -444,7 +444,8 @@ public class LanceMetadataService {
         isDeprecatedAlias ? "create-empty" : null,
         isDeprecatedAlias,
         legacyBridge,
-        isOnlyDeclared ? false : null);
+        isOnlyDeclared ? false : null,
+        LanceRequestContext.currentPrincipal());
   }
 
   private TableView toLegacyTableView(
@@ -461,7 +462,8 @@ public class LanceMetadataService {
         null,
         false,
         true,
-        false);
+        false,
+        LanceRequestContext.currentPrincipal());
   }
 
   private Optional<TableInfo> findLegacyTable(List<String> path) {
@@ -594,7 +596,8 @@ public class LanceMetadataService {
       @JsonProperty("protocol_variant") String protocolVariant,
       @JsonProperty("deprecated_alias_used") boolean deprecatedAliasUsed,
       @JsonProperty("legacy_bridge") boolean legacyBridge,
-      @JsonProperty("physical_metadata_loaded") Boolean physicalMetadataLoaded) {}
+      @JsonProperty("physical_metadata_loaded") Boolean physicalMetadataLoaded,
+      String principal) {}
 
   public record DropTableResponse(boolean dropped) {}
 
