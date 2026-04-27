@@ -2667,6 +2667,8 @@ components:
         - registered_model
         - external_location
         - credential
+        - lance_namespace
+        - lance_table
       description: The type of the resource.
     Privilege:
       description: The privilege to grant.
@@ -2691,6 +2693,9 @@ components:
         - CREATE EXTERNAL VOLUME
         - CREATE MANAGED STORAGE
         - CREATE STORAGE CREDENTIAL
+        - CREATE NAMESPACE
+        - USE NAMESPACE
+        - READ METADATA
       # NOTE: When adding a new enum, always add a new enum to the end of enum list, and
       #  corresponding description at the end of the description list. Both list must have the same
       #  order.
@@ -2714,6 +2719,9 @@ components:
         - 'CREATE EXTERNAL VOLUME: Enables creating external volumes through external locations.'
         - 'CREATE MANAGED STORAGE: Allows designating managed storage locations at catalog or schema levels.'
         - 'CREATE STORAGE CREDENTIAL: Required privilege on the metastore to create storage credentials.'
+        - 'CREATE NAMESPACE: Enables creating Lance namespaces under an authorized parent namespace.'
+        - 'USE NAMESPACE: Required to interact with objects within a Lance namespace.'
+        - 'READ METADATA: Enables reading Lance namespace and table metadata.'
     UpdatePermissions:
       type: object
       properties:
