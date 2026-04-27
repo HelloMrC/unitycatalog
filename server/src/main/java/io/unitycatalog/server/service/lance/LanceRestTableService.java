@@ -2,6 +2,7 @@ package io.unitycatalog.server.service.lance;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.linecorp.armeria.common.HttpResponse;
+import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.server.annotation.ExceptionHandler;
 import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Param;
@@ -98,6 +99,11 @@ public class LanceRestTableService {
             id, delimiter.orElse(null), effectiveVendCredentials(vendCredentials, request)));
   }
 
+  @Get("/v1/table/{id}/describe")
+  public HttpResponse describeTableMethodNotAllowed(@Param("id") String id) {
+    return methodNotAllowed();
+  }
+
   @Post("/v1/table/{id}/exists")
   public HttpResponse tableExists(
       @Param("id") String id, @Param("delimiter") Optional<String> delimiter, Object ignored) {
@@ -161,4 +167,13 @@ public class LanceRestTableService {
 
   public record TableDeregisterRequest(
       @JsonProperty("delete_physical_data") Boolean deletePhysicalData) {}
+
+  private static HttpResponse methodNotAllowed() {
+    return HttpResponse.ofJson(
+        HttpStatus.METHOD_NOT_ALLOWED,
+        Map.of(
+            "type", "method_not_allowed",
+            "message", "Method not allowed. Use POST.",
+            "code", HttpStatus.METHOD_NOT_ALLOWED.code()));
+  }
 }

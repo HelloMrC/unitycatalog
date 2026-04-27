@@ -13,7 +13,7 @@ public class LanceExceptionHandler extends BaseExceptionHandler {
     Map<String, Object> response = new HashMap<>();
     response.put("type", exception.getErrorCode().name().toLowerCase());
     response.put("message", exception.getErrorMessage());
-    response.put("code", exception.getErrorCode().name());
+    response.put("code", exception.getErrorCode().getHttpStatus().code());
     return HttpResponse.ofJson(exception.getErrorCode().getHttpStatus(), response);
   }
 }

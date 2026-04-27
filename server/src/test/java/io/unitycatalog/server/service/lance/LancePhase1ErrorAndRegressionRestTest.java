@@ -10,12 +10,14 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 @Tag("lance-phase1")
-@Disabled("Enable after Lance Phase 1 REST route and error mapper are implemented.")
 class LancePhase1ErrorAndRegressionRestTest extends BaseLancePhase1RestTest {
 
   @Test
   @DisplayName("P1-CONTRACT-002 namespace endpoints enforce upstream HTTP methods")
   void namespaceEndpointsEnforceHttpMethods() throws Exception {
+    assertSuccess(
+        postJson("/v1/namespace/" + ROOT_NAMESPACE + "/create", createNamespaceRequest()));
+
     AggregatedHttpResponse list = getLance("/v1/namespace/" + ROOT_NAMESPACE + "/list");
     assertSuccess(list);
 
@@ -27,6 +29,8 @@ class LancePhase1ErrorAndRegressionRestTest extends BaseLancePhase1RestTest {
   @Test
   @DisplayName("P1-CONTRACT-003 table endpoints enforce upstream HTTP methods")
   void tableEndpointsEnforceHttpMethods() throws Exception {
+    createRootAndChildNamespaces();
+
     AggregatedHttpResponse list = getLance("/v1/namespace/" + CHILD_NAMESPACE + "/table/list");
     assertSuccess(list);
 
@@ -78,6 +82,8 @@ class LancePhase1ErrorAndRegressionRestTest extends BaseLancePhase1RestTest {
     assertLanceErrorShape(invalidRequest, 400);
     assertThat(json(invalidRequest).path("type").asText()).containsIgnoringCase("invalid");
 
+    assertSuccess(
+        postJson("/v1/table/" + TABLE_ID + "/register", declareTableRequest(TABLE_LOCATION)));
     AggregatedHttpResponse unsupported =
         postJson("/v1/table/" + TABLE_ID + "/drop", "{\"mode\":\"delete_physical_data\"}");
     assertLanceErrorShape(unsupported, 501);
@@ -85,6 +91,7 @@ class LancePhase1ErrorAndRegressionRestTest extends BaseLancePhase1RestTest {
   }
 
   @Test
+  @Disabled("Enable after Lance-specific auth and authorization checks are implemented.")
   @DisplayName("P1-ERROR-004 permission denied has stable status and body")
   void permissionDeniedHasStableStatusAndBody() throws Exception {
     AggregatedHttpResponse response =

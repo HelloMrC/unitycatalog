@@ -1,6 +1,7 @@
 package io.unitycatalog.server.service.lance;
 
 import com.linecorp.armeria.common.HttpResponse;
+import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.server.annotation.ExceptionHandler;
 import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Param;
@@ -31,6 +32,11 @@ public class LanceRestNamespaceService {
   public HttpResponse describeNamespace(
       @Param("id") String id, @Param("delimiter") Optional<String> delimiter, Object ignored) {
     return HttpResponse.ofJson(metadataService.describeNamespace(id, delimiter.orElse(null)));
+  }
+
+  @Get("/v1/namespace/{id}/describe")
+  public HttpResponse describeNamespaceMethodNotAllowed(@Param("id") String id) {
+    return methodNotAllowed();
   }
 
   @Post("/v1/namespace/{id}/exists")
@@ -64,4 +70,13 @@ public class LanceRestNamespaceService {
   public record NamespaceCreateRequest(Map<String, String> properties) {}
 
   public record NamespaceDropRequest(String mode) {}
+
+  private static HttpResponse methodNotAllowed() {
+    return HttpResponse.ofJson(
+        HttpStatus.METHOD_NOT_ALLOWED,
+        Map.of(
+            "type", "method_not_allowed",
+            "message", "Method not allowed. Use POST.",
+            "code", HttpStatus.METHOD_NOT_ALLOWED.code()));
+  }
 }
