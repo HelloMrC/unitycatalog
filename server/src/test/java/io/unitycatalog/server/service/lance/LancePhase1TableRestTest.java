@@ -12,6 +12,75 @@ import org.junit.jupiter.api.Test;
 class LancePhase1TableRestTest extends BaseLancePhase1RestTest {
 
   @Test
+  @DisplayName("P1-CRED-001/P1-CRED-002 describe body vend_credentials controls storage_options")
+  void describeBodyVendCredentialsControlsStorageOptions() throws Exception {
+    createRootAndChildNamespaces();
+    assertSuccess(
+        postJson("/v1/table/" + TABLE_ID + "/register", declareTableRequest(TABLE_LOCATION)));
+
+    AggregatedHttpResponse withoutCredentials =
+        postJson("/v1/table/" + TABLE_ID + "/describe", "{\"vend_credentials\":false}");
+    assertSuccess(withoutCredentials);
+    assertThat(json(withoutCredentials).has("storage_options")).isFalse();
+
+    AggregatedHttpResponse withCredentials =
+        postJson("/v1/table/" + TABLE_ID + "/describe", "{\"vend_credentials\":true}");
+    assertSuccess(withCredentials);
+    assertThat(json(withCredentials).path("storage_options").isObject()).isTrue();
+  }
+
+  @Test
+  @DisplayName("P1-CRED-003 declared-only table can vend credentials without physical metadata")
+  void declaredOnlyTableCanVendCredentialsWithoutPhysicalMetadata() throws Exception {
+    createRootAndChildNamespaces();
+    assertSuccess(
+        postJson(
+            "/v1/table/" + DECLARED_TABLE_ID + "/declare",
+            declareTableRequest(DECLARED_TABLE_LOCATION)));
+
+    AggregatedHttpResponse response =
+        postJson("/v1/table/" + DECLARED_TABLE_ID + "/describe", "{\"vend_credentials\":true}");
+
+    assertSuccess(response);
+    assertThat(json(response).path("is_only_declared").asBoolean()).isTrue();
+    assertThat(json(response).path("storage_options").isObject()).isTrue();
+    assertThat(json(response).path("physical_metadata_loaded").asBoolean()).isFalse();
+  }
+
+  @Test
+  @DisplayName("P1-CRED-008/P1-CRED-009 storage template excludes temporary secret fields")
+  void storageOptionsTemplateExcludesTemporarySecretFields() throws Exception {
+    createRootAndChildNamespaces();
+    assertSuccess(
+        postJson(
+            "/v1/table/" + TABLE_ID + "/register",
+            "{"
+                + "\"location\":\""
+                + TABLE_LOCATION
+                + "\","
+                + "\"storage_options_template\":{"
+                + "\"provider\":\"s3\","
+                + "\"region\":\"us-west-2\","
+                + "\"session_token\":\"secret-session\","
+                + "\"access_key_id\":\"secret-key\""
+                + "},"
+                + "\"properties\":{\"table_type\":\"lance\"}"
+                + "}"));
+
+    AggregatedHttpResponse response =
+        postJson("/v1/table/" + TABLE_ID + "/describe", "{\"vend_credentials\":true}");
+    assertSuccess(response);
+
+    String persistedTemplate = json(response).path("storage_options_template").toString();
+    assertThat(persistedTemplate).contains("provider", "region");
+    assertThat(persistedTemplate)
+        .doesNotContain("token", "session", "secret", "expires", "access_key");
+    assertThat(json(response).path("storage_options").toString())
+        .contains("provider", "region")
+        .doesNotContain("secret");
+  }
+
+  @Test
   @DisplayName("P1-TBL-001 empty namespace table list returns empty collection")
   void emptyNamespaceTableListReturnsEmptyCollection() throws Exception {
     createRootAndChildNamespaces();

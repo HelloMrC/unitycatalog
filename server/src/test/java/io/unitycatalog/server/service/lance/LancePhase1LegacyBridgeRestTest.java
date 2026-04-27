@@ -89,8 +89,10 @@ class LancePhase1LegacyBridgeRestTest extends BaseLancePhase1RestTest {
       Number assetCount =
           (Number)
               session
-                  .createNativeQuery("select count(*) from uc_lance_assets where path_key = :pathKey")
-                  .setParameter("pathKey", UC_CATALOG_NAME + "/" + UC_SCHEMA_NAME + "/" + LEGACY_TABLE_NAME)
+                  .createNativeQuery(
+                      "select count(*) from uc_lance_assets where path_key = :pathKey")
+                  .setParameter(
+                      "pathKey", UC_CATALOG_NAME + "/" + UC_SCHEMA_NAME + "/" + LEGACY_TABLE_NAME)
                   .getSingleResult();
       Number tableCount =
           (Number)
@@ -98,7 +100,8 @@ class LancePhase1LegacyBridgeRestTest extends BaseLancePhase1RestTest {
                   .createNativeQuery(
                       "select count(*) from uc_lance_tables where asset_id in "
                           + "(select id from uc_lance_assets where path_key = :pathKey)")
-                  .setParameter("pathKey", UC_CATALOG_NAME + "/" + UC_SCHEMA_NAME + "/" + LEGACY_TABLE_NAME)
+                  .setParameter(
+                      "pathKey", UC_CATALOG_NAME + "/" + UC_SCHEMA_NAME + "/" + LEGACY_TABLE_NAME)
                   .getSingleResult();
 
       assertThat(assetCount.intValue()).isEqualTo(0);
@@ -126,9 +129,11 @@ class LancePhase1LegacyBridgeRestTest extends BaseLancePhase1RestTest {
     createLegacyLanceTable();
 
     AggregatedHttpResponse deregister =
-        postJson("/v1/table/" + LEGACY_LANCE_ID + "/deregister", "{\"delete_physical_data\":false}");
+        postJson(
+            "/v1/table/" + LEGACY_LANCE_ID + "/deregister", "{\"delete_physical_data\":false}");
     assertLanceErrorShape(deregister, 501);
 
-    assertThat(tableOperations.getTable(LEGACY_TABLE_FULL_NAME).getName()).isEqualTo(LEGACY_TABLE_NAME);
+    assertThat(tableOperations.getTable(LEGACY_TABLE_FULL_NAME).getName())
+        .isEqualTo(LEGACY_TABLE_NAME);
   }
 }

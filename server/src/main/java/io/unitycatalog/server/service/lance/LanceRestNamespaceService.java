@@ -23,7 +23,8 @@ public class LanceRestNamespaceService {
       @Param("delimiter") Optional<String> delimiter,
       NamespaceCreateRequest request) {
     Map<String, String> properties = request == null ? Map.of() : request.properties();
-    return HttpResponse.ofJson(metadataService.createNamespace(id, delimiter.orElse(null), properties));
+    return HttpResponse.ofJson(
+        metadataService.createNamespace(id, delimiter.orElse(null), properties));
   }
 
   @Post("/v1/namespace/{id}/describe")

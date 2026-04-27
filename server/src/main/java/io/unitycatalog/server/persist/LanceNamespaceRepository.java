@@ -33,8 +33,17 @@ public class LanceNamespaceRepository {
       Map<String, String> properties) {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
-        session -> createNamespace(session, rootScopeId, parentNamespaceId, name, depth, pathKey,
-            displayName, owner, properties),
+        session ->
+            createNamespace(
+                session,
+                rootScopeId,
+                parentNamespaceId,
+                name,
+                depth,
+                pathKey,
+                displayName,
+                owner,
+                properties),
         "Failed to create Lance namespace",
         false);
   }
@@ -55,7 +64,8 @@ public class LanceNamespaceRepository {
               throw new BaseException(
                   ErrorCode.ALREADY_EXISTS, "Lance namespace already exists: " + pathKey);
             });
-    if (parentNamespaceId != null && session.get(LanceNamespaceDAO.class, parentNamespaceId) == null) {
+    if (parentNamespaceId != null
+        && session.get(LanceNamespaceDAO.class, parentNamespaceId) == null) {
       throw new BaseException(
           ErrorCode.NOT_FOUND, "Parent Lance namespace not found: " + parentNamespaceId);
     }
@@ -167,8 +177,9 @@ public class LanceNamespaceRepository {
   public Map<String, String> getNamespaceProperties(UUID namespaceId) {
     return TransactionManager.executeWithTransaction(
         sessionFactory,
-        session -> PropertyDAO.toMap(PropertyRepository.findProperties(
-            session, namespaceId, Constants.LANCE_NAMESPACE)),
+        session ->
+            PropertyDAO.toMap(
+                PropertyRepository.findProperties(session, namespaceId, Constants.LANCE_NAMESPACE)),
         "Failed to load Lance namespace properties",
         true);
   }

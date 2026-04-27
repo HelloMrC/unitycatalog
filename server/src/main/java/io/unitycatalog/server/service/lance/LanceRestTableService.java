@@ -1,11 +1,13 @@
 package io.unitycatalog.server.service.lance;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.server.annotation.ExceptionHandler;
 import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.server.persist.Repositories;
+import java.util.Map;
 import java.util.Optional;
 
 @ExceptionHandler(LanceExceptionHandler.class)
@@ -41,7 +43,12 @@ public class LanceRestTableService {
     String location = request == null ? null : request.location();
     return HttpResponse.ofJson(
         metadataService.registerTable(
-            id, delimiter.orElse(null), location, vendCredentials.orElse(false)));
+            id,
+            delimiter.orElse(null),
+            location,
+            effectiveVendCredentials(vendCredentials, request),
+            request == null ? Map.of() : request.storageOptionsTemplate(),
+            request == null ? Map.of() : request.properties()));
   }
 
   @Post("/v1/table/{id}/declare")
@@ -53,7 +60,13 @@ public class LanceRestTableService {
     String location = request == null ? null : request.location();
     return HttpResponse.ofJson(
         metadataService.declareTable(
-            id, delimiter.orElse(null), location, vendCredentials.orElse(false), false));
+            id,
+            delimiter.orElse(null),
+            location,
+            effectiveVendCredentials(vendCredentials, request),
+            false,
+            request == null ? Map.of() : request.storageOptionsTemplate(),
+            request == null ? Map.of() : request.properties()));
   }
 
   @Post("/v1/table/{id}/create-empty")
@@ -65,7 +78,13 @@ public class LanceRestTableService {
     String location = request == null ? null : request.location();
     return HttpResponse.ofJson(
         metadataService.declareTable(
-            id, delimiter.orElse(null), location, vendCredentials.orElse(false), true));
+            id,
+            delimiter.orElse(null),
+            location,
+            effectiveVendCredentials(vendCredentials, request),
+            true,
+            request == null ? Map.of() : request.storageOptionsTemplate(),
+            request == null ? Map.of() : request.properties()));
   }
 
   @Post("/v1/table/{id}/describe")
@@ -73,9 +92,10 @@ public class LanceRestTableService {
       @Param("id") String id,
       @Param("delimiter") Optional<String> delimiter,
       @Param("vend_credentials") Optional<Boolean> vendCredentials,
-      Object ignored) {
+      TableDescribeRequest request) {
     return HttpResponse.ofJson(
-        metadataService.describeTable(id, delimiter.orElse(null), vendCredentials.orElse(false)));
+        metadataService.describeTable(
+            id, delimiter.orElse(null), effectiveVendCredentials(vendCredentials, request)));
   }
 
   @Post("/v1/table/{id}/exists")
@@ -89,8 +109,8 @@ public class LanceRestTableService {
       @Param("id") String id,
       @Param("delimiter") Optional<String> delimiter,
       @Param("mode") Optional<String> mode,
-      Object ignored) {
-    String effectiveMode = mode.orElse(null);
+      TableDropRequest request) {
+    String effectiveMode = mode.orElse(request == null ? null : request.mode());
     return HttpResponse.ofJson(
         metadataService.dropTable(id, delimiter.orElse(null), effectiveMode));
   }
@@ -100,11 +120,45 @@ public class LanceRestTableService {
       @Param("id") String id,
       @Param("delimiter") Optional<String> delimiter,
       @Param("delete_physical_data") Optional<Boolean> deletePhysicalData,
-      Object ignored) {
-    boolean effectiveDelete = deletePhysicalData.orElse(false);
+      TableDeregisterRequest request) {
+    boolean effectiveDelete =
+        deletePhysicalData.orElse(
+            request != null && Boolean.TRUE.equals(request.deletePhysicalData()));
     return HttpResponse.ofJson(
         metadataService.deregisterTable(id, delimiter.orElse(null), effectiveDelete));
   }
 
-  public record TableCreateRequest(String location) {}
+  private boolean effectiveVendCredentials(
+      Optional<Boolean> queryVendCredentials, TableCreateRequest request) {
+    return queryVendCredentials.orElse(
+        request != null && Boolean.TRUE.equals(request.vendCredentials()));
+  }
+
+  private boolean effectiveVendCredentials(
+      Optional<Boolean> queryVendCredentials, TableDescribeRequest request) {
+    return queryVendCredentials.orElse(
+        request != null && Boolean.TRUE.equals(request.vendCredentials()));
+  }
+
+  public record TableCreateRequest(
+      String location,
+      @JsonProperty("vend_credentials") Boolean vendCredentials,
+      @JsonProperty("storage_options_template") Map<String, String> storageOptionsTemplate,
+      Map<String, String> properties) {
+    public Map<String, String> storageOptionsTemplate() {
+      return storageOptionsTemplate == null ? Map.of() : storageOptionsTemplate;
+    }
+
+    public Map<String, String> properties() {
+      return properties == null ? Map.of() : properties;
+    }
+  }
+
+  public record TableDescribeRequest(
+      @JsonProperty("vend_credentials") Boolean vendCredentials) {}
+
+  public record TableDropRequest(String mode) {}
+
+  public record TableDeregisterRequest(
+      @JsonProperty("delete_physical_data") Boolean deletePhysicalData) {}
 }

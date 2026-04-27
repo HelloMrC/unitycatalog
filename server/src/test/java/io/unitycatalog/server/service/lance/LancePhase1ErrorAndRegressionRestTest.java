@@ -19,7 +19,8 @@ class LancePhase1ErrorAndRegressionRestTest extends BaseLancePhase1RestTest {
     AggregatedHttpResponse list = getLance("/v1/namespace/" + ROOT_NAMESPACE + "/list");
     assertSuccess(list);
 
-    AggregatedHttpResponse describeViaGet = getLance("/v1/namespace/" + ROOT_NAMESPACE + "/describe");
+    AggregatedHttpResponse describeViaGet =
+        getLance("/v1/namespace/" + ROOT_NAMESPACE + "/describe");
     assertLanceErrorShape(describeViaGet, 405);
   }
 

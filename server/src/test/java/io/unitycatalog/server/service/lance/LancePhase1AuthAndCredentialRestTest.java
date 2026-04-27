@@ -12,7 +12,8 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 @Tag("lance-phase1")
-@Disabled("Enable after Lance Phase 1 auth decorator, API key, audit, and credentials are implemented.")
+@Disabled(
+    "Enable after Lance Phase 1 auth decorator, API key, audit, and credentials are implemented.")
 class LancePhase1AuthAndCredentialRestTest extends BaseLancePhase1RestTest {
 
   @Test
@@ -157,7 +158,8 @@ class LancePhase1AuthAndCredentialRestTest extends BaseLancePhase1RestTest {
   @DisplayName("P1-AUTH-014 token exchange implementation path avoids HTTP loopback")
   void tokenExchangeImplementationPathAvoidsHttpLoopback() throws Exception {
     Path authDecorator =
-        Path.of("server/src/main/java/io/unitycatalog/server/service/lance/LanceAuthDecorator.java");
+        Path.of(
+            "server/src/main/java/io/unitycatalog/server/service/lance/LanceAuthDecorator.java");
 
     assertThat(authDecorator).exists();
     String source = Files.readString(authDecorator);
@@ -176,7 +178,8 @@ class LancePhase1AuthAndCredentialRestTest extends BaseLancePhase1RestTest {
   @DisplayName("P1-CRED-001/P1-CRED-002 vend_credentials controls storage_options response")
   void vendCredentialsControlsStorageOptionsResponse() throws Exception {
     createRootAndChildNamespaces();
-    assertSuccess(postJson("/v1/table/" + TABLE_ID + "/register", declareTableRequest(TABLE_LOCATION)));
+    assertSuccess(
+        postJson("/v1/table/" + TABLE_ID + "/register", declareTableRequest(TABLE_LOCATION)));
 
     AggregatedHttpResponse withoutCredentials =
         postJson("/v1/table/" + TABLE_ID + "/describe", "{\"vend_credentials\":false}");

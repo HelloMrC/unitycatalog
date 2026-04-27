@@ -28,13 +28,11 @@ class LancePhase1MetadataPersistenceTest extends BaseLancePhase1RestTest {
               .getResultList();
 
       assertThat(tables.toString())
-          .contains("UC_LANCE_NAMESPACES", "UC_LANCE_ASSETS", "UC_LANCE_TABLES", "UC_LANCE_API_KEYS");
+          .contains(
+              "UC_LANCE_NAMESPACES", "UC_LANCE_ASSETS", "UC_LANCE_TABLES", "UC_LANCE_API_KEYS");
       assertThat(tables.toString())
           .doesNotContain(
-              "UC_LANCE_INDICES",
-              "UC_LANCE_VERSIONS",
-              "UC_LANCE_TAGS",
-              "UC_LANCE_TRANSACTIONS");
+              "UC_LANCE_INDICES", "UC_LANCE_VERSIONS", "UC_LANCE_TAGS", "UC_LANCE_TRANSACTIONS");
     }
   }
 
@@ -61,7 +59,8 @@ class LancePhase1MetadataPersistenceTest extends BaseLancePhase1RestTest {
   @DisplayName("P1-META-005 table asset and table rows stay consistent")
   void tableAssetAndTableRowsStayConsistent() {
     createRootAndChildNamespaces();
-    assertSuccess(postJson("/v1/table/" + TABLE_ID + "/register", declareTableRequest(TABLE_LOCATION)));
+    assertSuccess(
+        postJson("/v1/table/" + TABLE_ID + "/register", declareTableRequest(TABLE_LOCATION)));
 
     try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
       Object row =
@@ -118,7 +117,8 @@ class LancePhase1MetadataPersistenceTest extends BaseLancePhase1RestTest {
             declareTableRequest(DECLARED_TABLE_LOCATION)));
     assertAssetState("prod/team_a/declared_only", "DECLARED");
 
-    assertSuccess(postJson("/v1/table/" + TABLE_ID + "/register", declareTableRequest(TABLE_LOCATION)));
+    assertSuccess(
+        postJson("/v1/table/" + TABLE_ID + "/register", declareTableRequest(TABLE_LOCATION)));
     assertAssetState("prod/team_a/embeddings", "ACTIVE");
 
     assertSuccess(
@@ -141,7 +141,8 @@ class LancePhase1MetadataPersistenceTest extends BaseLancePhase1RestTest {
   @Test
   @DisplayName("P1-META-009 concurrent same-parent namespace create enforces unique constraint")
   void concurrentSameParentNamespaceCreateEnforcesUniqueConstraint() throws Exception {
-    assertSuccess(postJson("/v1/namespace/" + ROOT_NAMESPACE + "/create", createNamespaceRequest()));
+    assertSuccess(
+        postJson("/v1/namespace/" + ROOT_NAMESPACE + "/create", createNamespaceRequest()));
 
     int workers = 4;
     CountDownLatch start = new CountDownLatch(1);

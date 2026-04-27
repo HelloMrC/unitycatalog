@@ -91,8 +91,7 @@ abstract class BaseLancePhase1RestTest extends BaseServerTest {
     return postJson(path, body, Map.of());
   }
 
-  protected AggregatedHttpResponse postJson(
-      String path, String body, Map<String, String> headers) {
+  protected AggregatedHttpResponse postJson(String path, String body, Map<String, String> headers) {
     RequestHeadersBuilder builder =
         RequestHeaders.builder()
             .method(HttpMethod.POST)
@@ -136,7 +135,8 @@ abstract class BaseLancePhase1RestTest extends BaseServerTest {
   }
 
   protected void createRootAndChildNamespaces() {
-    assertSuccess(postJson("/v1/namespace/" + ROOT_NAMESPACE + "/create", createNamespaceRequest()));
+    assertSuccess(
+        postJson("/v1/namespace/" + ROOT_NAMESPACE + "/create", createNamespaceRequest()));
     assertSuccess(
         postJson("/v1/namespace/" + CHILD_NAMESPACE + "/create", createNamespaceRequest()));
   }
@@ -172,7 +172,9 @@ abstract class BaseLancePhase1RestTest extends BaseServerTest {
 
   protected TableInfo createLegacyLanceTable() throws Exception {
     return createUcTable(
-        LEGACY_TABLE_NAME, DataSourceFormat.TEXT, Map.of("table_type", "lance", "source", "legacy"));
+        LEGACY_TABLE_NAME,
+        DataSourceFormat.TEXT,
+        Map.of("table_type", "lance", "source", "legacy"));
   }
 
   protected TableInfo createNonLanceTextTable() throws Exception {

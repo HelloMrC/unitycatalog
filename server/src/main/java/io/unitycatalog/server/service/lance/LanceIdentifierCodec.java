@@ -33,7 +33,9 @@ public class LanceIdentifierCodec {
     if (segments.isEmpty()) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Identifier must not be empty");
     }
-    return segments.stream().map(segment -> encodeSegment(segment, "/")).reduce((a, b) -> a + "/" + b)
+    return segments.stream()
+        .map(segment -> encodeSegment(segment, "/"))
+        .reduce((a, b) -> a + "/" + b)
         .orElseThrow();
   }
 

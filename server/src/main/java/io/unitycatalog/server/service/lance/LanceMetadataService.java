@@ -1,6 +1,9 @@
 package io.unitycatalog.server.service.lance;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.LanceNamespaceRepository;
@@ -17,6 +20,10 @@ import java.util.Optional;
 import java.util.UUID;
 
 public class LanceMetadataService {
+  private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+  private static final List<String> SENSITIVE_STORAGE_OPTION_FRAGMENTS =
+      List.of("token", "session", "secret", "expires", "access_key");
+
   private final LanceNamespaceRepository namespaceRepository;
   private final LanceTableRepository tableRepository;
   private final MetastoreRepository metastoreRepository;
@@ -144,7 +151,25 @@ public class LanceMetadataService {
 
   public TableView registerTable(
       String identifier, String delimiter, String location, boolean vendCredentials) {
-    return createTable(identifier, delimiter, location, vendCredentials, false, false);
+    return registerTable(identifier, delimiter, location, vendCredentials, Map.of(), Map.of());
+  }
+
+  public TableView registerTable(
+      String identifier,
+      String delimiter,
+      String location,
+      boolean vendCredentials,
+      Map<String, String> storageOptionsTemplate,
+      Map<String, String> properties) {
+    return createTable(
+        identifier,
+        delimiter,
+        location,
+        vendCredentials,
+        false,
+        false,
+        storageOptionsTemplate,
+        properties);
   }
 
   public TableView declareTable(
@@ -153,7 +178,27 @@ public class LanceMetadataService {
       String location,
       boolean vendCredentials,
       boolean isDeprecatedAlias) {
-    return createTable(identifier, delimiter, location, vendCredentials, true, isDeprecatedAlias);
+    return declareTable(
+        identifier, delimiter, location, vendCredentials, isDeprecatedAlias, Map.of(), Map.of());
+  }
+
+  public TableView declareTable(
+      String identifier,
+      String delimiter,
+      String location,
+      boolean vendCredentials,
+      boolean isDeprecatedAlias,
+      Map<String, String> storageOptionsTemplate,
+      Map<String, String> properties) {
+    return createTable(
+        identifier,
+        delimiter,
+        location,
+        vendCredentials,
+        true,
+        isDeprecatedAlias,
+        storageOptionsTemplate,
+        properties);
   }
 
   private TableView createTable(
@@ -162,7 +207,9 @@ public class LanceMetadataService {
       String location,
       boolean vendCredentials,
       boolean isOnlyDeclared,
-      boolean isDeprecatedAlias) {
+      boolean isDeprecatedAlias,
+      Map<String, String> storageOptionsTemplate,
+      Map<String, String> properties) {
     UUID rootScopeId = metastoreRepository.getMetastoreId();
     List<String> path = identifierCodec.decodeIdentifier(identifier, delimiter);
     if (path.size() < 2) {
@@ -191,8 +238,8 @@ public class LanceMetadataService {
               canonicalIdentifier,
               location,
               null,
-              null,
-              Map.of(),
+              serializeStorageOptionsTemplate(storageOptionsTemplate),
+              properties == null ? Map.of() : properties,
               owner);
     } else {
       assetDAO =
@@ -203,8 +250,8 @@ public class LanceMetadataService {
               canonicalIdentifier,
               location,
               null,
-              null,
-              Map.of(),
+              serializeStorageOptionsTemplate(storageOptionsTemplate),
+              properties == null ? Map.of() : properties,
               owner);
     }
 
@@ -215,7 +262,8 @@ public class LanceMetadataService {
         delimiter,
         vendCredentials,
         isDeprecatedAlias,
-        isOnlyDeclared);
+        isOnlyDeclared,
+        false);
   }
 
   public TableView describeTable(String identifier, String delimiter, boolean vendCredentials) {
@@ -234,7 +282,7 @@ public class LanceMetadataService {
         tableDAO.isPresent() && Boolean.TRUE.equals(tableDAO.get().getIsOnlyDeclared());
 
     return toTableView(
-        assetDAO, tableDAO.orElse(null), delimiter, vendCredentials, false, isOnlyDeclared);
+        assetDAO, tableDAO.orElse(null), delimiter, vendCredentials, false, isOnlyDeclared, false);
   }
 
   public ExistsResponse tableExists(String identifier, String delimiter) {
@@ -299,18 +347,77 @@ public class LanceMetadataService {
       String delimiter,
       boolean vendCredentials,
       boolean isDeprecatedAlias,
-      boolean isOnlyDeclared) {
+      boolean isOnlyDeclared,
+      boolean legacyBridge) {
     String location = tableDAO != null ? tableDAO.getStorageLocation() : null;
     String state = assetDAO.getState();
+    Map<String, String> storageOptionsTemplate = parseStorageOptionsTemplate(tableDAO);
 
     return new TableView(
         identifierCodec.toExternalIdentifier(assetDAO.getPathKey(), delimiter),
         location,
         state,
         isOnlyDeclared,
-        vendCredentials ? Map.of() : null,
+        vendCredentials ? buildStorageOptions(storageOptionsTemplate) : null,
+        storageOptionsTemplate.isEmpty() ? null : storageOptionsTemplate,
         isDeprecatedAlias ? "create-empty" : null,
-        isDeprecatedAlias);
+        isDeprecatedAlias,
+        legacyBridge,
+        isOnlyDeclared ? false : null);
+  }
+
+  private String serializeStorageOptionsTemplate(Map<String, String> storageOptionsTemplate) {
+    Map<String, String> sanitized = sanitizeStorageOptionsTemplate(storageOptionsTemplate);
+    if (sanitized.isEmpty()) {
+      return null;
+    }
+    try {
+      return OBJECT_MAPPER.writeValueAsString(sanitized);
+    } catch (JsonProcessingException e) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, "Invalid storage_options_template: " + e.getMessage());
+    }
+  }
+
+  private Map<String, String> parseStorageOptionsTemplate(LanceTableDAO tableDAO) {
+    if (tableDAO == null
+        || tableDAO.getStorageOptionsTemplateJson() == null
+        || tableDAO.getStorageOptionsTemplateJson().isBlank()) {
+      return Map.of();
+    }
+    try {
+      Map<?, ?> raw = OBJECT_MAPPER.readValue(tableDAO.getStorageOptionsTemplateJson(), Map.class);
+      return sanitizeStorageOptionsTemplate(
+          raw.entrySet().stream()
+              .collect(
+                  java.util.stream.Collectors.toMap(
+                      entry -> String.valueOf(entry.getKey()),
+                      entry -> String.valueOf(entry.getValue()))));
+    } catch (JsonProcessingException e) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, "Invalid persisted storage_options_template");
+    }
+  }
+
+  private Map<String, String> sanitizeStorageOptionsTemplate(
+      Map<String, String> storageOptionsTemplate) {
+    if (storageOptionsTemplate == null || storageOptionsTemplate.isEmpty()) {
+      return Map.of();
+    }
+    return storageOptionsTemplate.entrySet().stream()
+        .filter(entry -> !isSensitiveStorageOption(entry.getKey()))
+        .collect(
+            java.util.stream.Collectors.toMap(
+                Map.Entry::getKey, entry -> entry.getValue() == null ? "" : entry.getValue()));
+  }
+
+  private boolean isSensitiveStorageOption(String key) {
+    String normalizedKey = key == null ? "" : key.toLowerCase(java.util.Locale.ROOT);
+    return SENSITIVE_STORAGE_OPTION_FRAGMENTS.stream().anyMatch(normalizedKey::contains);
+  }
+
+  private Map<String, String> buildStorageOptions(Map<String, String> storageOptionsTemplate) {
+    return storageOptionsTemplate == null ? Map.of() : storageOptionsTemplate;
   }
 
   public record NamespaceView(String id, Map<String, String> properties) {}
@@ -321,14 +428,18 @@ public class LanceMetadataService {
 
   public record TableListResponse(List<String> tables, String nextPageToken) {}
 
+  @JsonInclude(JsonInclude.Include.NON_NULL)
   public record TableView(
       String id,
       String location,
       String state,
       @JsonProperty("is_only_declared") boolean isOnlyDeclared,
       @JsonProperty("storage_options") Map<String, String> storageOptions,
+      @JsonProperty("storage_options_template") Map<String, String> storageOptionsTemplate,
       @JsonProperty("protocol_variant") String protocolVariant,
-      @JsonProperty("deprecated_alias_used") boolean deprecatedAliasUsed) {}
+      @JsonProperty("deprecated_alias_used") boolean deprecatedAliasUsed,
+      @JsonProperty("legacy_bridge") boolean legacyBridge,
+      @JsonProperty("physical_metadata_loaded") Boolean physicalMetadataLoaded) {}
 
   public record DropTableResponse(boolean dropped) {}
 

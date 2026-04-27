@@ -61,32 +61,10 @@ class LanceNamespaceRepositoryTest {
             rootScopeId, null, "prod", 1, "prod", "prod", "phase1-owner", Map.of());
 
     repository.createNamespace(
-        rootScopeId,
-        root.getId(),
-        "team_b",
-        2,
-        "prod/team_b",
-        "team_b",
-        "phase1-owner",
-        Map.of());
+        rootScopeId, root.getId(), "team_b", 2, "prod/team_b", "team_b", "phase1-owner", Map.of());
     repository.createNamespace(
-        rootScopeId,
-        root.getId(),
-        "team_a",
-        2,
-        "prod/team_a",
-        "team_a",
-        "phase1-owner",
-        Map.of());
-    repository.createNamespace(
-        rootScopeId,
-        null,
-        "dev",
-        1,
-        "dev",
-        "dev",
-        "phase1-owner",
-        Map.of());
+        rootScopeId, root.getId(), "team_a", 2, "prod/team_a", "team_a", "phase1-owner", Map.of());
+    repository.createNamespace(rootScopeId, null, "dev", 1, "dev", "dev", "phase1-owner", Map.of());
 
     List<LanceNamespaceDAO> children = repository.listChildNamespaces(rootScopeId, root.getId());
     assertThat(children).extracting(LanceNamespaceDAO::getName).containsExactly("team_a", "team_b");
@@ -102,14 +80,7 @@ class LanceNamespaceRepositoryTest {
             BaseException.class,
             () ->
                 repository.createNamespace(
-                    rootScopeId,
-                    null,
-                    "prod",
-                    1,
-                    "prod",
-                    "prod",
-                    "phase1-owner",
-                    Map.of()));
+                    rootScopeId, null, "prod", 1, "prod", "prod", "phase1-owner", Map.of()));
 
     assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.ALREADY_EXISTS);
   }

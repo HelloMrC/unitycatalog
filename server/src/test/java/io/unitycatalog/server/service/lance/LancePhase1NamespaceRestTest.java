@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.linecorp.armeria.common.AggregatedHttpResponse;
 import java.util.Map;
+import org.hibernate.Session;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
@@ -27,8 +28,7 @@ class LancePhase1NamespaceRestTest extends BaseLancePhase1RestTest {
     assertThat(described.path("id").asText()).isEqualTo(ROOT_NAMESPACE);
     assertThat(described.path("properties").path("purpose").asText()).isEqualTo("phase1-test");
 
-    AggregatedHttpResponse exists =
-        postJson("/v1/namespace/" + ROOT_NAMESPACE + "/exists", "{}");
+    AggregatedHttpResponse exists = postJson("/v1/namespace/" + ROOT_NAMESPACE + "/exists", "{}");
     assertSuccess(exists);
     assertThat(json(exists).path("exists").asBoolean()).isTrue();
   }
@@ -37,7 +37,8 @@ class LancePhase1NamespaceRestTest extends BaseLancePhase1RestTest {
   @DisplayName("P1-NS-002/P1-NS-004/P1-NS-005 create deep namespace and list direct children")
   void createDeepNamespaceAndListDirectChildren() throws Exception {
     createRootAndChildNamespaces();
-    assertSuccess(postJson("/v1/namespace/prod$team_a$feature_store/create", createNamespaceRequest()));
+    assertSuccess(
+        postJson("/v1/namespace/prod$team_a$feature_store/create", createNamespaceRequest()));
     assertSuccess(postJson("/v1/namespace/prod$team_b/create", createNamespaceRequest()));
 
     AggregatedHttpResponse rootList = getLance("/v1/namespace/prod/list");
@@ -54,6 +55,8 @@ class LancePhase1NamespaceRestTest extends BaseLancePhase1RestTest {
   @Test
   @DisplayName("P1-ID-002 custom delimiter resolves to the same canonical namespace path")
   void customDelimiterResolvesToSameCanonicalNamespacePath() throws Exception {
+    assertSuccess(postJson("/v1/namespace/prod/create", createNamespaceRequest()));
+
     AggregatedHttpResponse createWithDefaultDelimiter =
         postJson("/v1/namespace/prod$team_a/create", createNamespaceRequest());
     assertSuccess(createWithDefaultDelimiter);
@@ -73,6 +76,10 @@ class LancePhase1NamespaceRestTest extends BaseLancePhase1RestTest {
   void specialCharacterSegmentsRoundTripThroughCanonicalPathKey() throws Exception {
     String encodedNamespaceId = "prod.with.dot$team%2Fa$embedding%20space";
 
+    assertSuccess(postJson("/v1/namespace/prod.with.dot/create", createNamespaceRequest()));
+    assertSuccess(
+        postJson("/v1/namespace/prod.with.dot$team%2Fa/create", createNamespaceRequest()));
+
     AggregatedHttpResponse create =
         postJson("/v1/namespace/" + encodedNamespaceId + "/create", createNamespaceRequest());
     assertSuccess(create);
@@ -83,7 +90,17 @@ class LancePhase1NamespaceRestTest extends BaseLancePhase1RestTest {
 
     JsonNode described = json(describe);
     assertThat(described.path("id").asText()).isEqualTo(encodedNamespaceId);
-    assertThat(described.toString()).contains("prod.with.dot", "team/a", "embedding space");
+
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      Object pathKey =
+          session
+              .createNativeQuery(
+                  "select path_key from uc_lance_namespaces where path_key = :pathKey")
+              .setParameter("pathKey", "prod.with.dot/team%2Fa/embedding%20space")
+              .getSingleResult();
+
+      assertThat(pathKey.toString()).isEqualTo("prod.with.dot/team%2Fa/embedding%20space");
+    }
   }
 
   @Test
@@ -99,8 +116,7 @@ class LancePhase1NamespaceRestTest extends BaseLancePhase1RestTest {
   @Test
   @DisplayName("P1-NS-008 exists returns false for missing namespace without throwing 404")
   void existsReturnsFalseForNonExistentNamespace() throws Exception {
-    AggregatedHttpResponse response =
-        postJson("/v1/namespace/nonexistent_namespace/exists", "{}");
+    AggregatedHttpResponse response = postJson("/v1/namespace/nonexistent_namespace/exists", "{}");
 
     assertSuccess(response);
     assertThat(json(response).path("exists").asBoolean()).isFalse();
@@ -123,7 +139,8 @@ class LancePhase1NamespaceRestTest extends BaseLancePhase1RestTest {
 
     assertSuccess(
         postJson("/v1/table/" + DECLARED_TABLE_ID + "/drop", "{\"mode\":\"metadata_only\"}"));
-    assertSuccess(postJson("/v1/namespace/" + CHILD_NAMESPACE + "/drop", "{\"mode\":\"restrict\"}"));
+    assertSuccess(
+        postJson("/v1/namespace/" + CHILD_NAMESPACE + "/drop", "{\"mode\":\"restrict\"}"));
   }
 
   @Test
@@ -131,7 +148,8 @@ class LancePhase1NamespaceRestTest extends BaseLancePhase1RestTest {
   @DisplayName("P1-NS-011 cascade drop with registered table is not supported in Phase 1")
   void cascadeDropWithRegisteredTableReturnsPhaseLimitedError() throws Exception {
     createRootAndChildNamespaces();
-    assertSuccess(postJson("/v1/table/" + TABLE_ID + "/register", declareTableRequest(TABLE_LOCATION)));
+    assertSuccess(
+        postJson("/v1/table/" + TABLE_ID + "/register", declareTableRequest(TABLE_LOCATION)));
 
     AggregatedHttpResponse response =
         postJson("/v1/namespace/" + CHILD_NAMESPACE + "/drop", "{\"mode\":\"cascade\"}");
@@ -144,7 +162,8 @@ class LancePhase1NamespaceRestTest extends BaseLancePhase1RestTest {
   @Disabled("Enable after Lance-specific auth and authorization checks are implemented.")
   @DisplayName("P1-NS-012 child namespace creation checks parent namespace authorization")
   void childNamespaceCreationChecksParentAuthorization() throws Exception {
-    assertSuccess(postJson("/v1/namespace/" + ROOT_NAMESPACE + "/create", createNamespaceRequest()));
+    assertSuccess(
+        postJson("/v1/namespace/" + ROOT_NAMESPACE + "/create", createNamespaceRequest()));
 
     AggregatedHttpResponse response =
         postJson(
@@ -159,7 +178,8 @@ class LancePhase1NamespaceRestTest extends BaseLancePhase1RestTest {
   @Test
   @DisplayName("P1-NS-014 namespace list pagination is stable and non-overlapping")
   void namespaceListPaginationIsStable() throws Exception {
-    assertSuccess(postJson("/v1/namespace/" + ROOT_NAMESPACE + "/create", createNamespaceRequest()));
+    assertSuccess(
+        postJson("/v1/namespace/" + ROOT_NAMESPACE + "/create", createNamespaceRequest()));
     assertSuccess(postJson("/v1/namespace/prod$team_a/create", createNamespaceRequest()));
     assertSuccess(postJson("/v1/namespace/prod$team_b/create", createNamespaceRequest()));
     assertSuccess(postJson("/v1/namespace/prod$team_c/create", createNamespaceRequest()));
