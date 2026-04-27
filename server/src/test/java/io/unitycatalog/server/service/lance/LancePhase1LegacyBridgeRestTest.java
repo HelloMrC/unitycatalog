@@ -4,13 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.linecorp.armeria.common.AggregatedHttpResponse;
 import org.hibernate.Session;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 @Tag("lance-phase1")
-@Disabled("Enable after Lance Phase 1 legacy bridge service is implemented.")
 class LancePhase1LegacyBridgeRestTest extends BaseLancePhase1RestTest {
   private static final String LEGACY_LANCE_ID =
       UC_CATALOG_NAME + "$" + UC_SCHEMA_NAME + "$" + LEGACY_TABLE_NAME;

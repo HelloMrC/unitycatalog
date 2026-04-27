@@ -6,14 +6,20 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.model.DataSourceFormat;
+import io.unitycatalog.server.model.ListTablesResponse;
+import io.unitycatalog.server.model.TableInfo;
+import io.unitycatalog.server.model.TableType;
 import io.unitycatalog.server.persist.LanceNamespaceRepository;
 import io.unitycatalog.server.persist.LanceTableRepository;
 import io.unitycatalog.server.persist.MetastoreRepository;
 import io.unitycatalog.server.persist.Repositories;
+import io.unitycatalog.server.persist.TableRepository;
 import io.unitycatalog.server.persist.dao.LanceAssetDAO;
 import io.unitycatalog.server.persist.dao.LanceNamespaceDAO;
 import io.unitycatalog.server.persist.dao.LanceTableDAO;
 import io.unitycatalog.server.utils.IdentityUtils;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -26,12 +32,14 @@ public class LanceMetadataService {
 
   private final LanceNamespaceRepository namespaceRepository;
   private final LanceTableRepository tableRepository;
+  private final TableRepository unityTableRepository;
   private final MetastoreRepository metastoreRepository;
   private final LanceIdentifierCodec identifierCodec;
 
   public LanceMetadataService(Repositories repositories) {
     this.namespaceRepository = repositories.getLanceNamespaceRepository();
     this.tableRepository = repositories.getLanceTableRepository();
+    this.unityTableRepository = repositories.getTableRepository();
     this.metastoreRepository = repositories.getMetastoreRepository();
     this.identifierCodec = new LanceIdentifierCodec();
   }
@@ -125,27 +133,42 @@ public class LanceMetadataService {
     UUID rootScopeId = metastoreRepository.getMetastoreId();
     List<String> namespacePath = identifierCodec.decodeIdentifier(identifier, delimiter);
     String namespacePathKey = identifierCodec.toPathKey(namespacePath);
-    LanceNamespaceDAO namespaceDAO =
-        namespaceRepository.getNamespaceOrThrow(rootScopeId, namespacePathKey);
+    Optional<LanceNamespaceDAO> namespaceOpt =
+        namespaceRepository.findNamespace(rootScopeId, namespacePathKey);
 
     Integer safeLimit = limit != null && limit > 0 ? limit : null;
-    List<LanceAssetDAO> tables =
-        tableRepository.listTables(
-            namespaceDAO.getId(),
-            includeDeclared,
-            safeLimit == null ? Optional.empty() : Optional.of(safeLimit),
-            pageToken == null || pageToken.isBlank() ? Optional.empty() : Optional.of(pageToken));
-
+    List<String> tableIds = new ArrayList<>();
     String nextPageToken = null;
-    if (safeLimit != null && tables.size() > safeLimit) {
-      nextPageToken = tables.get(safeLimit - 1).getName();
-      tables = tables.subList(0, safeLimit);
+    if (namespaceOpt.isPresent()) {
+      List<LanceAssetDAO> tables =
+          tableRepository.listTables(
+              namespaceOpt.get().getId(),
+              includeDeclared,
+              safeLimit == null ? Optional.empty() : Optional.of(safeLimit),
+              pageToken == null || pageToken.isBlank() ? Optional.empty() : Optional.of(pageToken));
+
+      if (safeLimit != null && tables.size() > safeLimit) {
+        nextPageToken = tables.get(safeLimit - 1).getName();
+        tables = tables.subList(0, safeLimit);
+      }
+
+      tableIds.addAll(
+          tables.stream()
+              .map(asset -> identifierCodec.toExternalIdentifier(asset.getPathKey(), delimiter))
+              .toList());
     }
 
-    List<String> tableIds =
-        tables.stream()
-            .map(asset -> identifierCodec.toExternalIdentifier(asset.getPathKey(), delimiter))
-            .toList();
+    Optional<List<TableInfo>> legacyTables = listLegacyTables(namespacePath);
+    if (legacyTables.isEmpty() && namespaceOpt.isEmpty()) {
+      namespaceRepository.getNamespaceOrThrow(rootScopeId, namespacePathKey);
+    }
+    if ((pageToken == null || pageToken.isBlank()) && nextPageToken == null) {
+      tableIds.addAll(
+          legacyTables.orElse(List.of()).stream()
+              .map(table -> toLegacyPathKey(namespacePath, table.getName()))
+              .map(pathKey -> identifierCodec.toExternalIdentifier(pathKey, delimiter))
+              .toList());
+    }
     return new TableListResponse(tableIds, nextPageToken);
   }
 
@@ -273,6 +296,10 @@ public class LanceMetadataService {
 
     Optional<LanceAssetDAO> assetOpt = tableRepository.findAssetByPathKey(tablePathKey);
     if (assetOpt.isEmpty()) {
+      Optional<TableInfo> legacyTable = findLegacyTable(path);
+      if (legacyTable.isPresent()) {
+        return toLegacyTableView(path, legacyTable.get(), delimiter, vendCredentials);
+      }
       throw new BaseException(ErrorCode.NOT_FOUND, "Lance table not found: " + identifier);
     }
 
@@ -291,7 +318,7 @@ public class LanceMetadataService {
     String tablePathKey = identifierCodec.toPathKey(path);
 
     Optional<LanceAssetDAO> assetOpt = tableRepository.findAssetByPathKey(tablePathKey);
-    return new ExistsResponse(assetOpt.isPresent());
+    return new ExistsResponse(assetOpt.isPresent() || findLegacyTable(path).isPresent());
   }
 
   public DropTableResponse dropTable(String identifier, String delimiter, String mode) {
@@ -301,6 +328,11 @@ public class LanceMetadataService {
 
     Optional<LanceAssetDAO> assetOpt = tableRepository.findAssetByPathKey(tablePathKey);
     if (assetOpt.isEmpty()) {
+      if (findLegacyTable(path).isPresent()) {
+        throw new BaseException(
+            ErrorCode.UNIMPLEMENTED,
+            "Dropping legacy bridge tables not supported in current phase.");
+      }
       throw new BaseException(ErrorCode.NOT_FOUND, "Lance table not found: " + identifier);
     }
 
@@ -328,6 +360,11 @@ public class LanceMetadataService {
 
     Optional<LanceAssetDAO> assetOpt = tableRepository.findAssetByPathKey(tablePathKey);
     if (assetOpt.isEmpty()) {
+      if (findLegacyTable(path).isPresent()) {
+        throw new BaseException(
+            ErrorCode.UNIMPLEMENTED,
+            "Deregistering legacy bridge tables not supported in current phase.");
+      }
       throw new BaseException(ErrorCode.NOT_FOUND, "Lance table not found: " + identifier);
     }
 
@@ -360,10 +397,82 @@ public class LanceMetadataService {
         isOnlyDeclared,
         vendCredentials ? buildStorageOptions(storageOptionsTemplate) : null,
         storageOptionsTemplate.isEmpty() ? null : storageOptionsTemplate,
+        null,
+        null,
         isDeprecatedAlias ? "create-empty" : null,
         isDeprecatedAlias,
         legacyBridge,
         isOnlyDeclared ? false : null);
+  }
+
+  private TableView toLegacyTableView(
+      List<String> path, TableInfo tableInfo, String delimiter, boolean vendCredentials) {
+    return new TableView(
+        identifierCodec.toExternalIdentifier(identifierCodec.toPathKey(path), delimiter),
+        tableInfo.getStorageLocation(),
+        "ACTIVE",
+        false,
+        vendCredentials ? Map.of() : null,
+        null,
+        tableInfo.getProperties(),
+        String.join(".", path),
+        null,
+        false,
+        true,
+        false);
+  }
+
+  private Optional<TableInfo> findLegacyTable(List<String> path) {
+    if (path.size() != 3) {
+      return Optional.empty();
+    }
+    try {
+      TableInfo tableInfo = unityTableRepository.getTable(String.join(".", path));
+      return isLegacyLanceTable(tableInfo) ? Optional.of(tableInfo) : Optional.empty();
+    } catch (BaseException e) {
+      if (e.getErrorCode() == ErrorCode.CATALOG_NOT_FOUND
+          || e.getErrorCode() == ErrorCode.SCHEMA_NOT_FOUND
+          || e.getErrorCode() == ErrorCode.TABLE_NOT_FOUND) {
+        return Optional.empty();
+      }
+      throw e;
+    }
+  }
+
+  private Optional<List<TableInfo>> listLegacyTables(List<String> namespacePath) {
+    if (namespacePath.size() != 2) {
+      return Optional.empty();
+    }
+    try {
+      ListTablesResponse response =
+          unityTableRepository.listTables(
+              namespacePath.get(0),
+              namespacePath.get(1),
+              Optional.empty(),
+              Optional.empty(),
+              false,
+              true);
+      return Optional.of(response.getTables().stream().filter(this::isLegacyLanceTable).toList());
+    } catch (BaseException e) {
+      if (e.getErrorCode() == ErrorCode.CATALOG_NOT_FOUND
+          || e.getErrorCode() == ErrorCode.SCHEMA_NOT_FOUND) {
+        return Optional.empty();
+      }
+      throw e;
+    }
+  }
+
+  private boolean isLegacyLanceTable(TableInfo tableInfo) {
+    return tableInfo.getTableType() == TableType.EXTERNAL
+        && tableInfo.getDataSourceFormat() == DataSourceFormat.TEXT
+        && tableInfo.getProperties() != null
+        && "lance".equalsIgnoreCase(tableInfo.getProperties().get("table_type"));
+  }
+
+  private String toLegacyPathKey(List<String> namespacePath, String tableName) {
+    List<String> path = new ArrayList<>(namespacePath);
+    path.add(tableName);
+    return identifierCodec.toPathKey(path);
   }
 
   private String serializeStorageOptionsTemplate(Map<String, String> storageOptionsTemplate) {
@@ -436,6 +545,8 @@ public class LanceMetadataService {
       @JsonProperty("is_only_declared") boolean isOnlyDeclared,
       @JsonProperty("storage_options") Map<String, String> storageOptions,
       @JsonProperty("storage_options_template") Map<String, String> storageOptionsTemplate,
+      Map<String, String> properties,
+      @JsonProperty("source_table_full_name") String sourceTableFullName,
       @JsonProperty("protocol_variant") String protocolVariant,
       @JsonProperty("deprecated_alias_used") boolean deprecatedAliasUsed,
       @JsonProperty("legacy_bridge") boolean legacyBridge,
