@@ -4,6 +4,8 @@ import static io.unitycatalog.server.model.SecurableType.CATALOG;
 import static io.unitycatalog.server.model.SecurableType.CREDENTIAL;
 import static io.unitycatalog.server.model.SecurableType.EXTERNAL_LOCATION;
 import static io.unitycatalog.server.model.SecurableType.FUNCTION;
+import static io.unitycatalog.server.model.SecurableType.LANCE_NAMESPACE;
+import static io.unitycatalog.server.model.SecurableType.LANCE_TABLE;
 import static io.unitycatalog.server.model.SecurableType.METASTORE;
 import static io.unitycatalog.server.model.SecurableType.REGISTERED_MODEL;
 import static io.unitycatalog.server.model.SecurableType.SCHEMA;
@@ -125,6 +127,7 @@ public class KeyMapper {
   private final MetastoreRepository metastoreRepository;
   private final ExternalLocationRepository externalLocationRepository;
   private final CredentialRepository credentialRepository;
+  private final LanceResourceKeyMapper lanceResourceKeyMapper;
 
   public KeyMapper(Repositories repositories) {
     this.externalLocationUtils = repositories.getExternalLocationUtils();
@@ -137,10 +140,15 @@ public class KeyMapper {
     this.metastoreRepository = repositories.getMetastoreRepository();
     this.externalLocationRepository = repositories.getExternalLocationRepository();
     this.credentialRepository = repositories.getCredentialRepository();
+    this.lanceResourceKeyMapper = new LanceResourceKeyMapper(repositories);
   }
 
   public Map<SecurableType, Object> mapResourceKeys(Map<SecurableType, Object> resourceKeys) {
     Map<SecurableType, Object> resourceIds = new HashMap<>();
+
+    if (resourceKeys.containsKey(LANCE_NAMESPACE) || resourceKeys.containsKey(LANCE_TABLE)) {
+      resourceIds.putAll(lanceResourceKeyMapper.mapResourceKeys(resourceKeys));
+    }
 
     if (resourceKeys.containsKey(CATALOG)
         && resourceKeys.containsKey(SCHEMA)

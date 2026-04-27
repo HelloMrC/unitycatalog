@@ -173,6 +173,14 @@ public class LanceTableRepository {
         true);
   }
 
+  public Optional<LanceAssetDAO> findAssetById(UUID assetId) {
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> Optional.ofNullable(session.get(LanceAssetDAO.class, assetId)),
+        "Failed to find Lance table metadata",
+        true);
+  }
+
   private Optional<LanceAssetDAO> findAsset(Session session, String pathKey) {
     // Used for duplicate check during creation - includes all states
     Query<LanceAssetDAO> query =
