@@ -3,6 +3,9 @@ package io.unitycatalog.server.service.lance;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.linecorp.armeria.common.AggregatedHttpResponse;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
@@ -10,6 +13,33 @@ import org.junit.jupiter.api.Test;
 
 @Tag("lance-phase1")
 class LancePhase1ErrorAndRegressionRestTest extends BaseLancePhase1RestTest {
+
+  @Test
+  @DisplayName("P1-CONTRACT-001 Lance REST OpenAPI baseline snapshot is present")
+  void lanceRestOpenApiBaselineSnapshotIsPresent() throws IOException {
+    // Verify the upstream Lance REST OpenAPI baseline snapshot exists
+    // Baseline commit: lancedb-docs 6c0ccc001e6b
+    Path upstreamOpenApi =
+        Path.of(
+            "/home/lei/data_ai/learning/codebase/lancedb-docs/docs/api-reference/rest/openapi.yml");
+    assertThat(upstreamOpenApi).exists();
+
+    String schema = Files.readString(upstreamOpenApi);
+    // Verify Phase 1 required endpoints are defined in upstream schema
+    assertThat(schema).contains("/v1/namespace/{id}/create");
+    assertThat(schema).contains("/v1/namespace/{id}/list");
+    assertThat(schema).contains("/v1/namespace/{id}/describe");
+    assertThat(schema).contains("/v1/namespace/{id}/drop");
+    assertThat(schema).contains("/v1/namespace/{id}/exists");
+    assertThat(schema).contains("/v1/namespace/{id}/table/list");
+    assertThat(schema).contains("/v1/table/{id}/register");
+    assertThat(schema).contains("/v1/table/{id}/declare");
+    assertThat(schema).contains("/v1/table/{id}/create-empty");
+    assertThat(schema).contains("/v1/table/{id}/describe");
+    assertThat(schema).contains("/v1/table/{id}/exists");
+    assertThat(schema).contains("/v1/table/{id}/drop");
+    assertThat(schema).contains("/v1/table/{id}/deregister");
+  }
 
   @Test
   @DisplayName("P1-CONTRACT-002 namespace endpoints enforce upstream HTTP methods")

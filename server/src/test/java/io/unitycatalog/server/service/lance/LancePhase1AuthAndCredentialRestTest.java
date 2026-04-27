@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.linecorp.armeria.common.AggregatedHttpResponse;
 import com.sun.net.httpserver.HttpServer;
 import io.unitycatalog.server.persist.LanceApiKeyRepository;
@@ -478,5 +479,71 @@ class LancePhase1AuthAndCredentialRestTest extends BaseLancePhase1RestTest {
     assertThat(persistedTemplate).contains("provider", "region");
     assertThat(persistedTemplate)
         .doesNotContain("token", "session", "secret", "expires", "access_key");
+  }
+
+  @Test
+  @DisplayName("P1-CRED-005 template fields merge with vend_credentials response")
+  void templateFieldsMergeWithVendCredentialsResponse() throws Exception {
+    createRootAndChildNamespaces();
+    assertSuccess(
+        postJson(
+            "/v1/table/" + TABLE_ID + "/register",
+            "{"
+                + "\"location\":\""
+                + TABLE_LOCATION
+                + "\","
+                + "\"storage_options_template\":{\"provider\":\"s3\",\"region\":\"us-west-2\"},"
+                + "\"properties\":{\"table_type\":\"lance\"}"
+                + "}"));
+
+    // With vend_credentials=true, response should include template fields
+    AggregatedHttpResponse withCredentials =
+        postJson("/v1/table/" + TABLE_ID + "/describe", "{\"vend_credentials\":true}");
+    assertSuccess(withCredentials);
+
+    JsonNode storageOptions = json(withCredentials).path("storage_options");
+    assertThat(storageOptions.isObject()).isTrue();
+    assertThat(storageOptions.path("provider").asText()).isEqualTo("s3");
+    assertThat(storageOptions.path("region").asText()).isEqualTo("us-west-2");
+
+    // Template should also be visible in response
+    JsonNode template = json(withCredentials).path("storage_options_template");
+    assertThat(template.isObject()).isTrue();
+    assertThat(template.path("provider").asText()).isEqualTo("s3");
+    assertThat(template.path("region").asText()).isEqualTo("us-west-2");
+  }
+
+  @Test
+  @DisplayName("P1-CRED-007 read-only user cannot vend credentials from owner's table")
+  void readOnlyUserCannotVendCredentialsFromOwnersTable() throws Exception {
+    String adminToken = createInternalBearerToken("admin");
+    String readOnlyToken = createInternalBearerToken("phase1-readonly-user");
+
+    // Admin creates namespace and registers table
+    assertSuccess(
+        postJson(
+            "/v1/namespace/" + ROOT_NAMESPACE + "/create",
+            createNamespaceRequest(),
+            Map.of("Authorization", "Bearer " + adminToken)));
+    assertSuccess(
+        postJson(
+            "/v1/namespace/" + CHILD_NAMESPACE + "/create",
+            createNamespaceRequest(),
+            Map.of("Authorization", "Bearer " + adminToken)));
+    assertSuccess(
+        postJson(
+            "/v1/table/" + TABLE_ID + "/register",
+            declareTableRequest(TABLE_LOCATION),
+            Map.of("Authorization", "Bearer " + adminToken)));
+
+    // Read-only user tries to describe with vend_credentials=true
+    AggregatedHttpResponse denied =
+        postJson(
+            "/v1/table/" + TABLE_ID + "/describe",
+            "{\"vend_credentials\":true}",
+            Map.of("Authorization", "Bearer " + readOnlyToken));
+
+    assertLanceErrorShape(denied, 403);
+    assertThat(json(denied).path("type").asText()).containsIgnoringCase("permission");
   }
 }
