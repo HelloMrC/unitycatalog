@@ -12,11 +12,10 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 @Tag("lance-phase1")
-@Disabled(
-    "Enable after Lance Phase 1 auth decorator, API key, audit, and credentials are implemented.")
 class LancePhase1AuthAndCredentialRestTest extends BaseLancePhase1RestTest {
 
   @Test
+  @Disabled("Enable after Lance-specific auth context is implemented.")
   @DisplayName("P1-AUTH-001 internal Bearer principal enters Lance request context")
   void internalBearerPrincipalEntersRequestContext() throws Exception {
     AggregatedHttpResponse response =
@@ -29,6 +28,7 @@ class LancePhase1AuthAndCredentialRestTest extends BaseLancePhase1RestTest {
   }
 
   @Test
+  @Disabled("Enable after Lance external Bearer token exchange is implemented.")
   @DisplayName("P1-AUTH-002 external Bearer with allowed issuer and audience is exchanged")
   void allowedExternalBearerIsExchangedThroughInternalHelper() throws Exception {
     AggregatedHttpResponse response =
@@ -41,6 +41,7 @@ class LancePhase1AuthAndCredentialRestTest extends BaseLancePhase1RestTest {
   }
 
   @Test
+  @Disabled("Enable after Lance external Bearer token exchange is implemented.")
   @DisplayName("P1-AUTH-003 external Bearer with invalid issuer or audience is rejected")
   void invalidExternalBearerIsRejected() throws Exception {
     AggregatedHttpResponse response =
@@ -53,6 +54,7 @@ class LancePhase1AuthAndCredentialRestTest extends BaseLancePhase1RestTest {
   }
 
   @Test
+  @Disabled("Enable after Lance x-api-key authentication is implemented.")
   @DisplayName("P1-AUTH-004/P1-AUTH-005 x-api-key resolves principal and rejects revoked key")
   void apiKeyResolvesPrincipalAndRejectsRevokedKey() throws Exception {
     AggregatedHttpResponse accepted =
@@ -73,6 +75,7 @@ class LancePhase1AuthAndCredentialRestTest extends BaseLancePhase1RestTest {
   }
 
   @Test
+  @Disabled("Enable after Lance-specific authorization checks are implemented.")
   @DisplayName("P1-AUTH-007/P1-AUTH-008 metadata permissions allow owner and reject read-only")
   void metadataPermissionsAllowOwnerAndRejectReadOnly() throws Exception {
     assertSuccess(
@@ -98,6 +101,7 @@ class LancePhase1AuthAndCredentialRestTest extends BaseLancePhase1RestTest {
   }
 
   @Test
+  @Disabled("Enable after LanceResourceKeyMapper is implemented.")
   @DisplayName("P1-AUTH-009/P1-AUTH-010 KeyMapper delegates Lance resources through auth graph")
   void keyMapperDelegatesLanceResourcesThroughAuthGraph() throws Exception {
     AggregatedHttpResponse response =
@@ -116,6 +120,7 @@ class LancePhase1AuthAndCredentialRestTest extends BaseLancePhase1RestTest {
   }
 
   @Test
+  @Disabled("Enable after Lance request context propagation is implemented.")
   @DisplayName("P1-AUTH-012 Lance context headers are forwarded into request context and audit")
   void lanceContextHeadersAreForwarded() throws Exception {
     AggregatedHttpResponse response =
@@ -129,6 +134,7 @@ class LancePhase1AuthAndCredentialRestTest extends BaseLancePhase1RestTest {
   }
 
   @Test
+  @Disabled("Enable after Lance audit response metadata is implemented.")
   @DisplayName("P1-AUTH-011 declare and create-empty audit fields are distinguishable")
   void declareAndCreateEmptyAuditFieldsAreDistinguishable() throws Exception {
     createRootAndChildNamespaces();
