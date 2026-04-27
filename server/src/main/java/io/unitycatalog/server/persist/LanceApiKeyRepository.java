@@ -18,6 +18,7 @@ import org.hibernate.query.Query;
 public class LanceApiKeyRepository {
   public static final String ACTIVE_STATUS = "ACTIVE";
   public static final String REVOKED_STATUS = "REVOKED";
+  public static final String EXPIRED_STATUS = "EXPIRED";
 
   private final SessionFactory sessionFactory;
 

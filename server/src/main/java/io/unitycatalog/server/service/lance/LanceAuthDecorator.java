@@ -16,7 +16,6 @@ import java.util.Optional;
 
 public class LanceAuthDecorator implements DecoratingHttpServiceFunction {
   private static final String X_API_KEY = "x-api-key";
-  private static final String EXPIRED_STATUS = "EXPIRED";
 
   private final LanceApiKeyRepository apiKeyRepository;
 
@@ -73,7 +72,7 @@ public class LanceAuthDecorator implements DecoratingHttpServiceFunction {
   }
 
   private boolean isExpired(LanceApiKeyDAO apiKeyDAO) {
-    return EXPIRED_STATUS.equalsIgnoreCase(apiKeyDAO.getStatus())
+    return LanceApiKeyRepository.EXPIRED_STATUS.equalsIgnoreCase(apiKeyDAO.getStatus())
         || (apiKeyDAO.getExpiresAt() != null && apiKeyDAO.getExpiresAt().before(new Date()));
   }
 

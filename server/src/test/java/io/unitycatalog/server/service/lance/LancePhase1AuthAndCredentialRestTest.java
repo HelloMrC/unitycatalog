@@ -10,6 +10,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Date;
 import java.util.Map;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
@@ -17,6 +18,17 @@ import org.junit.jupiter.api.Test;
 
 @Tag("lance-phase1")
 class LancePhase1AuthAndCredentialRestTest extends BaseLancePhase1RestTest {
+  private LanceApiKeyRepository lanceApiKeyRepository;
+
+  @BeforeEach
+  @Override
+  public void setUp() {
+    super.setUp();
+    Repositories repositories =
+        new Repositories(
+            hibernateConfigurator.getSessionFactory(), new ServerProperties(serverProperties));
+    lanceApiKeyRepository = repositories.getLanceApiKeyRepository();
+  }
 
   @Test
   @Disabled("Enable after Lance-specific auth context is implemented.")
@@ -63,8 +75,8 @@ class LancePhase1AuthAndCredentialRestTest extends BaseLancePhase1RestTest {
     createRootAndChildNamespaces();
     assertSuccess(
         postJson("/v1/table/" + TABLE_ID + "/register", declareTableRequest(TABLE_LOCATION)));
-    createApiKey("phase1-valid-api-key", LanceApiKeyRepository.ACTIVE_STATUS, null);
-    createApiKey("phase1-revoked-api-key", LanceApiKeyRepository.REVOKED_STATUS, new Date());
+    createApiKey("phase1-valid-api-key", LanceApiKeyRepository.ACTIVE_STATUS, null, null);
+    createApiKey("phase1-revoked-api-key", LanceApiKeyRepository.REVOKED_STATUS, null, new Date());
 
     AggregatedHttpResponse accepted =
         postJson(
@@ -83,20 +95,33 @@ class LancePhase1AuthAndCredentialRestTest extends BaseLancePhase1RestTest {
     assertThat(json(revoked).path("message").asText()).containsIgnoringCase("revoked");
   }
 
-  private void createApiKey(String plainTextKey, String status, Date revokedAt) {
-    Repositories repositories =
-        new Repositories(
-            hibernateConfigurator.getSessionFactory(), new ServerProperties(serverProperties));
-    repositories
-        .getLanceApiKeyRepository()
-        .createApiKey(
-            plainTextKey,
-            "phase1-service-principal",
-            "SERVICE_PRINCIPAL",
-            status,
-            "phase1-test",
-            null,
-            revokedAt);
+  @Test
+  @DisplayName("P1-AUTH-005/P1-AUTH-006 x-api-key rejects expired key")
+  void apiKeyRejectsExpiredKey() throws Exception {
+    createRootAndChildNamespaces();
+    assertSuccess(
+        postJson("/v1/table/" + TABLE_ID + "/register", declareTableRequest(TABLE_LOCATION)));
+    createApiKey("phase1-expired-api-key", LanceApiKeyRepository.ACTIVE_STATUS, new Date(0), null);
+
+    AggregatedHttpResponse expired =
+        postJson(
+            "/v1/table/" + TABLE_ID + "/describe",
+            "{}",
+            Map.of("x-api-key", "phase1-expired-api-key"));
+
+    assertLanceErrorShape(expired, 401);
+    assertThat(json(expired).path("message").asText()).containsIgnoringCase("expired");
+  }
+
+  private void createApiKey(String plainTextKey, String status, Date expiresAt, Date revokedAt) {
+    lanceApiKeyRepository.createApiKey(
+        plainTextKey,
+        "phase1-service-principal",
+        "SERVICE_PRINCIPAL",
+        status,
+        "phase1-test",
+        expiresAt,
+        revokedAt);
   }
 
   @Test
