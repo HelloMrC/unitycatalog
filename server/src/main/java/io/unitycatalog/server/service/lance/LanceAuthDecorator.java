@@ -10,6 +10,7 @@ import io.unitycatalog.server.persist.LanceApiKeyRepository;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.dao.LanceApiKeyDAO;
 import java.util.Date;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 
@@ -26,6 +27,11 @@ public class LanceAuthDecorator implements DecoratingHttpServiceFunction {
   @Override
   public HttpResponse serve(HttpService delegate, ServiceRequestContext ctx, HttpRequest req)
       throws Exception {
+    Map<String, String> contextHeaders = extractContextHeaders(req);
+    if (!contextHeaders.isEmpty()) {
+      ctx.setAttr(LanceRequestContext.CONTEXT_HEADERS_ATTR, contextHeaders);
+    }
+
     String apiKey = req.headers().get(X_API_KEY);
     if (apiKey == null || apiKey.isBlank()) {
       return delegate.serve(ctx, req);
@@ -46,6 +52,19 @@ public class LanceAuthDecorator implements DecoratingHttpServiceFunction {
     apiKeyRepository.recordLastUsed(resolved.getId());
     ctx.setAttr(LanceRequestContext.PRINCIPAL_ATTR, resolved.getPrincipalId());
     return delegate.serve(ctx, req);
+  }
+
+  private Map<String, String> extractContextHeaders(HttpRequest req) {
+    Map<String, String> contextHeaders = new LinkedHashMap<>();
+    req.headers()
+        .forEach(
+            header -> {
+              String name = header.getKey().toString();
+              if (name.startsWith("x-lance-")) {
+                contextHeaders.put(name, header.getValue());
+              }
+            });
+    return contextHeaders;
   }
 
   private boolean isRevoked(LanceApiKeyDAO apiKeyDAO) {

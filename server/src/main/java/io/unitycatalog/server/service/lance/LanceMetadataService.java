@@ -113,7 +113,9 @@ public class LanceMetadataService {
         children.stream()
             .map(child -> identifierCodec.toExternalIdentifier(child.getPathKey(), delimiter))
             .toList();
-    return new NamespaceListResponse(childIds, nextPageToken);
+    Map<String, String> contextHeaders = LanceRequestContext.currentContextHeaders();
+    return new NamespaceListResponse(
+        childIds, nextPageToken, contextHeaders.isEmpty() ? null : contextHeaders);
   }
 
   public DropNamespaceResponse dropNamespace(String identifier, String delimiter, String mode) {
@@ -577,7 +579,8 @@ public class LanceMetadataService {
 
   public record ExistsResponse(boolean exists) {}
 
-  public record NamespaceListResponse(List<String> namespaces, String nextPageToken) {}
+  public record NamespaceListResponse(
+      List<String> namespaces, String nextPageToken, Map<String, String> context) {}
 
   public record DropNamespaceResponse(boolean dropped) {}
 

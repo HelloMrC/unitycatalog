@@ -145,9 +145,11 @@ class LancePhase1AuthAndCredentialRestTest extends BaseLancePhase1RestTest {
   }
 
   @Test
-  @Disabled("Enable after Lance request context propagation is implemented.")
   @DisplayName("P1-AUTH-012 Lance context headers are forwarded into request context and audit")
   void lanceContextHeadersAreForwarded() throws Exception {
+    assertSuccess(
+        postJson("/v1/namespace/" + ROOT_NAMESPACE + "/create", createNamespaceRequest()));
+
     AggregatedHttpResponse response =
         getLance(
             "/v1/namespace/" + ROOT_NAMESPACE + "/list",
