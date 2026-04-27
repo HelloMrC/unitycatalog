@@ -21,6 +21,8 @@ public class LanceTableRepository {
   private static final String TABLE_ASSET_TYPE = "TABLE";
   private static final String ACTIVE_STATE = "ACTIVE";
   private static final String DECLARED_STATE = "DECLARED";
+  private static final String DEREGISTERED_STATE = "DEREGISTERED";
+  private static final String DROPPED_STATE = "DROPPED";
 
   private final SessionFactory sessionFactory;
 
@@ -212,12 +214,13 @@ public class LanceTableRepository {
     if (includeDeclared) {
       hql =
           "SELECT a FROM LanceAssetDAO a WHERE a.namespaceId = :namespaceId "
-              + "AND a.assetType = :assetType ORDER BY a.name";
+              + "AND a.assetType = :assetType "
+              + "AND a.state IN ('ACTIVE', 'DECLARED') ORDER BY a.name";
     } else {
       hql =
           "SELECT a FROM LanceAssetDAO a, LanceTableDAO t WHERE a.id = t.assetId "
               + "AND a.namespaceId = :namespaceId AND a.assetType = :assetType "
-              + "AND t.isOnlyDeclared = false ORDER BY a.name";
+              + "AND a.state = 'ACTIVE' AND t.isOnlyDeclared = false ORDER BY a.name";
     }
     Query<LanceAssetDAO> query = session.createQuery(hql, LanceAssetDAO.class);
     query.setParameter("namespaceId", namespaceId);
@@ -257,12 +260,12 @@ public class LanceTableRepository {
     if (includeDeclared) {
       baseHql =
           "SELECT a FROM LanceAssetDAO a WHERE a.namespaceId = :namespaceId "
-              + "AND a.assetType = :assetType";
+              + "AND a.assetType = :assetType AND a.state IN ('ACTIVE', 'DECLARED')";
     } else {
       baseHql =
           "SELECT a FROM LanceAssetDAO a, LanceTableDAO t WHERE a.id = t.assetId "
               + "AND a.namespaceId = :namespaceId AND a.assetType = :assetType "
-              + "AND t.isOnlyDeclared = false";
+              + "AND a.state = 'ACTIVE' AND t.isOnlyDeclared = false";
     }
 
     String hql = baseHql;
@@ -303,8 +306,9 @@ public class LanceTableRepository {
             session.remove(tableDAO);
           }
 
-          // Delete asset
-          session.remove(assetDAO);
+          assetDAO.setState(DROPPED_STATE);
+          assetDAO.setUpdatedAt(new Date());
+          session.merge(assetDAO);
           return null;
         },
         "Failed to drop Lance declared table",
@@ -330,8 +334,9 @@ public class LanceTableRepository {
             session.remove(tableDAO);
           }
 
-          // Delete asset metadata (but not physical data)
-          session.remove(assetDAO);
+          assetDAO.setState(DEREGISTERED_STATE);
+          assetDAO.setUpdatedAt(new Date());
+          session.merge(assetDAO);
 
           return null;
         },

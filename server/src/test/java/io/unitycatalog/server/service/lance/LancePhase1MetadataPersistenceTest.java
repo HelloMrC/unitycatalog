@@ -2,19 +2,21 @@ package io.unitycatalog.server.service.lance;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import io.unitycatalog.server.persist.LanceApiKeyRepository;
+import io.unitycatalog.server.persist.Repositories;
+import io.unitycatalog.server.utils.ServerProperties;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import org.hibernate.Session;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 @Tag("lance-phase1")
-@Disabled("Enable after Lance Phase 1 DAO and DDL migrations are implemented.")
 class LancePhase1MetadataPersistenceTest extends BaseLancePhase1RestTest {
 
   @Test
@@ -42,16 +44,17 @@ class LancePhase1MetadataPersistenceTest extends BaseLancePhase1RestTest {
     createRootAndChildNamespaces();
 
     try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
-      Object row =
-          session
-              .createNativeQuery(
-                  "select path_key, root_scope_id from uc_lance_namespaces where path_key = :pathKey")
-              .setParameter("pathKey", "prod/team_a")
-              .getSingleResult();
+      Object[] row =
+          (Object[])
+              session
+                  .createNativeQuery(
+                      "select path_key, root_scope_id from uc_lance_namespaces where path_key = :pathKey")
+                  .setParameter("pathKey", "prod/team_a")
+                  .getSingleResult();
 
-      assertThat(row.toString()).contains("prod/team_a");
-      assertThat(row.toString()).doesNotContain("$");
-      assertThat(row.toString()).doesNotContain("null");
+      assertThat(row[0]).isEqualTo("prod/team_a");
+      assertThat(row[0].toString()).doesNotContain("$");
+      assertThat(row[1]).isNotNull();
     }
   }
 
@@ -63,16 +66,17 @@ class LancePhase1MetadataPersistenceTest extends BaseLancePhase1RestTest {
         postJson("/v1/table/" + TABLE_ID + "/register", declareTableRequest(TABLE_LOCATION)));
 
     try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
-      Object row =
-          session
-              .createNativeQuery(
-                  "select a.path_key, a.asset_type, a.state, t.asset_id "
-                      + "from uc_lance_assets a join uc_lance_tables t on a.id = t.asset_id "
-                      + "where a.path_key = :pathKey")
-              .setParameter("pathKey", "prod/team_a/embeddings")
-              .getSingleResult();
+      Object[] row =
+          (Object[])
+              session
+                  .createNativeQuery(
+                      "select a.path_key, a.asset_type, a.state, t.asset_id "
+                          + "from uc_lance_assets a join uc_lance_tables t on a.id = t.asset_id "
+                          + "where a.path_key = :pathKey")
+                  .setParameter("pathKey", "prod/team_a/embeddings")
+                  .getSingleResult();
 
-      assertThat(row.toString()).contains("prod/team_a/embeddings", "TABLE", "ACTIVE");
+      assertThat(row).contains("prod/team_a/embeddings", "TABLE", "ACTIVE");
     }
   }
 
@@ -177,17 +181,32 @@ class LancePhase1MetadataPersistenceTest extends BaseLancePhase1RestTest {
   @Test
   @DisplayName("P1-AUTH-006 API key table stores only key hash")
   void apiKeyTableStoresOnlyKeyHash() {
-    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
-      Object row =
-          session
-              .createNativeQuery(
-                  "select key_hash, principal_id, principal_type, expires_at, revoked_at "
-                      + "from uc_lance_api_keys where principal_id = :principalId")
-              .setParameter("principalId", "phase1-service-principal")
-              .getSingleResult();
+    Repositories repositories =
+        new Repositories(
+            hibernateConfigurator.getSessionFactory(), new ServerProperties(serverProperties));
+    repositories
+        .getLanceApiKeyRepository()
+        .createApiKey(
+            "phase1-valid-api-key",
+            "phase1-service-principal",
+            "SERVICE_PRINCIPAL",
+            LanceApiKeyRepository.ACTIVE_STATUS,
+            "phase1-test",
+            null,
+            null);
 
-      assertThat(row.toString()).contains("SERVICE_PRINCIPAL");
-      assertThat(row.toString()).doesNotContain("phase1-valid-api-key");
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      Object[] row =
+          (Object[])
+              session
+                  .createNativeQuery(
+                      "select key_hash, principal_id, principal_type, expires_at, revoked_at "
+                          + "from uc_lance_api_keys where principal_id = :principalId")
+                  .setParameter("principalId", "phase1-service-principal")
+                  .getSingleResult();
+
+      assertThat(row).contains("SERVICE_PRINCIPAL");
+      assertThat(Arrays.toString(row)).doesNotContain("phase1-valid-api-key");
     }
   }
 }
