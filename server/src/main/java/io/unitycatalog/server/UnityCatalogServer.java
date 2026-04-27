@@ -317,7 +317,7 @@ public class UnityCatalogServer {
     armeriaServerBuilder
         .routeDecorator()
         .pathPrefix(LANCE_PATH)
-        .build(new LanceAuthDecorator(securityContext, repositories));
+        .build(new LanceAuthDecorator(securityContext, serverProperties, repositories));
   }
 
   private void addSecurityDecorators(

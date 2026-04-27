@@ -4,6 +4,7 @@ import static io.unitycatalog.server.security.SecurityContext.Issuers.INTERNAL;
 
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.JWTVerifier;
+import com.auth0.jwt.exceptions.JWTDecodeException;
 import com.auth0.jwt.exceptions.JWTVerificationException;
 import com.auth0.jwt.interfaces.DecodedJWT;
 import com.linecorp.armeria.common.HttpHeaderNames;
@@ -12,12 +13,15 @@ import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.server.DecoratingHttpServiceFunction;
 import com.linecorp.armeria.server.HttpService;
 import com.linecorp.armeria.server.ServiceRequestContext;
+import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.LanceApiKeyRepository;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.dao.LanceApiKeyDAO;
 import io.unitycatalog.server.security.SecurityContext;
+import io.unitycatalog.server.service.TokenExchangeService;
 import io.unitycatalog.server.utils.JwksOperations;
+import io.unitycatalog.server.utils.ServerProperties;
 import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -30,10 +34,16 @@ public class LanceAuthDecorator implements DecoratingHttpServiceFunction {
 
   private final LanceApiKeyRepository apiKeyRepository;
   private final JwksOperations jwksOperations;
+  private final TokenExchangeService tokenExchangeService;
 
-  public LanceAuthDecorator(SecurityContext securityContext, Repositories repositories) {
+  public LanceAuthDecorator(
+      SecurityContext securityContext,
+      ServerProperties serverProperties,
+      Repositories repositories) {
     this.apiKeyRepository = repositories.getLanceApiKeyRepository();
     this.jwksOperations = new JwksOperations(securityContext);
+    this.tokenExchangeService =
+        new TokenExchangeService(securityContext, serverProperties, repositories);
   }
 
   @Override
@@ -52,7 +62,12 @@ public class LanceAuthDecorator implements DecoratingHttpServiceFunction {
               + " x-api-key.");
     }
 
-    String bearerPrincipal = bearerToken.map(this::principalFromInternalBearer).orElse(null);
+    String bearerPrincipal;
+    try {
+      bearerPrincipal = bearerToken.map(this::principalFromBearer).orElse(null);
+    } catch (BaseException e) {
+      return lanceError(e.getErrorCode(), e.getErrorMessage());
+    }
     if (bearerPrincipal != null) {
       ctx.setAttr(LanceRequestContext.PRINCIPAL_ATTR, bearerPrincipal);
     }
@@ -101,12 +116,18 @@ public class LanceAuthDecorator implements DecoratingHttpServiceFunction {
     return accessToken.isEmpty() ? Optional.empty() : Optional.of(accessToken);
   }
 
-  private String principalFromInternalBearer(String accessToken) {
+  private String principalFromBearer(String accessToken) {
+    DecodedJWT decodedJWT;
     try {
-      DecodedJWT decodedJWT = JWT.decode(accessToken);
-      if (!INTERNAL.equals(decodedJWT.getIssuer())) {
-        return null;
-      }
+      decodedJWT = JWT.decode(accessToken);
+    } catch (JWTDecodeException e) {
+      throw new BaseException(ErrorCode.UNAUTHENTICATED, "Invalid Bearer token.", e);
+    }
+    if (!INTERNAL.equals(decodedJWT.getIssuer())) {
+      return tokenExchangeService.exchangeToken(accessToken).principal();
+    }
+
+    try {
       JWTVerifier jwtVerifier =
           jwksOperations.verifierForIssuerAndKey(
               decodedJWT.getIssuer(), decodedJWT.getKeyId(), decodedJWT.getAlgorithm(), List.of());
@@ -114,7 +135,7 @@ public class LanceAuthDecorator implements DecoratingHttpServiceFunction {
       String email = verifiedJWT.getClaim("email").asString();
       return isBlank(email) ? verifiedJWT.getSubject() : email;
     } catch (JWTVerificationException e) {
-      return null;
+      throw new BaseException(ErrorCode.UNAUTHENTICATED, "Invalid Bearer token.", e);
     }
   }
 
@@ -133,7 +154,10 @@ public class LanceAuthDecorator implements DecoratingHttpServiceFunction {
   }
 
   private HttpResponse unauthenticated(String message) {
-    ErrorCode errorCode = ErrorCode.UNAUTHENTICATED;
+    return lanceError(ErrorCode.UNAUTHENTICATED, message);
+  }
+
+  private HttpResponse lanceError(ErrorCode errorCode, String message) {
     return HttpResponse.ofJson(
         errorCode.getHttpStatus(),
         Map.of(

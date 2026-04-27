@@ -6,15 +6,25 @@ import static org.assertj.core.api.Assertions.assertThat;
 import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
 import com.linecorp.armeria.common.AggregatedHttpResponse;
+import com.sun.net.httpserver.HttpServer;
 import io.unitycatalog.server.persist.LanceApiKeyRepository;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.security.SecurityConfiguration;
 import io.unitycatalog.server.utils.ServerProperties;
+import java.math.BigInteger;
+import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.security.KeyPairGenerator;
+import java.security.interfaces.RSAPrivateKey;
+import java.security.interfaces.RSAPublicKey;
+import java.util.Base64;
 import java.util.Date;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.Executors;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
@@ -23,7 +33,25 @@ import org.junit.jupiter.api.Test;
 
 @Tag("lance-phase1")
 class LancePhase1AuthAndCredentialRestTest extends BaseLancePhase1RestTest {
+  private static final String TEST_AUDIENCE = "unity-catalog";
+
   private LanceApiKeyRepository lanceApiKeyRepository;
+  private HttpServer mockOidcServer;
+  private String testIssuer;
+  private Algorithm testIssuerAlgorithm;
+  private String testIssuerKeyId;
+
+  @Override
+  protected void setUpProperties() {
+    super.setUpProperties();
+    try {
+      startMockOidcServer();
+    } catch (Exception e) {
+      throw new RuntimeException("Failed to start mock OIDC server", e);
+    }
+    serverProperties.setProperty("server.allowed-issuers", testIssuer);
+    serverProperties.setProperty("server.audiences", TEST_AUDIENCE);
+  }
 
   @BeforeEach
   @Override
@@ -33,6 +61,16 @@ class LancePhase1AuthAndCredentialRestTest extends BaseLancePhase1RestTest {
         new Repositories(
             hibernateConfigurator.getSessionFactory(), new ServerProperties(serverProperties));
     lanceApiKeyRepository = repositories.getLanceApiKeyRepository();
+  }
+
+  @AfterEach
+  @Override
+  public void tearDown() {
+    super.tearDown();
+    if (mockOidcServer != null) {
+      mockOidcServer.stop(0);
+      mockOidcServer = null;
+    }
   }
 
   @Test
@@ -52,26 +90,31 @@ class LancePhase1AuthAndCredentialRestTest extends BaseLancePhase1RestTest {
   }
 
   @Test
-  @Disabled("Enable after Lance external Bearer token exchange is implemented.")
   @DisplayName("P1-AUTH-002 external Bearer with allowed issuer and audience is exchanged")
   void allowedExternalBearerIsExchangedThroughInternalHelper() throws Exception {
+    assertSuccess(
+        postJson("/v1/namespace/" + ROOT_NAMESPACE + "/create", createNamespaceRequest()));
+
     AggregatedHttpResponse response =
         getLance(
             "/v1/namespace/" + ROOT_NAMESPACE + "/list",
-            Map.of("Authorization", "Bearer phase1-external-valid-token"));
+            Map.of("Authorization", "Bearer " + createExternalBearerToken("admin", TEST_AUDIENCE)));
 
     assertSuccess(response);
-    assertThat(json(response).path("principal").asText()).isNotBlank();
+    assertThat(json(response).path("principal").asText()).isEqualTo("admin");
   }
 
   @Test
-  @Disabled("Enable after Lance external Bearer token exchange is implemented.")
   @DisplayName("P1-AUTH-003 external Bearer with invalid issuer or audience is rejected")
   void invalidExternalBearerIsRejected() throws Exception {
     AggregatedHttpResponse response =
         getLance(
             "/v1/namespace/" + ROOT_NAMESPACE + "/list",
-            Map.of("Authorization", "Bearer invalid-external-token"));
+            Map.of(
+                "Authorization",
+                "Bearer "
+                    + createExternalBearerToken(
+                        "admin", TEST_AUDIENCE, "https://evil-issuer.example.com")));
 
     assertLanceErrorShape(response, 401);
     assertThat(json(response).path("message").asText()).containsIgnoringCase("issuer");
@@ -176,6 +219,91 @@ class LancePhase1AuthAndCredentialRestTest extends BaseLancePhase1RestTest {
     }
   }
 
+  private String createExternalBearerToken(String subject, String audience) {
+    return createExternalBearerToken(subject, audience, testIssuer);
+  }
+
+  private String createExternalBearerToken(String subject, String audience, String issuer) {
+    var builder =
+        JWT.create()
+            .withSubject(subject)
+            .withIssuer(issuer)
+            .withIssuedAt(new Date())
+            .withKeyId(testIssuerKeyId)
+            .withJWTId(UUID.randomUUID().toString())
+            .withClaim("email", subject);
+    if (audience != null) {
+      builder.withAudience(audience);
+    }
+    return builder.sign(testIssuerAlgorithm);
+  }
+
+  private void startMockOidcServer() throws Exception {
+    KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
+    keyPairGenerator.initialize(2048);
+    var keyPair = keyPairGenerator.generateKeyPair();
+    RSAPublicKey publicKey = (RSAPublicKey) keyPair.getPublic();
+    RSAPrivateKey privateKey = (RSAPrivateKey) keyPair.getPrivate();
+
+    testIssuerKeyId = UUID.randomUUID().toString();
+    testIssuerAlgorithm = Algorithm.RSA512(publicKey, privateKey);
+    String jwksJson = buildJwksJson(publicKey, testIssuerKeyId);
+
+    mockOidcServer = HttpServer.create(new InetSocketAddress(0), 0);
+    mockOidcServer.setExecutor(
+        Executors.newCachedThreadPool(
+            runnable -> {
+              Thread thread = new Thread(runnable);
+              thread.setDaemon(true);
+              return thread;
+            }));
+
+    mockOidcServer.createContext(
+        "/.well-known/openid-configuration",
+        exchange -> {
+          String discoveryDoc =
+              String.format("{\"issuer\":\"%s\",\"jwks_uri\":\"%s/jwks\"}", testIssuer, testIssuer);
+          byte[] body = discoveryDoc.getBytes(StandardCharsets.UTF_8);
+          exchange.getResponseHeaders().set("Content-Type", "application/json");
+          exchange.sendResponseHeaders(200, body.length);
+          exchange.getResponseBody().write(body);
+          exchange.close();
+        });
+
+    mockOidcServer.createContext(
+        "/jwks",
+        exchange -> {
+          byte[] body = jwksJson.getBytes(StandardCharsets.UTF_8);
+          exchange.getResponseHeaders().set("Content-Type", "application/json");
+          exchange.sendResponseHeaders(200, body.length);
+          exchange.getResponseBody().write(body);
+          exchange.close();
+        });
+
+    mockOidcServer.start();
+    testIssuer = "http://localhost:" + mockOidcServer.getAddress().getPort();
+  }
+
+  private static String buildJwksJson(RSAPublicKey publicKey, String keyId) {
+    Base64.Encoder encoder = Base64.getUrlEncoder().withoutPadding();
+    String n = encoder.encodeToString(toUnsignedBytes(publicKey.getModulus()));
+    String e = encoder.encodeToString(toUnsignedBytes(publicKey.getPublicExponent()));
+    return String.format(
+        "{\"keys\":[{\"kty\":\"RSA\",\"use\":\"sig\",\"alg\":\"RS512\","
+            + "\"kid\":\"%s\",\"n\":\"%s\",\"e\":\"%s\"}]}",
+        keyId, n, e);
+  }
+
+  private static byte[] toUnsignedBytes(BigInteger value) {
+    byte[] bytes = value.toByteArray();
+    if (bytes[0] != 0) {
+      return bytes;
+    }
+    byte[] trimmed = new byte[bytes.length - 1];
+    System.arraycopy(bytes, 1, trimmed, 0, trimmed.length);
+    return trimmed;
+  }
+
   @Test
   @Disabled("Enable after Lance-specific authorization checks are implemented.")
   @DisplayName("P1-AUTH-007/P1-AUTH-008 metadata permissions allow owner and reject read-only")
@@ -263,7 +391,6 @@ class LancePhase1AuthAndCredentialRestTest extends BaseLancePhase1RestTest {
   }
 
   @Test
-  @Disabled("Implementation review guard; enable selectively during LanceAuthDecorator review.")
   @DisplayName("P1-AUTH-014 token exchange implementation path avoids HTTP loopback")
   void tokenExchangeImplementationPathAvoidsHttpLoopback() throws Exception {
     Path authDecorator =
