@@ -213,6 +213,34 @@ class LancePhase1NamespaceRestTest extends BaseLancePhase1RestTest {
   }
 
   @Test
+  @DisplayName("P1-ID-005 invalid namespace identifiers return stable errors without writes")
+  void invalidNamespaceIdentifiersReturnStableErrorsAndDoNotPersist() throws Exception {
+    AggregatedHttpResponse emptySegment =
+        postJson("/v1/namespace/prod$$bad/create", createNamespaceRequest());
+    assertLanceErrorShape(emptySegment, 400);
+    assertThat(json(emptySegment).path("message").asText()).containsIgnoringCase("empty segment");
+
+    AggregatedHttpResponse badEncoding =
+        postJson("/v1/namespace/prod%25ZZ/create", createNamespaceRequest());
+    assertLanceErrorShape(badEncoding, 400);
+    assertThat(json(badEncoding).path("message").asText()).containsIgnoringCase("encoding");
+
+    AggregatedHttpResponse invalidDelimiter =
+        postJson("/v1/namespace/prod::team/create?delimiter=::", createNamespaceRequest());
+    assertLanceErrorShape(invalidDelimiter, 400);
+    assertThat(json(invalidDelimiter).path("message").asText()).containsIgnoringCase("delimiter");
+
+    try (Session session = hibernateConfigurator.getSessionFactory().openSession()) {
+      Number count =
+          (Number)
+              session
+                  .createNativeQuery("select count(*) from uc_lance_namespaces")
+                  .getSingleResult();
+      assertThat(count.longValue()).isZero();
+    }
+  }
+
+  @Test
   @DisplayName("P1-NS-008 exists returns false for missing namespace without throwing 404")
   void existsReturnsFalseForNonExistentNamespace() throws Exception {
     AggregatedHttpResponse response = postJson("/v1/namespace/nonexistent_namespace/exists", "{}");

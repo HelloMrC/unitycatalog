@@ -93,6 +93,18 @@ class LancePhase1TableRestTest extends BaseLancePhase1RestTest {
   }
 
   @Test
+  @DisplayName("P1-ID-005 invalid table identifier returns stable invalid request")
+  void invalidTableIdentifierReturnsStableError() throws Exception {
+    AggregatedHttpResponse response =
+        postJson("/v1/table/root_only/register", declareTableRequest(TABLE_LOCATION));
+
+    assertLanceErrorShape(response, 400);
+    assertThat(json(response).path("message").asText())
+        .containsIgnoringCase("namespace")
+        .containsIgnoringCase("table name");
+  }
+
+  @Test
   @DisplayName("P1-TBL-002/P1-TBL-005/P1-TBL-009 register, list, and describe table")
   void registerListAndDescribeTable() throws Exception {
     createRootAndChildNamespaces();

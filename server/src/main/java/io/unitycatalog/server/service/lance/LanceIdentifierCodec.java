@@ -49,11 +49,24 @@ public class LanceIdentifierCodec {
   }
 
   public String normalizeDelimiter(String delimiter) {
-    return delimiter == null || delimiter.isBlank() ? DEFAULT_DELIMITER : delimiter;
+    if (delimiter == null || delimiter.isBlank()) {
+      return DEFAULT_DELIMITER;
+    }
+    if (delimiter.length() != 1 || "/%".contains(delimiter)) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT,
+          "Delimiter must be a single character and cannot be '/' or '%'");
+    }
+    return delimiter;
   }
 
   private String decodeSegment(String segment) {
-    return URLDecoder.decode(segment, StandardCharsets.UTF_8);
+    try {
+      return URLDecoder.decode(segment, StandardCharsets.UTF_8);
+    } catch (IllegalArgumentException e) {
+      throw new BaseException(
+          ErrorCode.INVALID_ARGUMENT, "Identifier contains invalid percent encoding", e);
+    }
   }
 
   private String encodeSegment(String segment, String delimiter) {
