@@ -304,12 +304,14 @@ UC 内部挂载前缀：
 
 ### 7.10 `P1-CLIENT` 原生客户端 Smoke
 
+> 当前状态（2026-04-28）：`P1-CLIENT-001` / `P1-CLIENT-003` / `P1-CLIENT-004` 仍为待处理项，仓库内尚未接入可重复执行的 Python / Java / Rust 原生 Lance 客户端 smoke。`P1-CLIENT-002` / `P1-CLIENT-005` / `P1-CLIENT-006` 的核心 raw HTTP 行为已由 `LancePhase1*RestTest` 协议集成测试覆盖；发布前仍需要补跑原生客户端 smoke，或记录客户端侧限制与 raw HTTP 替代结果。
+
 | 用例 ID | 客户端 | 场景 | 断言 |
 |---|---|---|---|
-| P1-CLIENT-001 | Python | connect namespace + list/describe/drop | 不需要改业务命名方式 |
+| P1-CLIENT-001 | Python | connect namespace + list/describe/drop | 待处理：补接原生客户端 smoke |
 | P1-CLIENT-002 | Python + raw HTTP | namespace exists | raw HTTP 覆盖 `POST /v1/namespace/{id}/exists`，因为 Python 包装层未暴露该便利方法 |
-| P1-CLIENT-003 | Java | namespace builder + metadata smoke | endpoint/auth/context 配置可用 |
-| P1-CLIENT-004 | Rust | namespace client metadata smoke | endpoint/auth/context 配置可用 |
+| P1-CLIENT-003 | Java | namespace builder + metadata smoke | 待处理：补接原生客户端 smoke |
+| P1-CLIENT-004 | Rust | namespace client metadata smoke | 待处理：补接原生客户端 smoke |
 | P1-CLIENT-005 | Raw HTTP | 全 Phase 1 endpoint smoke | Method、状态码、响应体稳定 |
 | P1-CLIENT-006 | raw HTTP 覆盖清单 | 执行客户端包装层未完整覆盖的 endpoint | 至少覆盖 `POST /v1/namespace/{id}/exists`、`POST /v1/table/{id}/create-empty`、阶段受限 `drop` 错误路径 |
 
@@ -354,7 +356,7 @@ UC 内部挂载前缀：
 | Unit | `P1-ID`、`P1-META` 局部逻辑、`P1-CRED` 映射逻辑 | PR 必跑 |
 | Component | `P1-AUTH`、repository、service with H2 | PR 必跑 |
 | Protocol | `P1-CONTRACT`、`P1-NS`、`P1-TBL`、`P1-ERROR` | Nightly，发布前必跑 |
-| Client Smoke | `P1-CLIENT` | 发布前必跑 |
+| Client Smoke | `P1-CLIENT` | 待处理：发布前补跑 Python / Java / Rust 原生客户端 smoke，当前 PR 门禁先以 raw HTTP 协议测试替代 |
 | Regression | `P1-REG` | PR smoke，发布前全量 |
 
 ## 10. 准入与准出标准
@@ -378,7 +380,7 @@ UC 内部挂载前缀：
 - `DeclareTable` 与 `CreateEmptyTable` alias 行为固化
 - `DescribeTable(vend_credentials=true)` 通过，临时凭证不落库
 - legacy bridge 的 `list/describe/exists` 通过
-- Python / Java / Rust metadata smoke 通过，或记录明确的客户端侧限制与 raw HTTP 补充结果
+- Python / Java / Rust metadata smoke 通过；若当前环境无法执行，则必须记录为待处理，并保留 raw HTTP 补充结果
 - UC `/tables`、Iceberg REST、Delta REST 回归通过
 - S0/S1 缺陷清零，S2 缺陷有明确风险接受记录
 
