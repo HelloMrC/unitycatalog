@@ -4,8 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.linecorp.armeria.common.AggregatedHttpResponse;
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
+import java.util.LinkedHashMap;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
@@ -17,28 +17,23 @@ class LancePhase1ErrorAndRegressionRestTest extends BaseLancePhase1RestTest {
   @Test
   @DisplayName("P1-CONTRACT-001 Lance REST OpenAPI baseline snapshot is present")
   void lanceRestOpenApiBaselineSnapshotIsPresent() throws IOException {
-    // Verify the upstream Lance REST OpenAPI baseline snapshot exists
-    // Baseline commit: lancedb-docs 6c0ccc001e6b
-    Path upstreamOpenApi =
-        Path.of(
-            "/home/lei/data_ai/learning/codebase/lancedb-docs/docs/api-reference/rest/openapi.yml");
-    assertThat(upstreamOpenApi).exists();
+    String schema = readPhase1OpenApiBaseline();
+    Map<String, String> endpoints = new LinkedHashMap<>();
+    endpoints.put("/v1/namespace/{id}/create", "post");
+    endpoints.put("/v1/namespace/{id}/list", "get");
+    endpoints.put("/v1/namespace/{id}/describe", "post");
+    endpoints.put("/v1/namespace/{id}/drop", "post");
+    endpoints.put("/v1/namespace/{id}/exists", "post");
+    endpoints.put("/v1/namespace/{id}/table/list", "get");
+    endpoints.put("/v1/table/{id}/register", "post");
+    endpoints.put("/v1/table/{id}/declare", "post");
+    endpoints.put("/v1/table/{id}/create-empty", "post");
+    endpoints.put("/v1/table/{id}/describe", "post");
+    endpoints.put("/v1/table/{id}/exists", "post");
+    endpoints.put("/v1/table/{id}/drop", "post");
+    endpoints.put("/v1/table/{id}/deregister", "post");
 
-    String schema = Files.readString(upstreamOpenApi);
-    // Verify Phase 1 required endpoints are defined in upstream schema
-    assertThat(schema).contains("/v1/namespace/{id}/create");
-    assertThat(schema).contains("/v1/namespace/{id}/list");
-    assertThat(schema).contains("/v1/namespace/{id}/describe");
-    assertThat(schema).contains("/v1/namespace/{id}/drop");
-    assertThat(schema).contains("/v1/namespace/{id}/exists");
-    assertThat(schema).contains("/v1/namespace/{id}/table/list");
-    assertThat(schema).contains("/v1/table/{id}/register");
-    assertThat(schema).contains("/v1/table/{id}/declare");
-    assertThat(schema).contains("/v1/table/{id}/create-empty");
-    assertThat(schema).contains("/v1/table/{id}/describe");
-    assertThat(schema).contains("/v1/table/{id}/exists");
-    assertThat(schema).contains("/v1/table/{id}/drop");
-    assertThat(schema).contains("/v1/table/{id}/deregister");
+    endpoints.forEach((path, method) -> assertEndpoint(schema, path, method));
   }
 
   @Test
@@ -83,6 +78,28 @@ class LancePhase1ErrorAndRegressionRestTest extends BaseLancePhase1RestTest {
 
     assertThat(response.status().code()).isNotEqualTo(404);
     assertThat(response.contentUtf8()).doesNotContain("LanceRest");
+  }
+
+  private String readPhase1OpenApiBaseline() throws IOException {
+    try (var inputStream =
+        getClass()
+            .getClassLoader()
+            .getResourceAsStream("lance/lance-rest-phase1-openapi-baseline.yml")) {
+      assertThat(inputStream).as("Phase 1 Lance REST OpenAPI baseline resource").isNotNull();
+      return new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
+    }
+  }
+
+  private void assertEndpoint(String schema, String path, String method) {
+    int endpointStart = schema.indexOf(path + ":");
+    assertThat(endpointStart).as(path).isNotNegative();
+
+    int nextEndpointStart = schema.indexOf("\n  /", endpointStart + path.length());
+    String endpointBlock =
+        nextEndpointStart < 0
+            ? schema.substring(endpointStart)
+            : schema.substring(endpointStart, nextEndpointStart);
+    assertThat(endpointBlock).as(path).contains("\n    " + method + ":");
   }
 
   @Test

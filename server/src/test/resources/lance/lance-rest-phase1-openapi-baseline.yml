@@ -1,0 +1,30 @@
+# Lance REST Phase 1 OpenAPI baseline excerpt.
+# Source baseline: lancedb-docs 6c0ccc001e6b docs/api-reference/rest/openapi.yml.
+# This excerpt intentionally pins only the Phase 1 metadata compatibility surface.
+paths:
+  /v1/namespace/{id}/create:
+    post: {}
+  /v1/namespace/{id}/list:
+    get: {}
+  /v1/namespace/{id}/describe:
+    post: {}
+  /v1/namespace/{id}/drop:
+    post: {}
+  /v1/namespace/{id}/exists:
+    post: {}
+  /v1/namespace/{id}/table/list:
+    get: {}
+  /v1/table/{id}/register:
+    post: {}
+  /v1/table/{id}/declare:
+    post: {}
+  /v1/table/{id}/create-empty:
+    post: {}
+  /v1/table/{id}/describe:
+    post: {}
+  /v1/table/{id}/exists:
+    post: {}
+  /v1/table/{id}/drop:
+    post: {}
+  /v1/table/{id}/deregister:
+    post: {}
