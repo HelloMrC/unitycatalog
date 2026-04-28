@@ -58,7 +58,10 @@ import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.service.iceberg.TableConfigService;
 import io.unitycatalog.server.service.lance.LanceAuthDecorator;
 import io.unitycatalog.server.service.lance.LanceRestNamespaceService;
+import io.unitycatalog.server.service.lance.LanceRestTableDataService;
 import io.unitycatalog.server.service.lance.LanceRestTableService;
+import io.unitycatalog.server.service.lance.backend.LanceExecutionBackend;
+import io.unitycatalog.server.service.lance.backend.LanceExecutionBackendFactory;
 import io.unitycatalog.server.utils.OptionParser;
 import io.unitycatalog.server.utils.ServerProperties;
 import io.unitycatalog.server.utils.VersionUtils;
@@ -191,6 +194,10 @@ public class UnityCatalogServer {
         new LanceRestNamespaceService(repositories, authorizer);
     LanceRestTableService lanceRestTableService =
         new LanceRestTableService(repositories, authorizer);
+    LanceExecutionBackend lanceExecutionBackend =
+        LanceExecutionBackendFactory.create(unityCatalogServerBuilder.serverProperties);
+    LanceRestTableDataService lanceRestTableDataService =
+        new LanceRestTableDataService(lanceExecutionBackend);
     // TODO: combine these into a single service in a follow-up PR
     TemporaryTableCredentialsService temporaryTableCredentialsService =
         new TemporaryTableCredentialsService(storageCredentialVendor, repositories);
@@ -257,7 +264,8 @@ public class UnityCatalogServer {
         .annotatedService(
             BASE_PATH + "external-locations", externalLocationService, requestConverterFunction)
         .annotatedService(LANCE_PATH, lanceRestNamespaceService, requestConverterFunction)
-        .annotatedService(LANCE_PATH, lanceRestTableService, requestConverterFunction);
+        .annotatedService(LANCE_PATH, lanceRestTableService, requestConverterFunction)
+        .annotatedService(LANCE_PATH, lanceRestTableDataService, requestConverterFunction);
     addIcebergApiServices(
         armeriaServerBuilder,
         unityCatalogServerBuilder.serverProperties,
