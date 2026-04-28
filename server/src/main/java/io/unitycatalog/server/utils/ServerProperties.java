@@ -205,6 +205,7 @@ public class ServerProperties {
     AWS_SECRET_KEY("aws.secretKey"),
     AWS_SESSION_TOKEN("aws.sessionToken"),
     AWS_REGION("aws.region"),
+    LANCE_EXECUTION_BACKEND_CLASS("lance.execution.backend.class"),
     INCLUDE_STACK_TRACE_IN_ERROR("server.include-stacktrace-in-error", "false", BOOLEAN_VALIDATOR);
     // The is not an exhaustive list. Some property keys like s3.bucketPath.0 with a numbering
     // suffix is not included. They are only accessed internally from functions like
