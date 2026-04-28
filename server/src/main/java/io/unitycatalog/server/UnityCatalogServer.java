@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.databind.json.JsonMapper;
 import com.linecorp.armeria.common.HttpResponse;
+import com.linecorp.armeria.server.Route;
 import com.linecorp.armeria.server.Server;
 import com.linecorp.armeria.server.ServerBuilder;
 import com.linecorp.armeria.server.annotation.JacksonRequestConverterFunction;
@@ -73,6 +74,7 @@ public class UnityCatalogServer {
   private static final String BASE_PATH = "/api/2.1/unity-catalog/";
   private static final String CONTROL_PATH = "/api/1.0/unity-control/";
   private static final String LANCE_PATH = BASE_PATH + "lance/";
+  private static final Route LANCE_ROUTE = Route.builder().pathPrefix(LANCE_PATH).build();
   private static final int DEFAULT_PORT = 8080;
   public static final String SERVER_PROPERTIES_FILE = "etc/conf/server.properties";
   private final Server server;
@@ -186,8 +188,9 @@ public class UnityCatalogServer {
     DeltaCommitsService deltaCommitsService = new DeltaCommitsService(authorizer, repositories);
     MetastoreService metastoreService = new MetastoreService(repositories);
     LanceRestNamespaceService lanceRestNamespaceService =
-        new LanceRestNamespaceService(repositories);
-    LanceRestTableService lanceRestTableService = new LanceRestTableService(repositories);
+        new LanceRestNamespaceService(repositories, authorizer);
+    LanceRestTableService lanceRestTableService =
+        new LanceRestTableService(repositories, authorizer);
     // TODO: combine these into a single service in a follow-up PR
     TemporaryTableCredentialsService temporaryTableCredentialsService =
         new TemporaryTableCredentialsService(storageCredentialVendor, repositories);
@@ -331,7 +334,11 @@ public class UnityCatalogServer {
 
       // Note: Decorators are applied in reverse order.
       UnityAccessDecorator accessDecorator = new UnityAccessDecorator(authorizer, repositories);
-      armeriaServerBuilder.routeDecorator().pathPrefix(BASE_PATH).build(accessDecorator);
+      armeriaServerBuilder
+          .routeDecorator()
+          .pathPrefix(BASE_PATH)
+          .exclude(LANCE_ROUTE)
+          .build(accessDecorator);
       armeriaServerBuilder
           .routeDecorator()
           .pathPrefix(CONTROL_PATH)
@@ -339,7 +346,11 @@ public class UnityCatalogServer {
           .build(accessDecorator);
 
       AuthDecorator authDecorator = new AuthDecorator(securityContext, repositories);
-      armeriaServerBuilder.routeDecorator().pathPrefix(BASE_PATH).build(authDecorator);
+      armeriaServerBuilder
+          .routeDecorator()
+          .pathPrefix(BASE_PATH)
+          .exclude(LANCE_ROUTE)
+          .build(authDecorator);
       armeriaServerBuilder
           .routeDecorator()
           .pathPrefix(CONTROL_PATH)

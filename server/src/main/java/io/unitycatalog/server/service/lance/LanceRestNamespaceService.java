@@ -6,6 +6,7 @@ import com.linecorp.armeria.server.annotation.ExceptionHandler;
 import com.linecorp.armeria.server.annotation.Get;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Post;
+import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.persist.Repositories;
 import java.util.Map;
 import java.util.Optional;
@@ -14,8 +15,8 @@ import java.util.Optional;
 public class LanceRestNamespaceService {
   private final LanceMetadataService metadataService;
 
-  public LanceRestNamespaceService(Repositories repositories) {
-    this.metadataService = new LanceMetadataService(repositories);
+  public LanceRestNamespaceService(Repositories repositories, UnityCatalogAuthorizer authorizer) {
+    this.metadataService = new LanceMetadataService(repositories, authorizer);
   }
 
   @Post("/v1/namespace/{id}/create")

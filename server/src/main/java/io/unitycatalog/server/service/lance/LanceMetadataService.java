@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.model.DataSourceFormat;
@@ -37,13 +38,13 @@ public class LanceMetadataService {
   private final LanceIdentifierCodec identifierCodec;
   private final LanceAuthorizationService authorizationService;
 
-  public LanceMetadataService(Repositories repositories) {
+  public LanceMetadataService(Repositories repositories, UnityCatalogAuthorizer authorizer) {
     this.namespaceRepository = repositories.getLanceNamespaceRepository();
     this.tableRepository = repositories.getLanceTableRepository();
     this.unityTableRepository = repositories.getTableRepository();
     this.metastoreRepository = repositories.getMetastoreRepository();
     this.identifierCodec = new LanceIdentifierCodec();
-    this.authorizationService = new LanceAuthorizationService();
+    this.authorizationService = new LanceAuthorizationService(repositories, authorizer);
   }
 
   public NamespaceView createNamespace(
@@ -67,6 +68,7 @@ public class LanceMetadataService {
             path.get(lastIndex),
             currentOwner(),
             properties);
+    authorizationService.initializeNamespaceAuthorization(namespaceDAO, parentNamespace);
     return toNamespaceView(namespaceDAO, delimiter, properties);
   }
 
@@ -151,6 +153,7 @@ public class LanceMetadataService {
     }
 
     namespaceRepository.deleteNamespace(namespaceDAO.getId());
+    authorizationService.removeNamespaceAuthorization(namespaceDAO);
     return new DropNamespaceResponse(true);
   }
 
@@ -335,6 +338,7 @@ public class LanceMetadataService {
     }
 
     Optional<LanceTableDAO> tableDAO = tableRepository.findTableByAssetId(assetDAO.getId());
+    authorizationService.initializeTableAuthorization(assetDAO, namespaceDAO);
     return toTableView(
         assetDAO,
         tableDAO.orElse(null),
@@ -416,6 +420,7 @@ public class LanceMetadataService {
     }
 
     tableRepository.dropDeclaredTable(assetDAO.getId());
+    authorizationService.removeTableAuthorization(assetDAO);
     return new DropTableResponse(true);
   }
 
@@ -444,6 +449,7 @@ public class LanceMetadataService {
     }
 
     tableRepository.deregisterTable(assetOpt.get().getId());
+    authorizationService.removeTableAuthorization(assetOpt.get());
     return new DeregisterTableResponse(true);
   }
 
