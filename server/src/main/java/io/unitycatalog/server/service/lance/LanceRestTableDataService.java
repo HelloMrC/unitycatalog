@@ -12,8 +12,9 @@ import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.service.lance.backend.LanceExecutionBackend;
-import io.unitycatalog.server.service.lance.backend.LanceExecutionCommand;
+import io.unitycatalog.server.service.lance.backend.LanceExecutionContext;
 import io.unitycatalog.server.service.lance.backend.LanceExecutionResult;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -30,10 +31,12 @@ public class LanceRestTableDataService {
   private static final String REQUEST_ID_HEADER = "x-request-id";
   private static final String IDEMPOTENCY_KEY_HEADER = "idempotency-key";
 
-  private final LanceExecutionBackend backend;
+  private final LanceDataPlaneService dataPlaneService;
 
-  public LanceRestTableDataService(LanceExecutionBackend backend) {
-    this.backend = backend;
+  public LanceRestTableDataService(Repositories repositories, LanceExecutionBackend backend) {
+    this.dataPlaneService =
+        new LanceDataPlaneService(
+            backend, new LanceTableResolver(repositories), new LanceStorageOptionsService());
   }
 
   @Post("/v1/table/{id}/query")
@@ -41,9 +44,10 @@ public class LanceRestTableDataService {
       @Param("id") String id,
       @Param("delimiter") Optional<String> delimiter,
       AggregatedHttpRequest request) {
-    LanceExecutionCommand command =
-        command("query", id, delimiter, queryAttributes(jsonBody(request)), request);
-    return json(backend.query(command), command);
+    LanceExecutionContext context = executionContext(request);
+    return json(
+        dataPlaneService.query(id, delimiter, context, queryAttributes(jsonBody(request))),
+        context);
   }
 
   @Post("/v1/table/{id}/count_rows")
@@ -51,9 +55,8 @@ public class LanceRestTableDataService {
       @Param("id") String id,
       @Param("delimiter") Optional<String> delimiter,
       AggregatedHttpRequest request) {
-    LanceExecutionCommand command =
-        command("count_rows", id, delimiter, safeBody(jsonBody(request)), request);
-    return json(backend.countRows(command), command);
+    LanceExecutionContext context = executionContext(request);
+    return json(dataPlaneService.countRows(id, delimiter, context, safeBody(jsonBody(request))), context);
   }
 
   @Post("/v1/table/{id}/stats")
@@ -61,9 +64,8 @@ public class LanceRestTableDataService {
       @Param("id") String id,
       @Param("delimiter") Optional<String> delimiter,
       AggregatedHttpRequest request) {
-    LanceExecutionCommand command =
-        command("stats", id, delimiter, safeBody(jsonBody(request)), request);
-    return json(backend.stats(command), command);
+    LanceExecutionContext context = executionContext(request);
+    return json(dataPlaneService.stats(id, delimiter, context, safeBody(jsonBody(request))), context);
   }
 
   @Post("/v1/table/{id}/insert")
@@ -71,9 +73,10 @@ public class LanceRestTableDataService {
       @Param("id") String id,
       @Param("delimiter") Optional<String> delimiter,
       AggregatedHttpRequest request) {
-    LanceExecutionCommand command =
-        command("insert", id, delimiter, arrowAttributes(request, Optional.empty()), request);
-    return json(backend.insert(command), command);
+    LanceExecutionContext context = executionContext(request);
+    return json(
+        dataPlaneService.insert(id, delimiter, context, arrowAttributes(request, Optional.empty())),
+        context);
   }
 
   @Post("/v1/table/{id}/merge_insert")
@@ -81,14 +84,14 @@ public class LanceRestTableDataService {
       @Param("id") String id,
       @Param("delimiter") Optional<String> delimiter,
       AggregatedHttpRequest request) {
-    LanceExecutionCommand command =
-        command(
-            "merge_insert",
+    LanceExecutionContext context = executionContext(request);
+    return json(
+        dataPlaneService.mergeInsert(
             id,
             delimiter,
-            arrowAttributes(request, Optional.of("x-lance-merge-options")),
-            request);
-    return json(backend.mergeInsert(command), command);
+            context,
+            arrowAttributes(request, Optional.of("x-lance-merge-options"))),
+        context);
   }
 
   @Post("/v1/table/{id}/update")
@@ -96,9 +99,8 @@ public class LanceRestTableDataService {
       @Param("id") String id,
       @Param("delimiter") Optional<String> delimiter,
       AggregatedHttpRequest request) {
-    LanceExecutionCommand command =
-        command("update", id, delimiter, safeBody(jsonBody(request)), request);
-    return json(backend.update(command), command);
+    LanceExecutionContext context = executionContext(request);
+    return json(dataPlaneService.update(id, delimiter, context, safeBody(jsonBody(request))), context);
   }
 
   @Post("/v1/table/{id}/delete")
@@ -106,9 +108,8 @@ public class LanceRestTableDataService {
       @Param("id") String id,
       @Param("delimiter") Optional<String> delimiter,
       AggregatedHttpRequest request) {
-    LanceExecutionCommand command =
-        command("delete", id, delimiter, safeBody(jsonBody(request)), request);
-    return json(backend.delete(command), command);
+    LanceExecutionContext context = executionContext(request);
+    return json(dataPlaneService.delete(id, delimiter, context, safeBody(jsonBody(request))), context);
   }
 
   @Post("/v1/table/{id}/explain_plan")
@@ -116,9 +117,10 @@ public class LanceRestTableDataService {
       @Param("id") String id,
       @Param("delimiter") Optional<String> delimiter,
       AggregatedHttpRequest request) {
-    LanceExecutionCommand command =
-        command("explain_plan", id, delimiter, planAttributes(jsonBody(request)), request);
-    return json(backend.explainPlan(command), command);
+    LanceExecutionContext context = executionContext(request);
+    return json(
+        dataPlaneService.explainPlan(id, delimiter, context, planAttributes(jsonBody(request))),
+        context);
   }
 
   @Post("/v1/table/{id}/analyze_plan")
@@ -126,9 +128,10 @@ public class LanceRestTableDataService {
       @Param("id") String id,
       @Param("delimiter") Optional<String> delimiter,
       AggregatedHttpRequest request) {
-    LanceExecutionCommand command =
-        command("analyze_plan", id, delimiter, planAttributes(jsonBody(request)), request);
-    return json(backend.analyzePlan(command), command);
+    LanceExecutionContext context = executionContext(request);
+    return json(
+        dataPlaneService.analyzePlan(id, delimiter, context, planAttributes(jsonBody(request))),
+        context);
   }
 
   @Post("/v1/table/{id}/create")
@@ -136,48 +139,31 @@ public class LanceRestTableDataService {
       @Param("id") String id,
       @Param("delimiter") Optional<String> delimiter,
       AggregatedHttpRequest request) {
-    LanceExecutionCommand command =
-        command(
-            "create",
-            id,
-            delimiter,
-            arrowAttributes(request, Optional.of("x-lance-create-options")),
-            request);
-    return json(backend.create(command), command);
+    LanceExecutionContext context = executionContext(request);
+    return json(
+        dataPlaneService.create(
+            id, delimiter, context, arrowAttributes(request, Optional.of("x-lance-create-options"))),
+        context);
   }
 
-  private LanceExecutionCommand command(
-      String operation,
-      String id,
-      Optional<String> delimiter,
-      Map<String, Object> operationAttributes,
-      AggregatedHttpRequest request) {
-    Map<String, Object> attributes = new LinkedHashMap<>(operationAttributes);
-    attributes.put("requestId", requestId(request));
-    String principal = LanceRequestContext.currentPrincipal();
-    if (principal != null && !principal.isBlank()) {
-      attributes.put("principal", principal);
-    }
-    attributes.put("authType", authType(request));
-    Map<String, String> contextHeaders = LanceRequestContext.currentContextHeaders();
-    if (!contextHeaders.isEmpty()) {
-      attributes.put("context", context(contextHeaders));
-    }
-    String idempotencyKey = request.headers().get(IDEMPOTENCY_KEY_HEADER);
-    if (idempotencyKey != null && !idempotencyKey.isBlank()) {
-      attributes.put("idempotencyKeyHash", sha256(idempotencyKey));
-    }
-    return new LanceExecutionCommand(operation, id, delimiter.orElse(null), attributes);
-  }
-
-  private HttpResponse json(LanceExecutionResult result, LanceExecutionCommand command) {
-    Object requestId = command.attributes().get("requestId");
+  private HttpResponse json(LanceExecutionResult result, LanceExecutionContext context) {
     ResponseHeaders headers =
         ResponseHeaders.builder(HttpStatus.OK)
             .contentType(com.linecorp.armeria.common.MediaType.JSON_UTF_8)
-            .add(REQUEST_ID_HEADER, String.valueOf(requestId))
+            .add(REQUEST_ID_HEADER, context.requestId())
             .build();
     return HttpResponse.ofJson(headers, result.payload());
+  }
+
+  private LanceExecutionContext executionContext(AggregatedHttpRequest request) {
+    String idempotencyKey = request.headers().get(IDEMPOTENCY_KEY_HEADER);
+    return new LanceExecutionContext(
+        requestId(request),
+        LanceRequestContext.currentPrincipal(),
+        authType(request),
+        null,
+        context(LanceRequestContext.currentContextHeaders()),
+        idempotencyKey == null || idempotencyKey.isBlank() ? null : sha256(idempotencyKey));
   }
 
   private Map<String, Object> jsonBody(AggregatedHttpRequest request) {

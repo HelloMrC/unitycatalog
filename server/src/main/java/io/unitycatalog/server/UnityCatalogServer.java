@@ -197,7 +197,7 @@ public class UnityCatalogServer {
     LanceExecutionBackend lanceExecutionBackend =
         LanceExecutionBackendFactory.create(unityCatalogServerBuilder.serverProperties);
     LanceRestTableDataService lanceRestTableDataService =
-        new LanceRestTableDataService(lanceExecutionBackend);
+        new LanceRestTableDataService(repositories, lanceExecutionBackend);
     // TODO: combine these into a single service in a follow-up PR
     TemporaryTableCredentialsService temporaryTableCredentialsService =
         new TemporaryTableCredentialsService(storageCredentialVendor, repositories);
