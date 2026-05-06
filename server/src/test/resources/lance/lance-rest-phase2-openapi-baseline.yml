@@ -1,0 +1,106 @@
+openapi: 3.0.0
+info:
+  title: Lance REST API Phase 2 Data Plane Baseline
+  version: phase2-test-baseline
+paths:
+  /v1/table/{id}/query:
+    post:
+      requestBody:
+        content:
+          application/json: {}
+      responses:
+        "200":
+          description: Arrow IPC query response.
+          content:
+            application/vnd.apache.arrow.file: {}
+            application/vnd.apache.arrow.stream: {}
+  /v1/table/{id}/count_rows:
+    post:
+      requestBody:
+        content:
+          application/json: {}
+      responses:
+        "200":
+          description: JSON row count response.
+          content:
+            application/json: {}
+  /v1/table/{id}/stats:
+    post:
+      requestBody:
+        content:
+          application/json: {}
+      responses:
+        "200":
+          description: JSON statistics response.
+          content:
+            application/json: {}
+  /v1/table/{id}/insert:
+    post:
+      requestBody:
+        content:
+          application/vnd.apache.arrow.stream: {}
+      responses:
+        "200":
+          description: JSON write result.
+          content:
+            application/json: {}
+  /v1/table/{id}/merge_insert:
+    post:
+      requestBody:
+        content:
+          application/vnd.apache.arrow.stream: {}
+      responses:
+        "200":
+          description: JSON merge insert result.
+          content:
+            application/json: {}
+  /v1/table/{id}/update:
+    post:
+      requestBody:
+        content:
+          application/json: {}
+      responses:
+        "200":
+          description: JSON update result.
+          content:
+            application/json: {}
+  /v1/table/{id}/delete:
+    post:
+      requestBody:
+        content:
+          application/json: {}
+      responses:
+        "200":
+          description: JSON delete result.
+          content:
+            application/json: {}
+  /v1/table/{id}/explain_plan:
+    post:
+      requestBody:
+        content:
+          application/json: {}
+      responses:
+        "200":
+          description: JSON explain plan string response.
+          content:
+            application/json: {}
+  /v1/table/{id}/analyze_plan:
+    post:
+      requestBody:
+        content:
+          application/json: {}
+      responses:
+        "200":
+          description: JSON analyze plan string response.
+          content:
+            application/json: {}
+  /v1/table/{id}/create:
+    post:
+      requestBody:
+        content:
+          application/vnd.apache.arrow.stream: {}
+      responses:
+        "200":
+          description: JSON create result.
+          content:
+            application/json: {}
