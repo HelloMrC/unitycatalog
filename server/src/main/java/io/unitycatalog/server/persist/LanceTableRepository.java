@@ -290,6 +290,108 @@ public class LanceTableRepository {
     return query.list();
   }
 
+  public void markTableMaterialized(
+      UUID assetId,
+      String storageLocation,
+      String tableUri,
+      String arrowSchemaJson,
+      Long currentVersion,
+      String statsJson,
+      String updatedBy) {
+    TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          LanceAssetDAO assetDAO = requireAsset(session, assetId);
+          LanceTableDAO tableDAO = requireTable(session, assetId);
+          Date now = new Date();
+
+          assetDAO.setState(ACTIVE_STATE);
+          assetDAO.setUpdatedAt(now);
+          assetDAO.setUpdatedBy(updatedBy);
+          tableDAO.setIsOnlyDeclared(false);
+          if (storageLocation != null) {
+            tableDAO.setStorageLocation(storageLocation);
+          }
+          if (tableUri != null) {
+            tableDAO.setTableUri(tableUri);
+          }
+          applyExecutionMetadata(tableDAO, currentVersion, arrowSchemaJson, statsJson);
+          session.merge(assetDAO);
+          session.merge(tableDAO);
+          return null;
+        },
+        "Failed to mark Lance table materialized",
+        false);
+  }
+
+  public void updateTableExecutionMetadata(
+      UUID assetId,
+      Long currentVersion,
+      String arrowSchemaJson,
+      String statsJson,
+      String updatedBy) {
+    TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          LanceAssetDAO assetDAO = requireAsset(session, assetId);
+          LanceTableDAO tableDAO = requireTable(session, assetId);
+          assetDAO.setUpdatedAt(new Date());
+          assetDAO.setUpdatedBy(updatedBy);
+          applyExecutionMetadata(tableDAO, currentVersion, arrowSchemaJson, statsJson);
+          session.merge(assetDAO);
+          session.merge(tableDAO);
+          return null;
+        },
+        "Failed to update Lance table execution metadata",
+        false);
+  }
+
+  public void updateTableStats(UUID assetId, String statsJson, String updatedBy) {
+    TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          LanceAssetDAO assetDAO = requireAsset(session, assetId);
+          LanceTableDAO tableDAO = requireTable(session, assetId);
+          assetDAO.setUpdatedAt(new Date());
+          assetDAO.setUpdatedBy(updatedBy);
+          tableDAO.setStatsJson(statsJson);
+          session.merge(assetDAO);
+          session.merge(tableDAO);
+          return null;
+        },
+        "Failed to update Lance table stats",
+        false);
+  }
+
+  private LanceAssetDAO requireAsset(Session session, UUID assetId) {
+    LanceAssetDAO assetDAO = session.get(LanceAssetDAO.class, assetId);
+    if (assetDAO == null) {
+      throw new BaseException(ErrorCode.NOT_FOUND, "Lance table asset not found: " + assetId);
+    }
+    return assetDAO;
+  }
+
+  private LanceTableDAO requireTable(Session session, UUID assetId) {
+    LanceTableDAO tableDAO = session.get(LanceTableDAO.class, assetId);
+    if (tableDAO == null) {
+      throw new BaseException(ErrorCode.NOT_FOUND, "Lance table details not found: " + assetId);
+    }
+    return tableDAO;
+  }
+
+  private void applyExecutionMetadata(
+      LanceTableDAO tableDAO, Long currentVersion, String arrowSchemaJson, String statsJson) {
+    if (currentVersion != null) {
+      tableDAO.setCurrentVersion(currentVersion);
+    }
+    if (arrowSchemaJson != null) {
+      tableDAO.setArrowSchemaJson(arrowSchemaJson);
+    }
+    if (statsJson != null) {
+      tableDAO.setStatsJson(statsJson);
+    }
+  }
+
   public void dropDeclaredTable(UUID assetId) {
     TransactionManager.executeWithTransaction(
         sessionFactory,

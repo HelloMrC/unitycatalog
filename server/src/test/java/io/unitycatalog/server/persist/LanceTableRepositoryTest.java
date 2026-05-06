@@ -128,4 +128,87 @@ class LanceTableRepositoryTest {
 
     assertThat(exception.getErrorCode()).isEqualTo(ErrorCode.ALREADY_EXISTS);
   }
+
+  @Test
+  void markTableMaterializedActivatesDeclaredTableAndUpdatesMetadata() {
+    LanceAssetDAO asset =
+        tableRepository.declareTable(
+            namespaceId,
+            "declared",
+            "prod/declared",
+            "prod$declared",
+            "file:///tmp/uc-lance/declared.lance",
+            null,
+            null,
+            Map.of(),
+            "phase1-owner");
+
+    tableRepository.markTableMaterialized(
+        asset.getId(),
+        "file:///tmp/uc-lance/materialized.lance",
+        "file:///tmp/uc-lance/materialized.lance",
+        "{\"fields\":[{\"name\":\"id\"}]}",
+        7L,
+        "{\"numRows\":10}",
+        "phase2-writer");
+
+    LanceAssetDAO materialized = tableRepository.findAssetById(asset.getId()).orElseThrow();
+    LanceTableDAO table = tableRepository.findTableByAssetId(asset.getId()).orElseThrow();
+    assertThat(materialized.getState()).isEqualTo("ACTIVE");
+    assertThat(materialized.getUpdatedBy()).isEqualTo("phase2-writer");
+    assertThat(table.getIsOnlyDeclared()).isFalse();
+    assertThat(table.getStorageLocation()).isEqualTo("file:///tmp/uc-lance/materialized.lance");
+    assertThat(table.getCurrentVersion()).isEqualTo(7L);
+    assertThat(table.getArrowSchemaJson()).contains("\"name\":\"id\"");
+    assertThat(table.getStatsJson()).isEqualTo("{\"numRows\":10}");
+  }
+
+  @Test
+  void updateTableExecutionMetadataDoesNotOverwriteSchemaWithNull() {
+    LanceAssetDAO asset =
+        tableRepository.registerTable(
+            namespaceId,
+            "active_metadata",
+            "prod/active_metadata",
+            "prod$active_metadata",
+            "file:///tmp/uc-lance/active-metadata.lance",
+            "{\"fields\":[{\"name\":\"existing\"}]}",
+            null,
+            Map.of(),
+            "phase1-owner");
+
+    tableRepository.updateTableExecutionMetadata(
+        asset.getId(), 9L, null, "{\"numRows\":20}", "phase2-writer");
+
+    LanceAssetDAO updated = tableRepository.findAssetById(asset.getId()).orElseThrow();
+    LanceTableDAO table = tableRepository.findTableByAssetId(asset.getId()).orElseThrow();
+    assertThat(updated.getUpdatedBy()).isEqualTo("phase2-writer");
+    assertThat(table.getCurrentVersion()).isEqualTo(9L);
+    assertThat(table.getArrowSchemaJson()).contains("\"name\":\"existing\"");
+    assertThat(table.getStatsJson()).isEqualTo("{\"numRows\":20}");
+  }
+
+  @Test
+  void updateTableStatsRefreshesStatsCacheOnly() {
+    LanceAssetDAO asset =
+        tableRepository.registerTable(
+            namespaceId,
+            "stats_cache",
+            "prod/stats_cache",
+            "prod$stats_cache",
+            "file:///tmp/uc-lance/stats-cache.lance",
+            "{\"fields\":[]}",
+            null,
+            Map.of(),
+            "phase1-owner");
+
+    tableRepository.updateTableStats(asset.getId(), "{\"numRows\":30}", "phase2-reader");
+
+    LanceAssetDAO updated = tableRepository.findAssetById(asset.getId()).orElseThrow();
+    LanceTableDAO table = tableRepository.findTableByAssetId(asset.getId()).orElseThrow();
+    assertThat(updated.getUpdatedBy()).isEqualTo("phase2-reader");
+    assertThat(table.getStatsJson()).isEqualTo("{\"numRows\":30}");
+    assertThat(table.getCurrentVersion()).isNull();
+    assertThat(table.getArrowSchemaJson()).isEqualTo("{\"fields\":[]}");
+  }
 }
