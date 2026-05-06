@@ -10,12 +10,14 @@ import com.linecorp.armeria.common.ResponseHeaders;
 import com.linecorp.armeria.server.annotation.ExceptionHandler;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Post;
+import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.service.lance.backend.LanceExecutionBackend;
 import io.unitycatalog.server.service.lance.backend.LanceExecutionContext;
 import io.unitycatalog.server.service.lance.backend.LanceExecutionResult;
+import io.unitycatalog.server.utils.ServerProperties;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -33,10 +35,17 @@ public class LanceRestTableDataService {
 
   private final LanceDataPlaneService dataPlaneService;
 
-  public LanceRestTableDataService(Repositories repositories, LanceExecutionBackend backend) {
+  public LanceRestTableDataService(
+      Repositories repositories,
+      LanceExecutionBackend backend,
+      UnityCatalogAuthorizer authorizer,
+      ServerProperties serverProperties) {
     this.dataPlaneService =
         new LanceDataPlaneService(
-            backend, new LanceTableResolver(repositories), new LanceStorageOptionsService());
+            backend,
+            new LanceTableResolver(repositories),
+            new LanceStorageOptionsService(),
+            new LanceDataPlaneAuthorizer(repositories, authorizer, serverProperties));
   }
 
   @Post("/v1/table/{id}/query")
@@ -56,7 +65,8 @@ public class LanceRestTableDataService {
       @Param("delimiter") Optional<String> delimiter,
       AggregatedHttpRequest request) {
     LanceExecutionContext context = executionContext(request);
-    return json(dataPlaneService.countRows(id, delimiter, context, safeBody(jsonBody(request))), context);
+    return json(
+        dataPlaneService.countRows(id, delimiter, context, safeBody(jsonBody(request))), context);
   }
 
   @Post("/v1/table/{id}/stats")
@@ -65,7 +75,8 @@ public class LanceRestTableDataService {
       @Param("delimiter") Optional<String> delimiter,
       AggregatedHttpRequest request) {
     LanceExecutionContext context = executionContext(request);
-    return json(dataPlaneService.stats(id, delimiter, context, safeBody(jsonBody(request))), context);
+    return json(
+        dataPlaneService.stats(id, delimiter, context, safeBody(jsonBody(request))), context);
   }
 
   @Post("/v1/table/{id}/insert")
@@ -87,10 +98,7 @@ public class LanceRestTableDataService {
     LanceExecutionContext context = executionContext(request);
     return json(
         dataPlaneService.mergeInsert(
-            id,
-            delimiter,
-            context,
-            arrowAttributes(request, Optional.of("x-lance-merge-options"))),
+            id, delimiter, context, arrowAttributes(request, Optional.of("x-lance-merge-options"))),
         context);
   }
 
@@ -100,7 +108,8 @@ public class LanceRestTableDataService {
       @Param("delimiter") Optional<String> delimiter,
       AggregatedHttpRequest request) {
     LanceExecutionContext context = executionContext(request);
-    return json(dataPlaneService.update(id, delimiter, context, safeBody(jsonBody(request))), context);
+    return json(
+        dataPlaneService.update(id, delimiter, context, safeBody(jsonBody(request))), context);
   }
 
   @Post("/v1/table/{id}/delete")
@@ -109,7 +118,8 @@ public class LanceRestTableDataService {
       @Param("delimiter") Optional<String> delimiter,
       AggregatedHttpRequest request) {
     LanceExecutionContext context = executionContext(request);
-    return json(dataPlaneService.delete(id, delimiter, context, safeBody(jsonBody(request))), context);
+    return json(
+        dataPlaneService.delete(id, delimiter, context, safeBody(jsonBody(request))), context);
   }
 
   @Post("/v1/table/{id}/explain_plan")
@@ -142,7 +152,10 @@ public class LanceRestTableDataService {
     LanceExecutionContext context = executionContext(request);
     return json(
         dataPlaneService.create(
-            id, delimiter, context, arrowAttributes(request, Optional.of("x-lance-create-options"))),
+            id,
+            delimiter,
+            context,
+            arrowAttributes(request, Optional.of("x-lance-create-options"))),
         context);
   }
 
