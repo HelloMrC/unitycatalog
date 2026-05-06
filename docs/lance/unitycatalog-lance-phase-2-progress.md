@@ -130,6 +130,17 @@
 
 **参考来源：** 设计文档 Section 11.2-11.3，测试设计文档 Section 9.10
 
+### 2.10 Request Validation（W2-3 / W2-4 部分）
+
+| 功能 | Commit | 设计章节 | 说明 |
+|------|--------|----------|------|
+| Content-Type validation | 本次工作 | Section 5.2-5.3 | JSON endpoint 仅接受 JSON，Arrow write endpoint 仅接受 Arrow stream |
+| Request size limits | 本次工作 | Section 8.3, 12.1 | `lance.execution.max-json-request-bytes` 和 `max-arrow-request-bytes` 超限返回 413 |
+| Lance protocol error shape | 本次工作 | Section 12.1 | 为 413/415 返回稳定 Lance error shape，避免扩散到全局 UC ErrorCode |
+| 入口校验测试 | 本次工作 | Section 9.2, 9.5 | 新增 enabled REST tests 覆盖 415/413 且 backend 不被调用 |
+
+**参考来源：** 设计文档 Section 5.2-5.3, 8.3, 12.1，测试设计文档 Section 9.2, 9.5
+
 ---
 
 ## 3. 待完成功能
@@ -139,10 +150,8 @@
 | 功能 | 设计章节 | 测试阻塞 | 说明 |
 |------|----------|----------|------|
 | **Authorization test enablement** | Section 11.2-11.3 | P2-AUTH-005-008 | LanceDataPlaneAuthorizer 已实现，剩余拆分/启用 disabled skeleton 中的完整 grant 路径用例 |
-| **Arrow IPC Request Reader** | Section 9.2 | P2-ARROW-001-006 | Content-Type 验证、size limit、stream handling、schema peek |
+| **Arrow IPC Request Reader** | Section 9.2 | P2-ARROW-001-006 | Content-Type 和 size limit 已完成，剩余 stream handling、schema peek |
 | **Arrow IPC Response Writer** | Section 4.1, 9.1 | P2-DATA-001, P2-ARROW-007-008 | Query 返回 Arrow IPC file/stream，不是 JSON |
-| **Content-Type Validation** | Section 5.3 | P2-CONTRACT-004, P2-ARROW-004 | 415 拒绝错误 media type |
-| **Request Size Limits** | Section 8.3 | P2-REQ-007, P2-ARROW-005 | max-arrow-request-bytes, max-json-request-bytes 配置和校验 |
 | **LanceTableRepository Methods** | Section 10.3 | P2-META-002-005, P2-DATA-WRITE | markTableMaterialized, updateTableExecutionMetadata, updateTableStats |
 
 ### 3.2 中优先级（影响部分测试）
@@ -194,8 +203,8 @@
 | W2-0: 准备与收口 | 15.1 | ✅ 完成 | 74fe4a4 |
 | W2-1: Backend SPI | 15.2 | ✅ 完成 | 74fe4a4, ec3e6e0, 1fbc0ba |
 | W2-2: Resolver + Storage | 15.3 | ⚠️ 部分 | ec4cee3（Resolver 完成，Storage 缺 credential vending） |
-| W2-3: Data endpoint service | 15.4 | ⚠️ 部分 | ec4cee3 + 本次工作（架构/Authorization 完成，缺 Arrow/Metadata update） |
-| W2-4: Arrow IPC | 15.5 | ❌ 未开始 | - |
+| W2-3: Data endpoint service | 15.4 | ⚠️ 部分 | ec4cee3 + 本次工作（架构/Authorization/入口校验完成，缺 Arrow response/Metadata update） |
+| W2-4: Arrow IPC | 15.5 | ⚠️ 部分 | 本次工作（media type/size limit 完成，缺 reader/writer） |
 | W2-5: Worker HTTP backend | 15.6 | ❌ 未开始 | - |
 | W2-6: Metadata 状态推进 | 15.7 | ❌ 未开始 | - |
 | W2-7: 授权、审计、观测 | 15.8 | ⚠️ 部分 | 本次工作（授权完成，缺审计/观测） |
@@ -216,6 +225,7 @@
 | LancePhase2AuthGovernanceRestTest | 17 | @Disabled | Audit/Metrics，完整 grant 路径拆分后可部分启用 |
 | LancePhase2DataPlaneAuthorizationRestTest | 3 | Enabled | owner read/write allow + non-owner write deny |
 | LanceDataPlaneAuthorizerTest | 3 | Enabled | READ_DATA/WRITE_DATA 兼容权限映射 |
+| LancePhase2RequestValidationRestTest | 4 | Enabled | Content-Type 415 + JSON/Arrow size 413 |
 | LancePhase2ErrorAndRegressionRestTest | ~28 | @Disabled | Error handling, regression |
 | LancePhase2WorkerAndResilienceRestTest | 16 | @Disabled | WorkerHttpLanceExecutionBackend |
 | LancePhase2EcosystemSmokeTest | ~40 | @Disabled | Real worker + connectors |
@@ -252,22 +262,21 @@
 
 ### 8.1 立即可做（不依赖外部环境）
 
-1. **Content-Type Validation** - 415 拒绝逻辑
-2. **Request Size Limits** - 配置读取和校验
-3. **LanceTableRepository methods** - markTableMaterialized 等
-4. **Deadline 填充** - 从配置读取
-5. **Authorization skeleton 拆分启用** - 将 P2-AUTH-005-008 从大 disabled 类中拆出
+1. **LanceTableRepository methods** - markTableMaterialized 等
+2. **Deadline 填充** - 从配置读取
+3. **Authorization skeleton 拆分启用** - 将 P2-AUTH-005-008 从大 disabled 类中拆出
+4. **Arrow IPC request reader** - stream handling、schema peek
+5. **Arrow IPC response writer** - query 返回 Arrow IPC file/stream
 
 ### 8.2 需要测试 fixture
 
-6. **Arrow IPC handling** - LanceArrowRequestReader/ResponseWriter
-7. **Runtime credential vending** - StorageCredentialVendor mock
-8. **Audit/Metrics** - 测试观察点
+6. **Runtime credential vending** - StorageCredentialVendor mock
+7. **Audit/Metrics** - 测试观察点
 
 ### 8.3 需要 real worker
 
-9. **WorkerHttpLanceExecutionBackend** - HTTP 调用
-10. **Ecosystem smoke** - Python/Spark/Ray
+8. **WorkerHttpLanceExecutionBackend** - HTTP 调用
+9. **Ecosystem smoke** - Python/Spark/Ray
 
 ---
 
@@ -285,6 +294,7 @@
 | data endpoint 认证、授权、审计可验证 | ⚠️ 认证/授权就绪，审计缺失 |
 | runtime storage credentials 不落库、不进日志 | ⚠️ 模板过滤就绪，credential vending 缺失 |
 | backend 未配置、backend 超时、worker 错误有稳定错误语义 | ⚠️ disabled backend 就绪，timeout/error 缺失 |
+| data endpoint media type 和 request size 错误稳定 | ✅ 415/413 Lance error shape 就绪 |
 | Phase 1 metadata endpoint 回归通过 | ✅ Phase 1 tests passing |
 | UC 原有路由回归通过 | ✅ Phase 1 regression tests passing |
 | Spark/Ray/Python 至少完成 P1 smoke | ❌ Nightly 层，需要 real worker |

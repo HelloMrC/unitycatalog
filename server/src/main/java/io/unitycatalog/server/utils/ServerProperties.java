@@ -206,6 +206,10 @@ public class ServerProperties {
     AWS_SESSION_TOKEN("aws.sessionToken"),
     AWS_REGION("aws.region"),
     LANCE_EXECUTION_BACKEND_CLASS("lance.execution.backend.class"),
+    LANCE_EXECUTION_MAX_ARROW_REQUEST_BYTES(
+        "lance.execution.max-arrow-request-bytes", "1073741824", POSITIVE_INTEGER_VALIDATOR),
+    LANCE_EXECUTION_MAX_JSON_REQUEST_BYTES(
+        "lance.execution.max-json-request-bytes", "1048576", POSITIVE_INTEGER_VALIDATOR),
     INCLUDE_STACK_TRACE_IN_ERROR("server.include-stacktrace-in-error", "false", BOOLEAN_VALIDATOR);
     // The is not an exhaustive list. Some property keys like s3.bucketPath.0 with a numbering
     // suffix is not included. They are only accessed internally from functions like
@@ -439,6 +443,14 @@ public class ServerProperties {
 
   public boolean isIncludeStackTraceInError() {
     return isTrueOrEnable(get(Property.INCLUDE_STACK_TRACE_IN_ERROR));
+  }
+
+  public int getLanceExecutionMaxArrowRequestBytes() {
+    return Integer.parseInt(get(Property.LANCE_EXECUTION_MAX_ARROW_REQUEST_BYTES));
+  }
+
+  public int getLanceExecutionMaxJsonRequestBytes() {
+    return Integer.parseInt(get(Property.LANCE_EXECUTION_MAX_JSON_REQUEST_BYTES));
   }
 
   /**

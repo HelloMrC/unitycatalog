@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linecorp.armeria.common.AggregatedHttpRequest;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
+import com.linecorp.armeria.common.MediaType;
 import com.linecorp.armeria.common.ResponseHeaders;
 import com.linecorp.armeria.server.annotation.ExceptionHandler;
 import com.linecorp.armeria.server.annotation.Param;
@@ -30,16 +31,20 @@ import java.util.UUID;
 public class LanceRestTableDataService {
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
   private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
+  private static final MediaType ARROW_STREAM =
+      MediaType.parse("application/vnd.apache.arrow.stream");
   private static final String REQUEST_ID_HEADER = "x-request-id";
   private static final String IDEMPOTENCY_KEY_HEADER = "idempotency-key";
 
   private final LanceDataPlaneService dataPlaneService;
+  private final ServerProperties serverProperties;
 
   public LanceRestTableDataService(
       Repositories repositories,
       LanceExecutionBackend backend,
       UnityCatalogAuthorizer authorizer,
       ServerProperties serverProperties) {
+    this.serverProperties = serverProperties;
     this.dataPlaneService =
         new LanceDataPlaneService(
             backend,
@@ -53,6 +58,7 @@ public class LanceRestTableDataService {
       @Param("id") String id,
       @Param("delimiter") Optional<String> delimiter,
       AggregatedHttpRequest request) {
+    validateJsonRequest(request);
     LanceExecutionContext context = executionContext(request);
     return json(
         dataPlaneService.query(id, delimiter, context, queryAttributes(jsonBody(request))),
@@ -64,6 +70,7 @@ public class LanceRestTableDataService {
       @Param("id") String id,
       @Param("delimiter") Optional<String> delimiter,
       AggregatedHttpRequest request) {
+    validateJsonRequest(request);
     LanceExecutionContext context = executionContext(request);
     return json(
         dataPlaneService.countRows(id, delimiter, context, safeBody(jsonBody(request))), context);
@@ -74,6 +81,7 @@ public class LanceRestTableDataService {
       @Param("id") String id,
       @Param("delimiter") Optional<String> delimiter,
       AggregatedHttpRequest request) {
+    validateJsonRequest(request);
     LanceExecutionContext context = executionContext(request);
     return json(
         dataPlaneService.stats(id, delimiter, context, safeBody(jsonBody(request))), context);
@@ -84,6 +92,7 @@ public class LanceRestTableDataService {
       @Param("id") String id,
       @Param("delimiter") Optional<String> delimiter,
       AggregatedHttpRequest request) {
+    validateArrowRequest(request);
     LanceExecutionContext context = executionContext(request);
     return json(
         dataPlaneService.insert(id, delimiter, context, arrowAttributes(request, Optional.empty())),
@@ -95,6 +104,7 @@ public class LanceRestTableDataService {
       @Param("id") String id,
       @Param("delimiter") Optional<String> delimiter,
       AggregatedHttpRequest request) {
+    validateArrowRequest(request);
     LanceExecutionContext context = executionContext(request);
     return json(
         dataPlaneService.mergeInsert(
@@ -107,6 +117,7 @@ public class LanceRestTableDataService {
       @Param("id") String id,
       @Param("delimiter") Optional<String> delimiter,
       AggregatedHttpRequest request) {
+    validateJsonRequest(request);
     LanceExecutionContext context = executionContext(request);
     return json(
         dataPlaneService.update(id, delimiter, context, safeBody(jsonBody(request))), context);
@@ -117,6 +128,7 @@ public class LanceRestTableDataService {
       @Param("id") String id,
       @Param("delimiter") Optional<String> delimiter,
       AggregatedHttpRequest request) {
+    validateJsonRequest(request);
     LanceExecutionContext context = executionContext(request);
     return json(
         dataPlaneService.delete(id, delimiter, context, safeBody(jsonBody(request))), context);
@@ -127,6 +139,7 @@ public class LanceRestTableDataService {
       @Param("id") String id,
       @Param("delimiter") Optional<String> delimiter,
       AggregatedHttpRequest request) {
+    validateJsonRequest(request);
     LanceExecutionContext context = executionContext(request);
     return json(
         dataPlaneService.explainPlan(id, delimiter, context, planAttributes(jsonBody(request))),
@@ -138,6 +151,7 @@ public class LanceRestTableDataService {
       @Param("id") String id,
       @Param("delimiter") Optional<String> delimiter,
       AggregatedHttpRequest request) {
+    validateJsonRequest(request);
     LanceExecutionContext context = executionContext(request);
     return json(
         dataPlaneService.analyzePlan(id, delimiter, context, planAttributes(jsonBody(request))),
@@ -149,6 +163,7 @@ public class LanceRestTableDataService {
       @Param("id") String id,
       @Param("delimiter") Optional<String> delimiter,
       AggregatedHttpRequest request) {
+    validateArrowRequest(request);
     LanceExecutionContext context = executionContext(request);
     return json(
         dataPlaneService.create(
@@ -162,10 +177,49 @@ public class LanceRestTableDataService {
   private HttpResponse json(LanceExecutionResult result, LanceExecutionContext context) {
     ResponseHeaders headers =
         ResponseHeaders.builder(HttpStatus.OK)
-            .contentType(com.linecorp.armeria.common.MediaType.JSON_UTF_8)
+            .contentType(MediaType.JSON_UTF_8)
             .add(REQUEST_ID_HEADER, context.requestId())
             .build();
     return HttpResponse.ofJson(headers, result.payload());
+  }
+
+  private void validateJsonRequest(AggregatedHttpRequest request) {
+    MediaType contentType = request.contentType();
+    if (contentType == null || !contentType.isJson()) {
+      throw unsupportedMediaType("application/json", contentType);
+    }
+    validateBodySize(
+        "JSON",
+        request.content().length(),
+        serverProperties.getLanceExecutionMaxJsonRequestBytes());
+  }
+
+  private void validateArrowRequest(AggregatedHttpRequest request) {
+    MediaType contentType = request.contentType();
+    if (contentType == null || !ARROW_STREAM.equals(contentType.withoutParameters())) {
+      throw unsupportedMediaType(ARROW_STREAM.toString(), contentType);
+    }
+    validateBodySize(
+        "Arrow",
+        request.content().length(),
+        serverProperties.getLanceExecutionMaxArrowRequestBytes());
+  }
+
+  private void validateBodySize(String bodyType, int actualBytes, int maxBytes) {
+    if (actualBytes > maxBytes) {
+      throw new LanceProtocolException(
+          HttpStatus.REQUEST_ENTITY_TOO_LARGE,
+          "request_entity_too_large",
+          bodyType + " request body exceeds " + maxBytes + " bytes.");
+    }
+  }
+
+  private LanceProtocolException unsupportedMediaType(String expected, MediaType actual) {
+    String actualValue = actual == null ? "missing" : actual.toString();
+    return new LanceProtocolException(
+        HttpStatus.UNSUPPORTED_MEDIA_TYPE,
+        "unsupported_media_type",
+        "Expected Content-Type " + expected + " but received " + actualValue + ".");
   }
 
   private LanceExecutionContext executionContext(AggregatedHttpRequest request) {
