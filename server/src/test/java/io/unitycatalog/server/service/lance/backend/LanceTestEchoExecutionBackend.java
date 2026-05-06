@@ -66,7 +66,7 @@ public class LanceTestEchoExecutionBackend implements LanceExecutionBackend {
   private Map<String, Object> commandPayload(LanceExecutionCommand command) {
     Map<String, Object> payload = new LinkedHashMap<>();
     payload.put("operation", command.operation());
-    payload.put("context", command.context());
+    payload.put("context", command.context().lanceContext());
     payload.put("table", command.table());
     payload.put("storage", command.storage());
     payload.put("requestId", command.context().requestId());

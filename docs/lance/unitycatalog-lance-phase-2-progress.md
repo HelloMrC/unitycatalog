@@ -119,6 +119,17 @@
 
 **参考来源：** 测试设计文档 Section 9
 
+### 2.9 Data Plane Authorization（W2-7 部分）
+
+| 功能 | Commit | 设计章节 | 说明 |
+|------|--------|----------|------|
+| LanceDataPlaneAuthorizer | 本次工作 | Section 11.2-11.3 | 在 data plane service 内检查 READ_DATA/WRITE_DATA 边界 |
+| 兼容权限映射 | 本次工作 | Section 11.2 | READ_DATA → SELECT/READ_METADATA，WRITE_DATA → MODIFY |
+| ServerProperties 注入 | 本次工作 | Section 6.2 | LanceRestTableDataService 接收 authorizer 和 serverProperties |
+| 授权测试 | 本次工作 | Section 9.10 | 新增 authorizer unit test + REST owner allow/deny 集成测试 |
+
+**参考来源：** 设计文档 Section 11.2-11.3，测试设计文档 Section 9.10
+
 ---
 
 ## 3. 待完成功能
@@ -127,7 +138,7 @@
 
 | 功能 | 设计章节 | 测试阻塞 | 说明 |
 |------|----------|----------|------|
-| **Authorization** | Section 11.2-11.3 | P2-AUTH-005-008 | READ_DATA/WRITE_DATA 权限检查，需 LanceDataPlaneAuthorizer |
+| **Authorization test enablement** | Section 11.2-11.3 | P2-AUTH-005-008 | LanceDataPlaneAuthorizer 已实现，剩余拆分/启用 disabled skeleton 中的完整 grant 路径用例 |
 | **Arrow IPC Request Reader** | Section 9.2 | P2-ARROW-001-006 | Content-Type 验证、size limit、stream handling、schema peek |
 | **Arrow IPC Response Writer** | Section 4.1, 9.1 | P2-DATA-001, P2-ARROW-007-008 | Query 返回 Arrow IPC file/stream，不是 JSON |
 | **Content-Type Validation** | Section 5.3 | P2-CONTRACT-004, P2-ARROW-004 | 415 拒绝错误 media type |
@@ -140,7 +151,6 @@
 |------|----------|----------|------|
 | **Runtime Credential Vending** | Section 6.5 | P2-STORAGE-002-003 | UC StorageCredentialVendor 集成，生成临时凭证 |
 | **Deadline/Timeout** | Section 8.3 | P2-WORKER-006 | deadlineMs 从配置或 header 填充 |
-| **ServerProperties 传入** | Section 6.2 | 影响配置读取 | LanceRestTableDataService 需要 serverProperties 参数 |
 | **Audit Events** | Section 12.3 | P2-AUTH-011-013 | lance.data.* audit events |
 | **Metrics** | Section 12.4 | P2-AUTH-014 | lance_data_* metrics |
 | **Backend Committed Failure** | Section 10.4 | P2-ERROR-014 | backend_committed=true 错误标记 |
@@ -184,11 +194,11 @@
 | W2-0: 准备与收口 | 15.1 | ✅ 完成 | 74fe4a4 |
 | W2-1: Backend SPI | 15.2 | ✅ 完成 | 74fe4a4, ec3e6e0, 1fbc0ba |
 | W2-2: Resolver + Storage | 15.3 | ⚠️ 部分 | ec4cee3（Resolver 完成，Storage 缺 credential vending） |
-| W2-3: Data endpoint service | 15.4 | ⚠️ 部分 | ec4cee3（架构完成，缺 Arrow/Authorization/Metadata update） |
+| W2-3: Data endpoint service | 15.4 | ⚠️ 部分 | ec4cee3 + 本次工作（架构/Authorization 完成，缺 Arrow/Metadata update） |
 | W2-4: Arrow IPC | 15.5 | ❌ 未开始 | - |
 | W2-5: Worker HTTP backend | 15.6 | ❌ 未开始 | - |
 | W2-6: Metadata 状态推进 | 15.7 | ❌ 未开始 | - |
-| W2-7: 授权、审计、观测 | 15.8 | ❌ 未开始 | - |
+| W2-7: 授权、审计、观测 | 15.8 | ⚠️ 部分 | 本次工作（授权完成，缺审计/观测） |
 | W2-8: Connector 回归 | 15.9 | ❌ 未开始 | - |
 
 ---
@@ -203,7 +213,9 @@
 | LancePhase2DataReadRestTest | 13 | @Disabled | Query Arrow response |
 | LancePhase2DataWriteRestTest | 11 | @Disabled | LanceTableRepository methods |
 | LancePhase2MetadataAndStorageRestTest | 18 | @Disabled | Repository methods, credential vending |
-| LancePhase2AuthGovernanceRestTest | 17 | @Disabled | Authorization, audit |
+| LancePhase2AuthGovernanceRestTest | 17 | @Disabled | Audit/Metrics，完整 grant 路径拆分后可部分启用 |
+| LancePhase2DataPlaneAuthorizationRestTest | 3 | Enabled | owner read/write allow + non-owner write deny |
+| LanceDataPlaneAuthorizerTest | 3 | Enabled | READ_DATA/WRITE_DATA 兼容权限映射 |
 | LancePhase2ErrorAndRegressionRestTest | ~28 | @Disabled | Error handling, regression |
 | LancePhase2WorkerAndResilienceRestTest | 16 | @Disabled | WorkerHttpLanceExecutionBackend |
 | LancePhase2EcosystemSmokeTest | ~40 | @Disabled | Real worker + connectors |
@@ -240,11 +252,11 @@
 
 ### 8.1 立即可做（不依赖外部环境）
 
-1. **Authorization 集成** - LanceDataPlaneAuthorizer + READ_DATA/WRITE_DATA 权限
-2. **Content-Type Validation** - 415 拒绝逻辑
-3. **Request Size Limits** - 配置读取和校验
-4. **LanceTableRepository methods** - markTableMaterialized 等
-5. **Deadline 填充** - 从配置读取
+1. **Content-Type Validation** - 415 拒绝逻辑
+2. **Request Size Limits** - 配置读取和校验
+3. **LanceTableRepository methods** - markTableMaterialized 等
+4. **Deadline 填充** - 从配置读取
+5. **Authorization skeleton 拆分启用** - 将 P2-AUTH-005-008 从大 disabled 类中拆出
 
 ### 8.2 需要测试 fixture
 
@@ -270,7 +282,7 @@
 | insert/merge/update/delete 通过真实 worker 执行 | ❌ 无 real worker |
 | declared-only table 可首次物理化 | ⚠️ 结构就绪，缺 repository 方法 |
 | stats/count 和 query/DML 结果一致 | ❌ 无 real worker |
-| data endpoint 认证、授权、审计可验证 | ⚠️ 认证就绪，授权缺失 |
+| data endpoint 认证、授权、审计可验证 | ⚠️ 认证/授权就绪，审计缺失 |
 | runtime storage credentials 不落库、不进日志 | ⚠️ 模板过滤就绪，credential vending 缺失 |
 | backend 未配置、backend 超时、worker 错误有稳定错误语义 | ⚠️ disabled backend 就绪，timeout/error 缺失 |
 | Phase 1 metadata endpoint 回归通过 | ✅ Phase 1 tests passing |
