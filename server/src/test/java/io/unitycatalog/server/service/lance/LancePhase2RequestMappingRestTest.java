@@ -44,6 +44,8 @@ class LancePhase2RequestMappingRestTest extends BaseLancePhase1RestTest {
 
     JsonNode command = command(response);
     assertThat(command.path("tableId").asText()).isEqualTo(TABLE_ID);
+    assertThat(command.path("tableUri").asText()).isEqualTo(TABLE_LOCATION);
+    assertThat(command.path("table").path("tableUri").asText()).isEqualTo(TABLE_LOCATION);
     assertThat(command.path("predicate").asText()).isEqualTo("id > 0");
     assertThat(command.path("version").asInt()).isEqualTo(2);
     assertThat(command.toString()).doesNotContain("spoofed", "evil@example.com");

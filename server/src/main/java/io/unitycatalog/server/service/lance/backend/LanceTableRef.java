@@ -8,6 +8,7 @@ public record LanceTableRef(
     String tableName,
     String pathKey,
     String storageLocation,
+    String tableUri,
     Long currentVersion,
     boolean declaredOnly,
     boolean legacyBridge) {

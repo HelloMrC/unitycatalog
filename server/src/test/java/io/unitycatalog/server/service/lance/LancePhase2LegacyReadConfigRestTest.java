@@ -32,6 +32,8 @@ class LancePhase2LegacyReadConfigRestTest extends BaseLancePhase1RestTest {
     assertSuccess(response);
     JsonNode command = json(response).path("command");
     assertThat(command.path("tableId").asText()).isEqualTo(LEGACY_TABLE_FULL_NAME);
+    assertThat(command.path("tableUri").asText()).isNotBlank();
+    assertThat(command.path("table").path("tableUri").asText()).isNotBlank();
     assertThat(command.path("legacyBridge").asBoolean()).isTrue();
     assertThat(command.path("materializeDeclaredTable").asBoolean()).isFalse();
   }

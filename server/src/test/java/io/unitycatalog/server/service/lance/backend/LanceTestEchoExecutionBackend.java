@@ -75,6 +75,7 @@ public class LanceTestEchoExecutionBackend implements LanceExecutionBackend {
     payload.put("idempotencyKeyHash", command.context().idempotencyKeyHash());
     payload.put("tableId", command.table().id());
     payload.put("pathKey", command.table().pathKey());
+    payload.put("tableUri", command.table().tableUri());
     payload.put("legacyBridge", command.table().legacyBridge());
     payload.putAll(command.attributes());
     return payload;

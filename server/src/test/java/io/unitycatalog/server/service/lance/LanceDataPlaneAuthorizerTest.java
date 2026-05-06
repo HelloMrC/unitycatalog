@@ -115,6 +115,7 @@ class LanceDataPlaneAuthorizerTest {
             "embeddings",
             "prod/team_a/embeddings",
             "file:///tmp/uc-lance/embeddings.lance",
+            "file:///tmp/uc-lance/embeddings.lance",
             null,
             false,
             false);

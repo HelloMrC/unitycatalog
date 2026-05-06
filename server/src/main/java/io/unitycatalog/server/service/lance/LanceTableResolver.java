@@ -60,6 +60,7 @@ class LanceTableResolver {
             identifierCodec.toExternalIdentifier(tablePathKey, delimiter),
             tablePathKey,
             tableDAO.getStorageLocation(),
+            tableDAO.getTableUri(),
             tableDAO.getCurrentVersion(),
             declaredOnly,
             false),
@@ -76,6 +77,7 @@ class LanceTableResolver {
             identifierCodec.toExternalIdentifier(tablePathKey, delimiter),
             tablePathKey,
             tableInfo.getStorageLocation(),
+            tableInfo.getStorageLocation(),
             null,
             false,
             true),
@@ -89,6 +91,7 @@ class LanceTableResolver {
       String externalId,
       String pathKey,
       String storageLocation,
+      String tableUri,
       Long currentVersion,
       boolean declaredOnly,
       boolean legacyBridge) {
@@ -98,6 +101,7 @@ class LanceTableResolver {
         path.get(path.size() - 1),
         pathKey,
         storageLocation,
+        tableUri,
         currentVersion,
         declaredOnly,
         legacyBridge);

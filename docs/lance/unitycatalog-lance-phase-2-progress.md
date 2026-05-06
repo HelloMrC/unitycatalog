@@ -65,7 +65,7 @@
 | 功能 | Commit | 设计章节 | 说明 |
 |------|--------|----------|------|
 | LanceExecutionContext | ec4cee3 | Section 7.3 | requestId, principal, authType, deadlineMs, lanceContext, idempotencyKeyHash |
-| LanceTableRef | ec4cee3 | Section 7.3 | id, namespacePath, tableName, pathKey, storageLocation, currentVersion, declaredOnly, legacyBridge |
+| LanceTableRef | ec4cee3 + 本次小步 | Section 7.3 | id, namespacePath, tableName, pathKey, storageLocation, tableUri, currentVersion, declaredOnly, legacyBridge |
 | LanceStorageBinding | ec4cee3 | Section 7.3 | uri, storageOptions |
 | LanceExecutionCommand 重构 | ec4cee3 | Section 7.4 | operation, context, table, storage, attributes |
 
@@ -164,6 +164,16 @@
 
 **参考来源：** 设计文档 Section 6.3, 8.3，测试设计文档 Section 9.4
 
+### 2.13 LanceTableRef tableUri 补齐（W2-2 设计一致性）
+
+| 功能 | Commit | 设计章节 | 说明 |
+|------|--------|----------|------|
+| Native tableUri 透传 | 本次小步 | Section 7.3 | `LanceTableResolver` 从 `LanceTableDAO.tableUri` 填充 `LanceTableRef.tableUri` |
+| Legacy tableUri 兼容 | 本次小步 | Section 7.3 | legacy bridge 使用 UC table storage location 作为兼容 tableUri |
+| Command echo coverage | 本次小步 | Section 9.3-9.4 | enabled REST tests 验证 command table 中包含 tableUri |
+
+**参考来源：** 设计文档 Section 7.3，测试设计文档 Section 9.3-9.4
+
 ---
 
 ## 3. 待完成功能
@@ -191,7 +201,6 @@
 | 功能 | 设计章节 | 说明 |
 |------|----------|------|
 | LanceStorageBinding 补齐 | Section 6.5 | 添加 storageOptionsTemplate, vendCredentials, expiresAtMillis |
-| LanceTableRef 补齐 | Section 7.3 | 添加 tableUri 字段 |
 | Version 防倒退 | Section 13.1 | backend version < current_version 时警告 |
 | Reconcile API | Section 10.4 | Admin reconcile endpoint |
 
@@ -223,7 +232,7 @@
 |------|----------|------|--------|
 | W2-0: 准备与收口 | 15.1 | ✅ 完成 | 74fe4a4 |
 | W2-1: Backend SPI | 15.2 | ✅ 完成 | 74fe4a4, ec3e6e0, 1fbc0ba |
-| W2-2: Resolver + Storage | 15.3 | ⚠️ 部分 | ec4cee3（Resolver 完成，Storage 缺 credential vending） |
+| W2-2: Resolver + Storage | 15.3 | ⚠️ 部分 | ec4cee3 + 本次小步（Resolver/TableRef tableUri 完成，Storage 缺 credential vending） |
 | W2-3: Data endpoint service | 15.4 | ⚠️ 部分 | ec4cee3 + 本次工作（架构/Authorization/入口校验/metadata success path/legacy read 配置完成，缺 Arrow response） |
 | W2-4: Arrow IPC | 15.5 | ⚠️ 部分 | 本次工作（media type/size limit 完成，缺 reader/writer） |
 | W2-5: Worker HTTP backend | 15.6 | ❌ 未开始 | - |
