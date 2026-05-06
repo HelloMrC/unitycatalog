@@ -68,6 +68,23 @@ class LancePhase2RequestMappingRestTest extends BaseLancePhase1RestTest {
   }
 
   @Test
+  @DisplayName("Phase 2 legacy read cannot be enabled by request header")
+  void legacyReadCannotBeEnabledByRequestHeader() throws Exception {
+    createUcCatalogAndSchema();
+    createLegacyLanceTable();
+
+    AggregatedHttpResponse response =
+        postJson(
+            "/v1/table/" + LEGACY_TABLE_FULL_NAME + "/count_rows?delimiter=.",
+            "{}",
+            Map.of("x-lance-legacy-read-enabled", "true"));
+
+    assertLanceErrorShape(response, 501);
+    assertThat(response.contentUtf8()).contains("disabled by default");
+    assertThat(response.contentUtf8()).doesNotContain("command");
+  }
+
+  @Test
   @DisplayName("Phase 2 Arrow requests expose Arrow input metadata and hashed idempotency keys")
   void arrowRequestsExposeInputMetadataAndHashedIdempotencyKeys() throws Exception {
     createActiveTableFixture();

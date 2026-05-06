@@ -51,7 +51,8 @@ public class LanceRestTableDataService {
             new LanceTableResolver(repositories),
             new LanceStorageOptionsService(),
             new LanceDataPlaneAuthorizer(repositories, authorizer, serverProperties),
-            new LanceDataPlaneMetadataUpdater(repositories.getLanceTableRepository()));
+            new LanceDataPlaneMetadataUpdater(repositories.getLanceTableRepository()),
+            serverProperties.isLanceExecutionLegacyReadEnabled());
   }
 
   @Post("/v1/table/{id}/query")

@@ -20,18 +20,21 @@ class LanceDataPlaneService {
   private final LanceStorageOptionsService storageOptionsService;
   private final LanceDataPlaneAuthorizer authorizer;
   private final LanceDataPlaneMetadataUpdater metadataUpdater;
+  private final boolean legacyReadEnabled;
 
   LanceDataPlaneService(
       LanceExecutionBackend backend,
       LanceTableResolver tableResolver,
       LanceStorageOptionsService storageOptionsService,
       LanceDataPlaneAuthorizer authorizer,
-      LanceDataPlaneMetadataUpdater metadataUpdater) {
+      LanceDataPlaneMetadataUpdater metadataUpdater,
+      boolean legacyReadEnabled) {
     this.backend = backend;
     this.tableResolver = tableResolver;
     this.storageOptionsService = storageOptionsService;
     this.authorizer = authorizer;
     this.metadataUpdater = metadataUpdater;
+    this.legacyReadEnabled = legacyReadEnabled;
   }
 
   LanceExecutionResult query(
@@ -174,7 +177,7 @@ class LanceDataPlaneService {
     ResolvedLanceTable table = tableResolver.resolve(id, delimiter.orElse(null));
     LanceDataPlaneAuthorizer.AuthorizationDecision authorizationDecision =
         authorize(authorizationScope, table);
-    validateState(operation, table, context, writeOperation);
+    validateState(operation, table, writeOperation);
     LanceStorageBinding storage = storageOptionsService.bindStorage(table);
 
     Map<String, Object> commandAttributes = new LinkedHashMap<>(attributes);
@@ -204,7 +207,6 @@ class LanceDataPlaneService {
   private void validateState(
       String operation,
       ResolvedLanceTable table,
-      LanceExecutionContext context,
       boolean writeOperation) {
     if (table.legacyBridge()) {
       if (writeOperation) {
@@ -212,7 +214,7 @@ class LanceDataPlaneService {
             ErrorCode.UNIMPLEMENTED,
             "Legacy bridge Lance table writes require migration before data operations.");
       }
-      if (!legacyReadEnabled(context)) {
+      if (!legacyReadEnabled) {
         throw new BaseException(
             ErrorCode.UNIMPLEMENTED,
             "Legacy bridge Lance table reads are disabled by default for data operations.");
@@ -225,14 +227,6 @@ class LanceDataPlaneService {
           ErrorCode.ABORTED,
           "Declared Lance table must be materialized before " + operation + " can run.");
     }
-  }
-
-  private boolean legacyReadEnabled(LanceExecutionContext context) {
-    return context.lanceContext().entrySet().stream()
-        .anyMatch(
-            entry ->
-                "legacyReadEnabled".equals(entry.getKey())
-                    && "true".equalsIgnoreCase(entry.getValue()));
   }
 
   private enum AuthorizationScope {

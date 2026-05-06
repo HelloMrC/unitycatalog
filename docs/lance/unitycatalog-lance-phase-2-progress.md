@@ -154,6 +154,16 @@
 
 **参考来源：** 设计文档 Section 10.2-10.4，测试设计文档 Section 9.8
 
+### 2.12 Legacy Read Configuration（W2-3 设计一致性）
+
+| 功能 | Commit | 设计章节 | 说明 |
+|------|--------|----------|------|
+| server property 开关 | 本次小步 | Section 8.3 | 新增 `lance.execution.legacy-read-enabled`，默认 `false` |
+| header 绕过移除 | 本次小步 | Section 6.3, 8.3 | legacy bridge read 不再通过 `x-lance-legacy-read-enabled` 请求头临时开启 |
+| Legacy read REST tests | 本次小步 | Section 9.4 | 新增 enabled REST tests 覆盖默认拒绝和配置开启后 backend 可达 |
+
+**参考来源：** 设计文档 Section 6.3, 8.3，测试设计文档 Section 9.4
+
 ---
 
 ## 3. 待完成功能
@@ -180,7 +190,6 @@
 
 | 功能 | 设计章节 | 说明 |
 |------|----------|------|
-| Legacy read 配置方式 | Section 8.3 | 改为 server property `lance.execution.legacy-read-enabled` |
 | LanceStorageBinding 补齐 | Section 6.5 | 添加 storageOptionsTemplate, vendCredentials, expiresAtMillis |
 | LanceTableRef 补齐 | Section 7.3 | 添加 tableUri 字段 |
 | Version 防倒退 | Section 13.1 | backend version < current_version 时警告 |
@@ -215,7 +224,7 @@
 | W2-0: 准备与收口 | 15.1 | ✅ 完成 | 74fe4a4 |
 | W2-1: Backend SPI | 15.2 | ✅ 完成 | 74fe4a4, ec3e6e0, 1fbc0ba |
 | W2-2: Resolver + Storage | 15.3 | ⚠️ 部分 | ec4cee3（Resolver 完成，Storage 缺 credential vending） |
-| W2-3: Data endpoint service | 15.4 | ⚠️ 部分 | ec4cee3 + 本次工作（架构/Authorization/入口校验完成，缺 Arrow response/Metadata update） |
+| W2-3: Data endpoint service | 15.4 | ⚠️ 部分 | ec4cee3 + 本次工作（架构/Authorization/入口校验/metadata success path/legacy read 配置完成，缺 Arrow response） |
 | W2-4: Arrow IPC | 15.5 | ⚠️ 部分 | 本次工作（media type/size limit 完成，缺 reader/writer） |
 | W2-5: Worker HTTP backend | 15.6 | ❌ 未开始 | - |
 | W2-6: Metadata 状态推进 | 15.7 | ⚠️ 部分 | 本次工作（Repository methods + data plane success path 完成，缺 backend_committed/reconcile） |
@@ -235,10 +244,12 @@
 | LancePhase2DataWriteRestTest | 11 | @Disabled | LanceTableRepository methods |
 | LancePhase2MetadataAndStorageRestTest | 18 | @Disabled | Repository methods, credential vending |
 | LancePhase2AuthGovernanceRestTest | 17 | @Disabled | Audit/Metrics，完整 grant 路径拆分后可部分启用 |
+| LancePhase2RequestMappingRestTest | 4 | Enabled | request mapping + header spoofing guard |
 | LancePhase2DataPlaneAuthorizationRestTest | 3 | Enabled | owner read/write allow + non-owner write deny |
 | LanceDataPlaneAuthorizerTest | 3 | Enabled | READ_DATA/WRITE_DATA 兼容权限映射 |
 | LancePhase2RequestValidationRestTest | 4 | Enabled | Content-Type 415 + JSON/Arrow size 413 |
 | LancePhase2DataPlaneMetadataUpdateRestTest | 3 | Enabled | declared materialization + write/stats metadata cache |
+| LancePhase2LegacyReadConfigRestTest | 1 | Enabled | server property enables legacy bridge read |
 | LancePhase2ErrorAndRegressionRestTest | ~28 | @Disabled | Error handling, regression |
 | LancePhase2WorkerAndResilienceRestTest | 16 | @Disabled | WorkerHttpLanceExecutionBackend |
 | LancePhase2EcosystemSmokeTest | ~40 | @Disabled | Real worker + connectors |

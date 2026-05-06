@@ -98,6 +98,8 @@ public class ServerPropertiesTest {
     testValidProperty(Property.MANAGED_TABLE_ENABLED, "true");
     testValidProperty(Property.MANAGED_TABLE_ENABLED, "false");
     testValidProperty(Property.MANAGED_TABLE_ENABLED, "TRUE");
+    testValidProperty(Property.LANCE_EXECUTION_LEGACY_READ_ENABLED, "true");
+    testValidProperty(Property.LANCE_EXECUTION_LEGACY_READ_ENABLED, "false");
 
     // Invalid values
     testInvalidProperty(
@@ -105,6 +107,12 @@ public class ServerPropertiesTest {
         "yes",
         "Invalid value 'yes'",
         "server.managed-table.enabled",
+        "Allowed values: [true, false]");
+    testInvalidProperty(
+        Property.LANCE_EXECUTION_LEGACY_READ_ENABLED,
+        "yes",
+        "Invalid value 'yes'",
+        "lance.execution.legacy-read-enabled",
         "Allowed values: [true, false]");
   }
 

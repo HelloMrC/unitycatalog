@@ -206,6 +206,8 @@ public class ServerProperties {
     AWS_SESSION_TOKEN("aws.sessionToken"),
     AWS_REGION("aws.region"),
     LANCE_EXECUTION_BACKEND_CLASS("lance.execution.backend.class"),
+    LANCE_EXECUTION_LEGACY_READ_ENABLED(
+        "lance.execution.legacy-read-enabled", "false", BOOLEAN_VALIDATOR),
     LANCE_EXECUTION_MAX_ARROW_REQUEST_BYTES(
         "lance.execution.max-arrow-request-bytes", "1073741824", POSITIVE_INTEGER_VALIDATOR),
     LANCE_EXECUTION_MAX_JSON_REQUEST_BYTES(
@@ -451,6 +453,10 @@ public class ServerProperties {
 
   public int getLanceExecutionMaxJsonRequestBytes() {
     return Integer.parseInt(get(Property.LANCE_EXECUTION_MAX_JSON_REQUEST_BYTES));
+  }
+
+  public boolean isLanceExecutionLegacyReadEnabled() {
+    return isTrueOrEnable(get(Property.LANCE_EXECUTION_LEGACY_READ_ENABLED));
   }
 
   /**
