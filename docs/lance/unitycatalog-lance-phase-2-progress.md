@@ -149,6 +149,8 @@
 | updateTableExecutionMetadata | 本次工作 | Section 10.3 | 写成功后更新 current_version/schema/stats，null schema 不覆盖既有 schema |
 | updateTableStats | 本次工作 | Section 10.3 | stats endpoint 成功后刷新 stats cache |
 | Repository tests | 本次工作 | Section 9.8 | 新增 repository 单测覆盖 P2-META-002/003/004/005 的核心持久化规则 |
+| Data plane metadata updater | 本次工作 | Section 10.2-10.4 | backend write/stats 成功后调用 repository 更新 metadata cache |
+| REST metadata update tests | 本次工作 | Section 9.8 | 新增 enabled REST tests 验证 declared materialization、write metadata、stats cache |
 
 **参考来源：** 设计文档 Section 10.2-10.4，测试设计文档 Section 9.8
 
@@ -163,7 +165,6 @@
 | **Authorization test enablement** | Section 11.2-11.3 | P2-AUTH-005-008 | LanceDataPlaneAuthorizer 已实现，剩余拆分/启用 disabled skeleton 中的完整 grant 路径用例 |
 | **Arrow IPC Request Reader** | Section 9.2 | P2-ARROW-001-006 | Content-Type 和 size limit 已完成，剩余 stream handling、schema peek |
 | **Arrow IPC Response Writer** | Section 4.1, 9.1 | P2-DATA-001, P2-ARROW-007-008 | Query 返回 Arrow IPC file/stream，不是 JSON |
-| **Data plane metadata update integration** | Section 10.3-10.4 | P2-META-002-006, P2-DATA-WRITE | Repository methods 已完成，剩余 backend success 后接入和 backend_committed 错误标记 |
 
 ### 3.2 中优先级（影响部分测试）
 
@@ -217,7 +218,7 @@
 | W2-3: Data endpoint service | 15.4 | ⚠️ 部分 | ec4cee3 + 本次工作（架构/Authorization/入口校验完成，缺 Arrow response/Metadata update） |
 | W2-4: Arrow IPC | 15.5 | ⚠️ 部分 | 本次工作（media type/size limit 完成，缺 reader/writer） |
 | W2-5: Worker HTTP backend | 15.6 | ❌ 未开始 | - |
-| W2-6: Metadata 状态推进 | 15.7 | ⚠️ 部分 | 本次工作（Repository methods 完成，缺 data plane 接入/backend_committed） |
+| W2-6: Metadata 状态推进 | 15.7 | ⚠️ 部分 | 本次工作（Repository methods + data plane success path 完成，缺 backend_committed/reconcile） |
 | W2-7: 授权、审计、观测 | 15.8 | ⚠️ 部分 | 本次工作（授权完成，缺审计/观测） |
 | W2-8: Connector 回归 | 15.9 | ❌ 未开始 | - |
 
@@ -237,6 +238,7 @@
 | LancePhase2DataPlaneAuthorizationRestTest | 3 | Enabled | owner read/write allow + non-owner write deny |
 | LanceDataPlaneAuthorizerTest | 3 | Enabled | READ_DATA/WRITE_DATA 兼容权限映射 |
 | LancePhase2RequestValidationRestTest | 4 | Enabled | Content-Type 415 + JSON/Arrow size 413 |
+| LancePhase2DataPlaneMetadataUpdateRestTest | 3 | Enabled | declared materialization + write/stats metadata cache |
 | LancePhase2ErrorAndRegressionRestTest | ~28 | @Disabled | Error handling, regression |
 | LancePhase2WorkerAndResilienceRestTest | 16 | @Disabled | WorkerHttpLanceExecutionBackend |
 | LancePhase2EcosystemSmokeTest | ~40 | @Disabled | Real worker + connectors |
@@ -273,11 +275,11 @@
 
 ### 8.1 立即可做（不依赖外部环境）
 
-1. **Data plane metadata update integration** - backend success 后调用 Repository methods
-2. **Deadline 填充** - 从配置读取
-3. **Authorization skeleton 拆分启用** - 将 P2-AUTH-005-008 从大 disabled 类中拆出
-4. **Arrow IPC request reader** - stream handling、schema peek
-5. **Arrow IPC response writer** - query 返回 Arrow IPC file/stream
+1. **Deadline 填充** - 从配置读取
+2. **Authorization skeleton 拆分启用** - 将 P2-AUTH-005-008 从大 disabled 类中拆出
+3. **Arrow IPC request reader** - stream handling、schema peek
+4. **Arrow IPC response writer** - query 返回 Arrow IPC file/stream
+5. **Backend committed failure marker** - metadata update failure 返回 `backend_committed=true`
 
 ### 8.2 需要测试 fixture
 
@@ -300,7 +302,7 @@
 | 所有 Phase 2 必做 endpoint 可用 | ❌ Query 返回 JSON 非 Arrow |
 | query 返回 Arrow IPC 且可被客户端消费 | ❌ 未实现 |
 | insert/merge/update/delete 通过真实 worker 执行 | ❌ 无 real worker |
-| declared-only table 可首次物理化 | ⚠️ Repository methods 就绪，缺 data plane 接入 |
+| declared-only table 可首次物理化 | ✅ fake backend success path 已推进 ACTIVE |
 | stats/count 和 query/DML 结果一致 | ❌ 无 real worker |
 | data endpoint 认证、授权、审计可验证 | ⚠️ 认证/授权就绪，审计缺失 |
 | runtime storage credentials 不落库、不进日志 | ⚠️ 模板过滤就绪，credential vending 缺失 |

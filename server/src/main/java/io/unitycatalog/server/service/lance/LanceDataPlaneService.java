@@ -19,16 +19,19 @@ class LanceDataPlaneService {
   private final LanceTableResolver tableResolver;
   private final LanceStorageOptionsService storageOptionsService;
   private final LanceDataPlaneAuthorizer authorizer;
+  private final LanceDataPlaneMetadataUpdater metadataUpdater;
 
   LanceDataPlaneService(
       LanceExecutionBackend backend,
       LanceTableResolver tableResolver,
       LanceStorageOptionsService storageOptionsService,
-      LanceDataPlaneAuthorizer authorizer) {
+      LanceDataPlaneAuthorizer authorizer,
+      LanceDataPlaneMetadataUpdater metadataUpdater) {
     this.backend = backend;
     this.tableResolver = tableResolver;
     this.storageOptionsService = storageOptionsService;
     this.authorizer = authorizer;
+    this.metadataUpdater = metadataUpdater;
   }
 
   LanceExecutionResult query(
@@ -36,8 +39,9 @@ class LanceDataPlaneService {
       Optional<String> delimiter,
       LanceExecutionContext context,
       Map<String, Object> attributes) {
-    return backend.query(
-        command("query", id, delimiter, context, attributes, false, AuthorizationScope.DATA_READ));
+    PreparedCommand prepared =
+        command("query", id, delimiter, context, attributes, false, AuthorizationScope.DATA_READ);
+    return backend.query(prepared.command());
   }
 
   LanceExecutionResult countRows(
@@ -45,9 +49,10 @@ class LanceDataPlaneService {
       Optional<String> delimiter,
       LanceExecutionContext context,
       Map<String, Object> attributes) {
-    return backend.countRows(
+    PreparedCommand prepared =
         command(
-            "count_rows", id, delimiter, context, attributes, false, AuthorizationScope.DATA_READ));
+            "count_rows", id, delimiter, context, attributes, false, AuthorizationScope.DATA_READ);
+    return backend.countRows(prepared.command());
   }
 
   LanceExecutionResult stats(
@@ -55,9 +60,11 @@ class LanceDataPlaneService {
       Optional<String> delimiter,
       LanceExecutionContext context,
       Map<String, Object> attributes) {
-    return backend.stats(
+    PreparedCommand prepared =
         command(
-            "stats", id, delimiter, context, attributes, false, AuthorizationScope.METADATA_READ));
+            "stats", id, delimiter, context, attributes, false, AuthorizationScope.METADATA_READ);
+    return metadataUpdater.afterStats(
+        prepared.table(), context, backend.stats(prepared.command()));
   }
 
   LanceExecutionResult insert(
@@ -65,8 +72,10 @@ class LanceDataPlaneService {
       Optional<String> delimiter,
       LanceExecutionContext context,
       Map<String, Object> attributes) {
-    return backend.insert(
-        command("insert", id, delimiter, context, attributes, true, AuthorizationScope.DATA_WRITE));
+    PreparedCommand prepared =
+        command("insert", id, delimiter, context, attributes, true, AuthorizationScope.DATA_WRITE);
+    return metadataUpdater.afterWrite(
+        prepared.table(), context, backend.insert(prepared.command()));
   }
 
   LanceExecutionResult mergeInsert(
@@ -74,7 +83,7 @@ class LanceDataPlaneService {
       Optional<String> delimiter,
       LanceExecutionContext context,
       Map<String, Object> attributes) {
-    return backend.mergeInsert(
+    PreparedCommand prepared =
         command(
             "merge_insert",
             id,
@@ -82,7 +91,9 @@ class LanceDataPlaneService {
             context,
             attributes,
             true,
-            AuthorizationScope.DATA_WRITE));
+            AuthorizationScope.DATA_WRITE);
+    return metadataUpdater.afterWrite(
+        prepared.table(), context, backend.mergeInsert(prepared.command()));
   }
 
   LanceExecutionResult update(
@@ -90,8 +101,10 @@ class LanceDataPlaneService {
       Optional<String> delimiter,
       LanceExecutionContext context,
       Map<String, Object> attributes) {
-    return backend.update(
-        command("update", id, delimiter, context, attributes, true, AuthorizationScope.DATA_WRITE));
+    PreparedCommand prepared =
+        command("update", id, delimiter, context, attributes, true, AuthorizationScope.DATA_WRITE);
+    return metadataUpdater.afterWrite(
+        prepared.table(), context, backend.update(prepared.command()));
   }
 
   LanceExecutionResult delete(
@@ -99,8 +112,10 @@ class LanceDataPlaneService {
       Optional<String> delimiter,
       LanceExecutionContext context,
       Map<String, Object> attributes) {
-    return backend.delete(
-        command("delete", id, delimiter, context, attributes, true, AuthorizationScope.DATA_WRITE));
+    PreparedCommand prepared =
+        command("delete", id, delimiter, context, attributes, true, AuthorizationScope.DATA_WRITE);
+    return metadataUpdater.afterWrite(
+        prepared.table(), context, backend.delete(prepared.command()));
   }
 
   LanceExecutionResult explainPlan(
@@ -108,7 +123,7 @@ class LanceDataPlaneService {
       Optional<String> delimiter,
       LanceExecutionContext context,
       Map<String, Object> attributes) {
-    return backend.explainPlan(
+    PreparedCommand prepared =
         command(
             "explain_plan",
             id,
@@ -116,7 +131,8 @@ class LanceDataPlaneService {
             context,
             attributes,
             false,
-            AuthorizationScope.DATA_READ));
+            AuthorizationScope.DATA_READ);
+    return backend.explainPlan(prepared.command());
   }
 
   LanceExecutionResult analyzePlan(
@@ -124,7 +140,7 @@ class LanceDataPlaneService {
       Optional<String> delimiter,
       LanceExecutionContext context,
       Map<String, Object> attributes) {
-    return backend.analyzePlan(
+    PreparedCommand prepared =
         command(
             "analyze_plan",
             id,
@@ -132,7 +148,8 @@ class LanceDataPlaneService {
             context,
             attributes,
             false,
-            AuthorizationScope.DATA_READ));
+            AuthorizationScope.DATA_READ);
+    return backend.analyzePlan(prepared.command());
   }
 
   LanceExecutionResult create(
@@ -140,11 +157,13 @@ class LanceDataPlaneService {
       Optional<String> delimiter,
       LanceExecutionContext context,
       Map<String, Object> attributes) {
-    return backend.create(
-        command("create", id, delimiter, context, attributes, true, AuthorizationScope.DATA_WRITE));
+    PreparedCommand prepared =
+        command("create", id, delimiter, context, attributes, true, AuthorizationScope.DATA_WRITE);
+    return metadataUpdater.afterWrite(
+        prepared.table(), context, backend.create(prepared.command()));
   }
 
-  private LanceExecutionCommand command(
+  private PreparedCommand command(
       String operation,
       String id,
       Optional<String> delimiter,
@@ -164,8 +183,9 @@ class LanceDataPlaneService {
     commandAttributes.put("requiredPrivilege", authorizationDecision.requiredPrivilege());
     commandAttributes.put(
         "compatiblePrivileges", privilegeNames(authorizationDecision.compatiblePrivileges()));
-    return new LanceExecutionCommand(
-        operation, context, table.tableRef(), storage, commandAttributes);
+    return new PreparedCommand(
+        new LanceExecutionCommand(operation, context, table.tableRef(), storage, commandAttributes),
+        table);
   }
 
   private LanceDataPlaneAuthorizer.AuthorizationDecision authorize(
@@ -220,4 +240,6 @@ class LanceDataPlaneService {
     METADATA_READ,
     DATA_WRITE
   }
+
+  private record PreparedCommand(LanceExecutionCommand command, ResolvedLanceTable table) {}
 }
