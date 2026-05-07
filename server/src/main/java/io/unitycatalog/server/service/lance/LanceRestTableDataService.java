@@ -39,6 +39,7 @@ public class LanceRestTableDataService {
 
   private final LanceDataPlaneService dataPlaneService;
   private final ServerProperties serverProperties;
+  private final LanceArrowRequestReader arrowRequestReader = new LanceArrowRequestReader();
 
   public LanceRestTableDataService(
       Repositories repositories,
@@ -295,9 +296,7 @@ public class LanceRestTableDataService {
 
   private Map<String, Object> arrowAttributes(
       AggregatedHttpRequest request, Optional<String> optionsHeader) {
-    Map<String, Object> attributes = new LinkedHashMap<>();
-    attributes.put("inputData", "arrow-stream");
-    attributes.put("inputBytes", request.content().length());
+    Map<String, Object> attributes = arrowRequestReader.read(request);
     optionsHeader
         .map(header -> request.headers().get(header))
         .filter(value -> !value.isBlank())

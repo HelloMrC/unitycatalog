@@ -58,9 +58,21 @@ public class LanceTestEchoExecutionBackend implements LanceExecutionBackend {
 
   private LanceExecutionResult result(LanceExecutionCommand command, Map<String, Object> payload) {
     Map<String, Object> response = new LinkedHashMap<>(payload);
+    copyCommandAttribute(command, response, "requestBufferedBytes");
+    copyCommandAttribute(command, response, "streamPassedThrough");
+    copyCommandAttribute(command, response, "schemaPeeked");
+    copyCommandAttribute(command, response, "recordBatchesParsedByUc");
+    copyCommandAttribute(command, response, "schemaSource");
     response.put("command", commandPayload(command));
     response.put("backendType", "test-echo");
     return new LanceExecutionResult(response);
+  }
+
+  private void copyCommandAttribute(
+      LanceExecutionCommand command, Map<String, Object> response, String attribute) {
+    if (command.attributes().containsKey(attribute)) {
+      response.put(attribute, command.attributes().get(attribute));
+    }
   }
 
   private Map<String, Object> commandPayload(LanceExecutionCommand command) {

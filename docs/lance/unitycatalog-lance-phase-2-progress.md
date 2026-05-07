@@ -230,6 +230,17 @@
 
 **参考来源：** 设计文档 Section 11.2-11.3，测试设计文档 Section 9.10
 
+### 2.19 Arrow IPC Request Reader（W2-4 高优先级）
+
+| 功能 | Commit | 设计章节 | 说明 |
+|------|--------|----------|------|
+| LanceArrowRequestReader | 本次小步 | Section 9.5 | 将 Arrow write 请求解析为稳定 command metadata，而不是散落在 REST service 中 |
+| stream passthrough metadata | 本次小步 | Section 9.5 | command 暴露 inputData/inputBytes/inputMediaType/requestBufferedBytes/streamPassedThrough |
+| schema peek contract | 本次小步 | Section 9.5 | 默认不 peek；启用时标记 schemaPeeked=true 且 recordBatchesParsedByUc=0 |
+| P2-ARROW request coverage | 本次小步 | Section 9.5 | 新增 enabled REST tests 覆盖 P2-ARROW-001~006、010~011 |
+
+**参考来源：** 设计文档 Section 9.5，测试设计文档 Section 9.5
+
 ---
 
 ## 3. 待完成功能
@@ -238,7 +249,6 @@
 
 | 功能 | 设计章节 | 测试阻塞 | 说明 |
 |------|----------|----------|------|
-| **Arrow IPC Request Reader** | Section 9.2 | P2-ARROW-001-006 | Content-Type 和 size limit 已完成，剩余 stream handling、schema peek |
 | **Arrow IPC Response Writer** | Section 4.1, 9.1 | P2-DATA-001, P2-ARROW-007-008 | Query 返回 Arrow IPC file/stream，不是 JSON |
 
 ### 3.2 中优先级（影响部分测试）
@@ -285,7 +295,7 @@
 | W2-1: Backend SPI | 15.2 | ✅ 完成 | 74fe4a4, ec3e6e0, 1fbc0ba |
 | W2-2: Resolver + Storage | 15.3 | ⚠️ 部分 | ec4cee3 + 本次小步（Resolver/TableRef tableUri 完成，Storage 缺 credential vending） |
 | W2-3: Data endpoint service | 15.4 | ⚠️ 部分 | ec4cee3 + 本次工作（架构/Authorization/入口校验/metadata success path/legacy read 配置完成，缺 Arrow response） |
-| W2-4: Arrow IPC | 15.5 | ⚠️ 部分 | 本次工作（media type/size limit 完成，缺 reader/writer） |
+| W2-4: Arrow IPC | 15.5 | ⚠️ 部分 | 本次工作（media type/size limit + request reader 完成，缺 response writer） |
 | W2-5: Worker HTTP backend | 15.6 | ⚠️ 部分 | 本次小步（deadline/requestId/idempotency command contract 完成，缺 WorkerHttpLanceExecutionBackend） |
 | W2-6: Metadata 状态推进 | 15.7 | ⚠️ 部分 | 本次工作（Repository methods + data plane success path + backend_committed marker + version 防倒退完成，缺 reconcile） |
 | W2-7: 授权、审计、观测 | 15.8 | ⚠️ 部分 | 本次工作（授权和 P2-AUTH-005-008 enabled 覆盖完成，缺审计/观测） |
@@ -308,6 +318,7 @@
 | LancePhase2DataPlaneAuthorizationRestTest | 4 | Enabled | P2-AUTH-005-008 read/write allow-deny 覆盖 |
 | LanceDataPlaneAuthorizerTest | 3 | Enabled | READ_DATA/WRITE_DATA 兼容权限映射 |
 | LancePhase2RequestValidationRestTest | 4 | Enabled | Content-Type 415 + JSON/Arrow size 413 |
+| LancePhase2ArrowRequestReaderRestTest | 8 | Enabled | P2-ARROW-001~006、010~011 request reader 覆盖 |
 | LancePhase2DataPlaneMetadataUpdateRestTest | 4 | Enabled | declared materialization + write/stats metadata cache + version 防倒退 |
 | LancePhase2LegacyReadConfigRestTest | 1 | Enabled | server property enables legacy bridge read |
 | LancePhase2BackendCommittedFailureRestTest | 1 | Enabled | metadata update failure returns backend_committed marker |
