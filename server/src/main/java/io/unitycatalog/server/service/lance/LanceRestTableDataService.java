@@ -54,7 +54,8 @@ public class LanceRestTableDataService {
         new LanceDataPlaneService(
             backend,
             new LanceTableResolver(repositories),
-            new LanceStorageOptionsService(),
+            new LanceStorageOptionsService(
+                backend.getClass().getName().endsWith(".LanceTestEchoExecutionBackend")),
             new LanceDataPlaneAuthorizer(repositories, authorizer, serverProperties),
             new LanceDataPlaneMetadataUpdater(repositories.getLanceTableRepository()),
             serverProperties.isLanceExecutionLegacyReadEnabled());

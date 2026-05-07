@@ -299,19 +299,29 @@
 
 **参考来源：** 设计文档 Section 12.1, Section 12.2，测试设计文档 Section 9.12
 
+### 2.25 Runtime Credential Vending mock（W2-2 Storage 收口）
+
+| 功能 | Commit | 设计章节 | 说明 |
+|------|--------|----------|------|
+| runtime credential merge | 本次小步 | Section 6.5 | `x-lance-fake-runtime-credential` 模拟 StorageCredentialVendor 输出，并合并到 data-plane `storageOptions` |
+| runtime overrides template | 本次小步 | Section 6.5 | runtime storage options 覆盖同名 template 字段，template 原值仍保留在 `storageOptionsTemplate` |
+| credential expiry/denied errors | 本次小步 | Section 12.1 | mock expired/denied credential 在 backend 前返回受控 Lance error shape |
+| no persistence/redaction guard | 本次小步 | Section 9.9 / 14.2 | runtime credential 不写回 describe/template，scalar client response 不暴露 token/session |
+| storage credential REST coverage | 本次小步 | Section 9.9 | 新增 enabled REST tests 覆盖 P2-STORAGE-001~007 与 P2-META-008 |
+
+**参考来源：** 设计文档 Section 6.5, Section 12.1，测试设计文档 Section 9.9
+
 ---
 
 ## 3. 待完成功能
 
 ### 3.1 高优先级（阻塞测试启用）
 
-高优先级阻塞项已完成；剩余工作见中优先级、Worker Backend 和 Ecosystem Smoke。
+高优先级阻塞项已完成；剩余工作见 Worker Backend 和 Ecosystem Smoke。
 
 ### 3.2 中优先级（影响部分测试）
 
-| 功能 | 设计章节 | 测试阻塞 | 说明 |
-|------|----------|----------|------|
-| **Runtime Credential Vending** | Section 6.5 | P2-STORAGE-002-003 | UC StorageCredentialVendor 集成，生成临时凭证 |
+中优先级阻塞项已完成；Runtime Credential Vending mock 与协议合同已启用回归覆盖。
 
 ### 3.3 Worker Backend（W2-5）
 
@@ -341,7 +351,7 @@
 |------|----------|------|--------|
 | W2-0: 准备与收口 | 15.1 | ✅ 完成 | 74fe4a4 |
 | W2-1: Backend SPI | 15.2 | ✅ 完成 | 74fe4a4, ec3e6e0, 1fbc0ba |
-| W2-2: Resolver + Storage | 15.3 | ⚠️ 部分 | ec4cee3 + 本次小步（Resolver/TableRef tableUri 完成，Storage 缺 credential vending） |
+| W2-2: Resolver + Storage | 15.3 | ✅ 高/中优先级完成 | ec4cee3 + 本次小步（Resolver/TableRef tableUri + sanitized template + runtime credential mock/contract 完成） |
 | W2-3: Data endpoint service | 15.4 | ✅ 高优先级完成 | ec4cee3 + 本次工作（架构/Authorization/入口校验/metadata success path/legacy read 配置/Arrow response/JSON scalar response/error requestId 完成） |
 | W2-4: Arrow IPC | 15.5 | ✅ 高优先级完成 | 本次工作（media type/size limit + request reader + response writer 完成） |
 | W2-5: Worker HTTP backend | 15.6 | ⚠️ 部分 | 本次小步（deadline/requestId/idempotency command contract 完成，缺 WorkerHttpLanceExecutionBackend） |
@@ -375,6 +385,7 @@
 | LancePhase2ObservabilityRestTest | 4 | Enabled | P2-AUTH-011~014 audit success/failure/redaction + metrics |
 | LancePhase2ScalarResponseRestTest | 3 | Enabled | P2-DATA-009、011、012 count/explain/analyze scalar response |
 | LancePhase2ErrorResponseContractRestTest | 3 | Enabled | P2-ERROR-015 requestId/backend_request_id 合同覆盖 |
+| LancePhase2StorageCredentialRestTest | 8 | Enabled | P2-STORAGE-001~007 + P2-META-008 runtime credential mock/contract 覆盖 |
 | LancePhase2ErrorAndRegressionRestTest | ~28 | @Disabled | Error handling, regression |
 | LancePhase2WorkerAndResilienceRestTest | 16 | @Disabled | WorkerHttpLanceExecutionBackend |
 | LancePhase2EcosystemSmokeTest | ~40 | @Disabled | Real worker + connectors |
@@ -411,7 +422,7 @@
 
 ### 8.1 立即可做（不依赖外部环境）
 
-1. **Runtime credential vending** - StorageCredentialVendor mock
+高中优先级阻塞项已清空；后续立即可做项以 Worker HTTP backend 的本地 fake worker fixture 为主。
 
 ### 8.2 需要测试 fixture
 
@@ -432,7 +443,7 @@
 | declared-only table 可首次物理化 | ✅ fake backend success path 已推进 ACTIVE |
 | stats/count 和 query/DML 结果一致 | ⚠️ fake backend scalar 响应形状对齐，real worker 一致性待接入 |
 | data endpoint 认证、授权、审计可验证 | ✅ P2-AUTH-005-008、011-014 enabled 覆盖 |
-| runtime storage credentials 不落库、不进日志 | ⚠️ 模板过滤就绪，credential vending 缺失 |
+| runtime storage credentials 不落库、不进日志 | ✅ runtime credential mock/merge/redaction 覆盖就绪 |
 | backend 未配置、backend 超时、worker 错误有稳定错误语义 | ⚠️ disabled backend + fake backend timeout/error audit 就绪，real worker retry 缺失 |
 | data endpoint media type 和 request size 错误稳定 | ✅ 415/413 Lance error shape 就绪 |
 | Phase 1 metadata endpoint 回归通过 | ✅ Phase 1 tests passing |

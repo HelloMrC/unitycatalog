@@ -201,7 +201,7 @@ class LanceDataPlaneService {
     LanceDataPlaneAuthorizer.AuthorizationDecision authorizationDecision =
         authorize(authorizationScope, table);
     validateState(operation, table, writeOperation);
-    LanceStorageBinding storage = storageOptionsService.bindStorage(table);
+    LanceStorageBinding storage = storageOptionsService.bindStorage(table, context);
 
     Map<String, Object> commandAttributes = new LinkedHashMap<>(attributes);
     commandAttributes.put("materializeDeclaredTable", table.tableRef().declaredOnly());
