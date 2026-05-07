@@ -205,7 +205,13 @@ public class ServerProperties {
     AWS_SECRET_KEY("aws.secretKey"),
     AWS_SESSION_TOKEN("aws.sessionToken"),
     AWS_REGION("aws.region"),
+    LANCE_EXECUTION_BACKEND_TYPE(
+        "lance.execution.backend.type",
+        new EnumValidator(/* caseInsensitive= */ true, "disabled", "class", "worker-http")),
     LANCE_EXECUTION_BACKEND_CLASS("lance.execution.backend.class"),
+    LANCE_EXECUTION_WORKER_BASE_URL("lance.execution.worker.base-url", URL_VALIDATOR),
+    LANCE_EXECUTION_WORKER_HEALTH_PATH(
+        "lance.execution.worker.health-path", "/internal/lance/v1/health", NOOP_VALIDATOR),
     LANCE_EXECUTION_LEGACY_READ_ENABLED(
         "lance.execution.legacy-read-enabled", "false", BOOLEAN_VALIDATOR),
     LANCE_EXECUTION_REQUEST_TIMEOUT_MS(
@@ -475,6 +481,14 @@ public class ServerProperties {
 
   public boolean isLanceExecutionLegacyReadEnabled() {
     return isTrueOrEnable(get(Property.LANCE_EXECUTION_LEGACY_READ_ENABLED));
+  }
+
+  public String getLanceExecutionWorkerBaseUrl() {
+    return get(Property.LANCE_EXECUTION_WORKER_BASE_URL);
+  }
+
+  public String getLanceExecutionWorkerHealthPath() {
+    return get(Property.LANCE_EXECUTION_WORKER_HEALTH_PATH);
   }
 
   /**

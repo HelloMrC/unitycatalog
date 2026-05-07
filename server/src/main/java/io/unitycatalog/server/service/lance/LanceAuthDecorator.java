@@ -99,7 +99,7 @@ public class LanceAuthDecorator implements DecoratingHttpServiceFunction {
         .forEach(
             header -> {
               String name = header.getKey().toString();
-              if (name.startsWith("x-lance-")) {
+              if (name.startsWith("x-lance-") && !"x-lance-worker-url".equals(name)) {
                 contextHeaders.put(name, header.getValue());
               }
             });

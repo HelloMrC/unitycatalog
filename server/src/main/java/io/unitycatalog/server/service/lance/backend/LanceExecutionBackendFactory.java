@@ -11,14 +11,22 @@ public final class LanceExecutionBackendFactory {
   private LanceExecutionBackendFactory() {}
 
   public static LanceExecutionBackend create(ServerProperties serverProperties) {
+    String backendType = serverProperties.get(Property.LANCE_EXECUTION_BACKEND_TYPE);
+    if ("worker-http".equalsIgnoreCase(backendType)) {
+      return new WorkerHttpLanceExecutionBackend(serverProperties);
+    }
+    if ("disabled".equalsIgnoreCase(backendType)) {
+      return new DisabledLanceExecutionBackend();
+    }
     String backendClassName = serverProperties.get(Property.LANCE_EXECUTION_BACKEND_CLASS);
     if (backendClassName != null && !backendClassName.isBlank()) {
-      return createConfiguredBackend(backendClassName.trim());
+      return createConfiguredBackend(backendClassName.trim(), serverProperties);
     }
     return new DisabledLanceExecutionBackend();
   }
 
-  private static LanceExecutionBackend createConfiguredBackend(String backendClassName) {
+  private static LanceExecutionBackend createConfiguredBackend(
+      String backendClassName, ServerProperties serverProperties) {
     try {
       Class<?> backendClass = Class.forName(backendClassName);
       if (!LanceExecutionBackend.class.isAssignableFrom(backendClass)) {
@@ -27,9 +35,7 @@ public final class LanceExecutionBackendFactory {
             "Configured Lance execution backend does not implement LanceExecutionBackend: "
                 + backendClassName);
       }
-      Constructor<?> constructor = backendClass.getDeclaredConstructor();
-      constructor.setAccessible(true);
-      return (LanceExecutionBackend) constructor.newInstance();
+      return instantiate(backendClass, serverProperties);
     } catch (ClassNotFoundException e) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT,
@@ -38,7 +44,7 @@ public final class LanceExecutionBackendFactory {
     } catch (NoSuchMethodException e) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT,
-          "Configured Lance execution backend must expose a no-argument constructor: "
+          "Configured Lance execution backend must expose a no-argument or ServerProperties constructor: "
               + backendClassName,
           e);
     } catch (InstantiationException | IllegalAccessException | InvocationTargetException e) {
@@ -46,6 +52,21 @@ public final class LanceExecutionBackendFactory {
           ErrorCode.INTERNAL,
           "Failed to initialize configured Lance execution backend: " + backendClassName,
           e);
+    }
+  }
+
+  private static LanceExecutionBackend instantiate(
+      Class<?> backendClass, ServerProperties serverProperties)
+      throws NoSuchMethodException, InvocationTargetException, InstantiationException,
+          IllegalAccessException {
+    try {
+      Constructor<?> constructor = backendClass.getDeclaredConstructor(ServerProperties.class);
+      constructor.setAccessible(true);
+      return (LanceExecutionBackend) constructor.newInstance(serverProperties);
+    } catch (NoSuchMethodException ignored) {
+      Constructor<?> constructor = backendClass.getDeclaredConstructor();
+      constructor.setAccessible(true);
+      return (LanceExecutionBackend) constructor.newInstance();
     }
   }
 }
