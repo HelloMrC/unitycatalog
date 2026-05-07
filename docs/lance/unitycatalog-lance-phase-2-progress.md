@@ -66,7 +66,7 @@
 |------|--------|----------|------|
 | LanceExecutionContext | ec4cee3 | Section 7.3 | requestId, principal, authType, deadlineMs, lanceContext, idempotencyKeyHash |
 | LanceTableRef | ec4cee3 + 本次小步 | Section 7.3 | id, namespacePath, tableName, pathKey, storageLocation, tableUri, currentVersion, declaredOnly, legacyBridge |
-| LanceStorageBinding | ec4cee3 | Section 7.3 | uri, storageOptions |
+| LanceStorageBinding | ec4cee3 + 本次小步 | Section 7.3 / 6.5 | uri/storageLocation, tableUri, storageOptions, storageOptionsTemplate, vendCredentials, expiresAtMillis |
 | LanceExecutionCommand 重构 | ec4cee3 | Section 7.4 | operation, context, table, storage, attributes |
 
 **参考来源：** 设计文档 Section 7.3, Section 7.4
@@ -78,6 +78,7 @@
 | LanceStorageOptionsService | ec4cee3 | Section 6.5 | 模板加载服务 |
 | Template 解析 | ec4cee3 | Section 6.5 | 从 storage_options_template_json 解析 |
 | 敏感字段过滤 | ec4cee3 | Section 6.5 | 过滤 token, session, secret, expires, access_key |
+| Command storage binding 字段 | 本次小步 | Section 6.5 | 将清理后的模板同时填充到 storageOptions 和 storageOptionsTemplate，并暴露 tableUri/vendCredentials/expiresAtMillis |
 
 **参考来源：** 设计文档 Section 6.5
 
@@ -174,6 +175,17 @@
 
 **参考来源：** 设计文档 Section 7.3，测试设计文档 Section 9.3-9.4
 
+### 2.14 LanceStorageBinding 字段补齐（W2-2 设计一致性）
+
+| 功能 | Commit | 设计章节 | 说明 |
+|------|--------|----------|------|
+| storageLocation/tableUri 透传 | 本次小步 | Section 6.5 / 7.3 | 后端 command storage binding 同时保留兼容 `uri` 和设计字段 `storageLocation`、`tableUri` |
+| 模板字段双写 | 本次小步 | Section 6.5 | 当前未接入 runtime credential vending 前，使用清理后的 template 填充 `storageOptions` 与 `storageOptionsTemplate` |
+| 凭证占位字段 | 本次小步 | Section 6.5 | 显式暴露 `vendCredentials=false`、`expiresAtMillis=0`，为后续 Runtime Credential Vending 接入预留稳定 contract |
+| Command echo coverage | 本次小步 | Section 9.3 / 9.9 | enabled REST tests 验证 storage binding 字段和敏感模板过滤 |
+
+**参考来源：** 设计文档 Section 6.5, Section 7.3，测试设计文档 Section 9.3, Section 9.9
+
 ---
 
 ## 3. 待完成功能
@@ -200,7 +212,6 @@
 
 | 功能 | 设计章节 | 说明 |
 |------|----------|------|
-| LanceStorageBinding 补齐 | Section 6.5 | 添加 storageOptionsTemplate, vendCredentials, expiresAtMillis |
 | Version 防倒退 | Section 13.1 | backend version < current_version 时警告 |
 | Reconcile API | Section 10.4 | Admin reconcile endpoint |
 

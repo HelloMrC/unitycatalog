@@ -46,9 +46,32 @@ class LancePhase2RequestMappingRestTest extends BaseLancePhase1RestTest {
     assertThat(command.path("tableId").asText()).isEqualTo(TABLE_ID);
     assertThat(command.path("tableUri").asText()).isEqualTo(TABLE_LOCATION);
     assertThat(command.path("table").path("tableUri").asText()).isEqualTo(TABLE_LOCATION);
+    assertThat(command.path("storage").path("uri").asText()).isEqualTo(TABLE_LOCATION);
+    assertThat(command.path("storage").path("storageLocation").asText()).isEqualTo(TABLE_LOCATION);
+    assertThat(command.path("storage").path("tableUri").asText()).isEqualTo(TABLE_LOCATION);
+    assertThat(command.path("storage").path("vendCredentials").asBoolean()).isFalse();
+    assertThat(command.path("storage").path("expiresAtMillis").asLong()).isEqualTo(0L);
     assertThat(command.path("predicate").asText()).isEqualTo("id > 0");
     assertThat(command.path("version").asInt()).isEqualTo(2);
     assertThat(command.toString()).doesNotContain("spoofed", "evil@example.com");
+  }
+
+  @Test
+  @DisplayName("Phase 2 storage binding exposes sanitized template fields")
+  void storageBindingExposesSanitizedTemplateFields() throws Exception {
+    createActiveTableWithStorageTemplate();
+
+    AggregatedHttpResponse response = postJson("/v1/table/" + TABLE_ID + "/stats", "{}");
+
+    JsonNode storage = command(response).path("storage");
+    assertThat(storage.path("uri").asText()).isEqualTo("s3://bucket/embeddings.lance");
+    assertThat(storage.path("storageLocation").asText()).isEqualTo("s3://bucket/embeddings.lance");
+    assertThat(storage.path("tableUri").asText()).isEqualTo("s3://bucket/embeddings.lance");
+    assertThat(storage.path("storageOptions").toString()).contains("provider", "region");
+    assertThat(storage.path("storageOptionsTemplate").toString()).contains("provider", "region");
+    assertThat(storage.toString()).doesNotContain("session_token", "access_key_id");
+    assertThat(storage.path("vendCredentials").asBoolean()).isFalse();
+    assertThat(storage.path("expiresAtMillis").asLong()).isEqualTo(0L);
   }
 
   @Test
@@ -139,5 +162,22 @@ class LancePhase2RequestMappingRestTest extends BaseLancePhase1RestTest {
     createRootAndChildNamespaces();
     assertSuccess(
         postJson("/v1/table/" + TABLE_ID + "/register", declareTableRequest(TABLE_LOCATION)));
+  }
+
+  private void createActiveTableWithStorageTemplate() {
+    createRootAndChildNamespaces();
+    assertSuccess(
+        postJson(
+            "/v1/table/" + TABLE_ID + "/register",
+            "{"
+                + "\"location\":\"s3://bucket/embeddings.lance\","
+                + "\"storage_options_template\":{"
+                + "\"provider\":\"s3\","
+                + "\"region\":\"us-west-2\","
+                + "\"access_key_id\":\"must-not-leak\""
+                + "},"
+                + "\"schema\":{\"fields\":[]},"
+                + "\"properties\":{\"table_type\":\"lance\",\"owner\":\"phase2-test\"}"
+                + "}"));
   }
 }

@@ -16,8 +16,15 @@ class LanceStorageOptionsService {
       List.of("token", "session", "secret", "expires", "access_key");
 
   LanceStorageBinding bindStorage(ResolvedLanceTable table) {
+    Map<String, String> storageOptionsTemplate = parseStorageOptionsTemplate(table.tableDAO());
     return new LanceStorageBinding(
-        table.tableRef().storageLocation(), parseStorageOptionsTemplate(table.tableDAO()));
+        table.tableRef().storageLocation(),
+        table.tableRef().storageLocation(),
+        table.tableRef().tableUri(),
+        storageOptionsTemplate,
+        storageOptionsTemplate,
+        false,
+        0L);
   }
 
   private Map<String, String> parseStorageOptionsTemplate(LanceTableDAO tableDAO) {
