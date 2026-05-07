@@ -57,6 +57,7 @@ import io.unitycatalog.server.service.iceberg.IcebergObjectMapper;
 import io.unitycatalog.server.service.iceberg.MetadataService;
 import io.unitycatalog.server.service.iceberg.TableConfigService;
 import io.unitycatalog.server.service.lance.LanceAuthDecorator;
+import io.unitycatalog.server.service.lance.LanceDataPlaneObservability;
 import io.unitycatalog.server.service.lance.LanceRestNamespaceService;
 import io.unitycatalog.server.service.lance.LanceRestTableDataService;
 import io.unitycatalog.server.service.lance.LanceRestTableService;
@@ -225,6 +226,8 @@ public class UnityCatalogServer {
                 .build());
     armeriaServerBuilder
         .service("/", (ctx, req) -> HttpResponse.of("Hello, Unity Catalog!"))
+        .service(
+            "/metrics", (ctx, req) -> HttpResponse.of(LanceDataPlaneObservability.metricsText()))
         .annotatedService(CONTROL_PATH + "auth", authService, requestConverterFunction)
         .annotatedService(
             CONTROL_PATH + "scim2/Users",

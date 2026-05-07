@@ -20,6 +20,7 @@ class LanceDataPlaneService {
   private final LanceStorageOptionsService storageOptionsService;
   private final LanceDataPlaneAuthorizer authorizer;
   private final LanceDataPlaneMetadataUpdater metadataUpdater;
+  private final LanceDataPlaneObservability observability = new LanceDataPlaneObservability();
   private final boolean legacyReadEnabled;
 
   LanceDataPlaneService(
@@ -44,7 +45,8 @@ class LanceDataPlaneService {
       Map<String, Object> attributes) {
     PreparedCommand prepared =
         command("query", id, delimiter, context, attributes, false, AuthorizationScope.DATA_READ);
-    return backend.query(prepared.command());
+    return observability.observe(
+        prepared.command(), prepared.table(), () -> backend.query(prepared.command()));
   }
 
   LanceExecutionResult countRows(
@@ -55,7 +57,8 @@ class LanceDataPlaneService {
     PreparedCommand prepared =
         command(
             "count_rows", id, delimiter, context, attributes, false, AuthorizationScope.DATA_READ);
-    return backend.countRows(prepared.command());
+    return observability.observe(
+        prepared.command(), prepared.table(), () -> backend.countRows(prepared.command()));
   }
 
   LanceExecutionResult stats(
@@ -66,8 +69,11 @@ class LanceDataPlaneService {
     PreparedCommand prepared =
         command(
             "stats", id, delimiter, context, attributes, false, AuthorizationScope.METADATA_READ);
-    return metadataUpdater.afterStats(
-        prepared.table(), context, backend.stats(prepared.command()));
+    return observability.observe(
+        prepared.command(),
+        prepared.table(),
+        () -> metadataUpdater.afterStats(
+            prepared.table(), context, backend.stats(prepared.command())));
   }
 
   LanceExecutionResult insert(
@@ -77,8 +83,11 @@ class LanceDataPlaneService {
       Map<String, Object> attributes) {
     PreparedCommand prepared =
         command("insert", id, delimiter, context, attributes, true, AuthorizationScope.DATA_WRITE);
-    return metadataUpdater.afterWrite(
-        prepared.table(), context, backend.insert(prepared.command()));
+    return observability.observe(
+        prepared.command(),
+        prepared.table(),
+        () -> metadataUpdater.afterWrite(
+            prepared.table(), context, backend.insert(prepared.command())));
   }
 
   LanceExecutionResult mergeInsert(
@@ -95,8 +104,11 @@ class LanceDataPlaneService {
             attributes,
             true,
             AuthorizationScope.DATA_WRITE);
-    return metadataUpdater.afterWrite(
-        prepared.table(), context, backend.mergeInsert(prepared.command()));
+    return observability.observe(
+        prepared.command(),
+        prepared.table(),
+        () -> metadataUpdater.afterWrite(
+            prepared.table(), context, backend.mergeInsert(prepared.command())));
   }
 
   LanceExecutionResult update(
@@ -106,8 +118,11 @@ class LanceDataPlaneService {
       Map<String, Object> attributes) {
     PreparedCommand prepared =
         command("update", id, delimiter, context, attributes, true, AuthorizationScope.DATA_WRITE);
-    return metadataUpdater.afterWrite(
-        prepared.table(), context, backend.update(prepared.command()));
+    return observability.observe(
+        prepared.command(),
+        prepared.table(),
+        () -> metadataUpdater.afterWrite(
+            prepared.table(), context, backend.update(prepared.command())));
   }
 
   LanceExecutionResult delete(
@@ -117,8 +132,11 @@ class LanceDataPlaneService {
       Map<String, Object> attributes) {
     PreparedCommand prepared =
         command("delete", id, delimiter, context, attributes, true, AuthorizationScope.DATA_WRITE);
-    return metadataUpdater.afterWrite(
-        prepared.table(), context, backend.delete(prepared.command()));
+    return observability.observe(
+        prepared.command(),
+        prepared.table(),
+        () -> metadataUpdater.afterWrite(
+            prepared.table(), context, backend.delete(prepared.command())));
   }
 
   LanceExecutionResult explainPlan(
@@ -135,7 +153,8 @@ class LanceDataPlaneService {
             attributes,
             false,
             AuthorizationScope.DATA_READ);
-    return backend.explainPlan(prepared.command());
+    return observability.observe(
+        prepared.command(), prepared.table(), () -> backend.explainPlan(prepared.command()));
   }
 
   LanceExecutionResult analyzePlan(
@@ -152,7 +171,8 @@ class LanceDataPlaneService {
             attributes,
             false,
             AuthorizationScope.DATA_READ);
-    return backend.analyzePlan(prepared.command());
+    return observability.observe(
+        prepared.command(), prepared.table(), () -> backend.analyzePlan(prepared.command()));
   }
 
   LanceExecutionResult create(
@@ -162,8 +182,11 @@ class LanceDataPlaneService {
       Map<String, Object> attributes) {
     PreparedCommand prepared =
         command("create", id, delimiter, context, attributes, true, AuthorizationScope.DATA_WRITE);
-    return metadataUpdater.afterWrite(
-        prepared.table(), context, backend.create(prepared.command()));
+    return observability.observe(
+        prepared.command(),
+        prepared.table(),
+        () -> metadataUpdater.afterWrite(
+            prepared.table(), context, backend.create(prepared.command())));
   }
 
   private PreparedCommand command(

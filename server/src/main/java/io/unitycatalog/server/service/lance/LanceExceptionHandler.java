@@ -19,6 +19,9 @@ public class LanceExceptionHandler extends BaseExceptionHandler {
     if (unwrapped instanceof LanceProtocolException exception) {
       return createProtocolErrorResponse(exception);
     }
+    if (unwrapped instanceof LanceObservedException exception) {
+      return createObservedErrorResponse(exception);
+    }
     if (unwrapped instanceof LanceBackendCommittedException exception) {
       return createBackendCommittedErrorResponse(exception);
     }
@@ -53,6 +56,20 @@ public class LanceExceptionHandler extends BaseExceptionHandler {
     return HttpResponse.ofJson(exception.status(), response);
   }
 
+  private HttpResponse createObservedErrorResponse(LanceObservedException exception) {
+    Map<String, Object> response = new HashMap<>();
+    response.put("type", exception.type());
+    response.put("message", exception.getMessage());
+    response.put("code", exception.status().code());
+    response.put("audit", exception.audit());
+    response.put("metrics", exception.metrics());
+    if (exception.backendCommitted()) {
+      response.put("backend_committed", true);
+      response.put("reconcileRequired", exception.reconcileRequired());
+    }
+    return HttpResponse.ofJson(exception.status(), response);
+  }
+
   private Throwable unwrap(Throwable cause) {
     if (cause instanceof CompletionException && cause.getCause() != null) {
       return cause.getCause();
@@ -77,6 +94,57 @@ class LanceBackendCommittedException extends RuntimeException {
 
   String type() {
     return type;
+  }
+}
+
+class LanceObservedException extends RuntimeException {
+  private final HttpStatus status;
+  private final String type;
+  private final Map<String, Object> audit;
+  private final Map<String, Object> metrics;
+  private final boolean backendCommitted;
+  private final boolean reconcileRequired;
+
+  LanceObservedException(
+      HttpStatus status,
+      String type,
+      String message,
+      Map<String, Object> audit,
+      Map<String, Object> metrics,
+      boolean backendCommitted,
+      boolean reconcileRequired,
+      Throwable cause) {
+    super(message, cause);
+    this.status = status;
+    this.type = type;
+    this.audit = audit == null ? Map.of() : new HashMap<>(audit);
+    this.metrics = metrics == null ? Map.of() : new HashMap<>(metrics);
+    this.backendCommitted = backendCommitted;
+    this.reconcileRequired = reconcileRequired;
+  }
+
+  HttpStatus status() {
+    return status;
+  }
+
+  String type() {
+    return type;
+  }
+
+  Map<String, Object> audit() {
+    return audit;
+  }
+
+  Map<String, Object> metrics() {
+    return metrics;
+  }
+
+  boolean backendCommitted() {
+    return backendCommitted;
+  }
+
+  boolean reconcileRequired() {
+    return reconcileRequired;
   }
 }
 

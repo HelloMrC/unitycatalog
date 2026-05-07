@@ -1,5 +1,6 @@
 package io.unitycatalog.server.service.lance.backend;
 
+import com.linecorp.armeria.common.HttpStatus;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -57,6 +58,7 @@ public class LanceTestEchoExecutionBackend implements LanceExecutionBackend {
   }
 
   private LanceExecutionResult result(LanceExecutionCommand command, Map<String, Object> payload) {
+    failIfRequested(command);
     Map<String, Object> response = new LinkedHashMap<>(payload);
     copyCommandAttribute(command, response, "requestBufferedBytes");
     copyCommandAttribute(command, response, "streamPassedThrough");
@@ -66,6 +68,17 @@ public class LanceTestEchoExecutionBackend implements LanceExecutionBackend {
     response.put("command", commandPayload(command));
     response.put("backendType", "test-echo");
     return new LanceExecutionResult(response);
+  }
+
+  private void failIfRequested(LanceExecutionCommand command) {
+    Object mode = command.context().lanceContext().get("fakeWorkerError");
+    if ("timeout".equals(mode)) {
+      throw new LanceBackendException(
+          HttpStatus.GATEWAY_TIMEOUT,
+          "backend_timeout",
+          "test-backend-timeout",
+          "Lance worker timed out.");
+    }
   }
 
   private void copyCommandAttribute(
