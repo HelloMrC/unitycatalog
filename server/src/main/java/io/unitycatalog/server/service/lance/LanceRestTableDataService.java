@@ -38,6 +38,7 @@ public class LanceRestTableDataService {
   private static final String DEADLINE_MS_HEADER = "x-lance-deadline-ms";
 
   private final LanceDataPlaneService dataPlaneService;
+  private final LanceReconcileService reconcileService;
   private final ServerProperties serverProperties;
   private final LanceArrowRequestReader arrowRequestReader = new LanceArrowRequestReader();
   private final LanceArrowResponseWriter arrowResponseWriter = new LanceArrowResponseWriter();
@@ -48,6 +49,7 @@ public class LanceRestTableDataService {
       UnityCatalogAuthorizer authorizer,
       ServerProperties serverProperties) {
     this.serverProperties = serverProperties;
+    this.reconcileService = new LanceReconcileService(repositories.getLanceTableRepository());
     this.dataPlaneService =
         new LanceDataPlaneService(
             backend,
@@ -56,6 +58,15 @@ public class LanceRestTableDataService {
             new LanceDataPlaneAuthorizer(repositories, authorizer, serverProperties),
             new LanceDataPlaneMetadataUpdater(repositories.getLanceTableRepository()),
             serverProperties.isLanceExecutionLegacyReadEnabled());
+  }
+
+  @Post("/admin/reconcile")
+  public HttpResponse reconcile(AggregatedHttpRequest request) {
+    validateJsonRequest(request);
+    LanceExecutionContext context =
+        executionContext(request, serverProperties.getLanceExecutionRequestTimeoutMs());
+    return json(
+        new LanceExecutionResult(reconcileService.reconcile(jsonBody(request), context)), context);
   }
 
   @Post("/v1/table/{id}/query")

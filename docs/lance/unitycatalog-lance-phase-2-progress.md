@@ -253,6 +253,17 @@
 
 **参考来源：** 设计文档 Section 4.1, Section 9.5，测试设计文档 Section 9.5, Section 9.6
 
+### 2.21 Reconcile API（W2-6 收口）
+
+| 功能 | Commit | 设计章节 | 说明 |
+|------|--------|----------|------|
+| Admin reconcile endpoint | 本次小步 | Section 10.4 | 新增 `/admin/reconcile`，用于 backend committed 后的 metadata 修复计划和受控回填 |
+| dry-run plan | 本次小步 | Section 10.4 | `dry_run=true` 返回 current_version、arrow_schema_json、stats_json 回填计划，不修改 UC metadata |
+| controlled backfill | 本次小步 | Section 10.4 | `dry_run=false` 使用请求中的 version/schema/stats 受控更新 UC metadata |
+| Reconcile REST coverage | 本次小步 | Section 9.8 | 新增 enabled REST tests 覆盖 P2-META-009/010 dry-run 与 backfill |
+
+**参考来源：** 设计文档 Section 10.4，测试设计文档 Section 9.8
+
 ---
 
 ## 3. 待完成功能
@@ -269,13 +280,7 @@
 | **Audit Events** | Section 12.3 | P2-AUTH-011-013 | lance.data.* audit events |
 | **Metrics** | Section 12.4 | P2-AUTH-014 | lance_data_* metrics |
 
-### 3.3 低优先级（设计一致性）
-
-| 功能 | 设计章节 | 说明 |
-|------|----------|------|
-| Reconcile API | Section 10.4 | Admin reconcile endpoint |
-
-### 3.4 Worker Backend（W2-5）
+### 3.3 Worker Backend（W2-5）
 
 | 功能 | 设计章节 | 测试阻塞 | 说明 |
 |------|----------|----------|------|
@@ -284,7 +289,7 @@
 | Timeout/Retry | Section 8.4 | P2-WORKER-008-010 | Read retry bounded, write no retry |
 | Worker error envelope | Section 12.2 | P2-WORKER-007 | 映射 worker error 到 Lance error shape |
 
-### 3.5 Ecosystem Smoke（W2-8）
+### 3.4 Ecosystem Smoke（W2-8）
 
 | 功能 | 测试设计章节 | 说明 |
 |------|--------------|------|
@@ -307,7 +312,7 @@
 | W2-3: Data endpoint service | 15.4 | ✅ 高优先级完成 | ec4cee3 + 本次工作（架构/Authorization/入口校验/metadata success path/legacy read 配置/Arrow response 完成） |
 | W2-4: Arrow IPC | 15.5 | ✅ 高优先级完成 | 本次工作（media type/size limit + request reader + response writer 完成） |
 | W2-5: Worker HTTP backend | 15.6 | ⚠️ 部分 | 本次小步（deadline/requestId/idempotency command contract 完成，缺 WorkerHttpLanceExecutionBackend） |
-| W2-6: Metadata 状态推进 | 15.7 | ⚠️ 部分 | 本次工作（Repository methods + data plane success path + backend_committed marker + version 防倒退完成，缺 reconcile） |
+| W2-6: Metadata 状态推进 | 15.7 | ✅ 完成 | 本次工作（Repository methods + data plane success path + backend_committed marker + version 防倒退 + reconcile 完成） |
 | W2-7: 授权、审计、观测 | 15.8 | ⚠️ 部分 | 本次工作（授权和 P2-AUTH-005-008 enabled 覆盖完成，缺审计/观测） |
 | W2-8: Connector 回归 | 15.9 | ❌ 未开始 | - |
 
@@ -333,6 +338,7 @@
 | LancePhase2DataPlaneMetadataUpdateRestTest | 4 | Enabled | declared materialization + write/stats metadata cache + version 防倒退 |
 | LancePhase2LegacyReadConfigRestTest | 1 | Enabled | server property enables legacy bridge read |
 | LancePhase2BackendCommittedFailureRestTest | 1 | Enabled | metadata update failure returns backend_committed marker |
+| LancePhase2ReconcileRestTest | 2 | Enabled | P2-META-009/010 reconcile dry-run/backfill |
 | LancePhase2ErrorAndRegressionRestTest | ~28 | @Disabled | Error handling, regression |
 | LancePhase2WorkerAndResilienceRestTest | 16 | @Disabled | WorkerHttpLanceExecutionBackend |
 | LancePhase2EcosystemSmokeTest | ~40 | @Disabled | Real worker + connectors |
@@ -369,20 +375,13 @@
 
 ### 8.1 立即可做（不依赖外部环境）
 
-1. **Authorization skeleton 拆分启用** - 将 P2-AUTH-005-008 从大 disabled 类中拆出
-2. **Arrow IPC request reader** - stream handling、schema peek
-3. **Arrow IPC response writer** - query 返回 Arrow IPC file/stream
-4. **Reconcile API** - Admin reconcile endpoint 或 dry-run 入口
+1. **Runtime credential vending** - StorageCredentialVendor mock
+2. **Audit/Metrics** - 测试观察点
 
 ### 8.2 需要测试 fixture
 
-6. **Runtime credential vending** - StorageCredentialVendor mock
-7. **Audit/Metrics** - 测试观察点
-
-### 8.3 需要 real worker
-
-8. **WorkerHttpLanceExecutionBackend** - HTTP 调用
-9. **Ecosystem smoke** - Python/Spark/Ray
+3. **WorkerHttpLanceExecutionBackend** - HTTP 调用
+4. **Ecosystem smoke** - Python/Spark/Ray
 
 ---
 
