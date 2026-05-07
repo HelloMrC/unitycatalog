@@ -72,6 +72,26 @@ class LancePhase2DataPlaneMetadataUpdateRestTest extends BaseLancePhase2RestTest
   }
 
   @Test
+  @DisplayName("Phase 2 write metadata cannot move current version backwards")
+  void writeMetadataCannotMoveCurrentVersionBackwards() throws Exception {
+    createActiveTableFixture();
+    LanceAssetDAO asset = asset(P2_ACTIVE_TABLE_ID);
+    tableRepository.updateTableExecutionMetadata(
+        asset.getId(), 2L, "{\"schema\":\"current\"}", "{\"numRows\":2}", "phase2-test");
+
+    AggregatedHttpResponse response =
+        postArrow("/v1/table/" + P2_ACTIVE_TABLE_ID + "/insert", arrowSmallStreamFixture());
+
+    assertSuccess(response);
+    assertThat(json(response).path("metadataVersionUpdated").asBoolean()).isFalse();
+    assertThat(json(response).path("warnings").toString()).containsIgnoringCase("version");
+    LanceTableDAO table = table(P2_ACTIVE_TABLE_ID);
+    assertThat(table.getCurrentVersion()).isEqualTo(2L);
+    assertThat(table.getArrowSchemaJson()).isEqualTo("{\"schema\":\"current\"}");
+    assertThat(table.getStatsJson()).isEqualTo("{\"numRows\":2}");
+  }
+
+  @Test
   @DisplayName("Phase 2 stats response refreshes stats cache")
   void statsResponseRefreshesStatsCache() throws Exception {
     createActiveTableFixture();

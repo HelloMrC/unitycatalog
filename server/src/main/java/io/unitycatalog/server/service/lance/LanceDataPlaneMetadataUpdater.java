@@ -8,6 +8,7 @@ import io.unitycatalog.server.persist.LanceTableRepository;
 import io.unitycatalog.server.service.lance.backend.LanceExecutionContext;
 import io.unitycatalog.server.service.lance.backend.LanceExecutionResult;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 class LanceDataPlaneMetadataUpdater {
@@ -27,6 +28,12 @@ class LanceDataPlaneMetadataUpdater {
 
     Map<String, Object> payload = result.payload();
     try {
+      Long returnedVersion = longValue(payload.get("version"));
+      if (!table.tableRef().declaredOnly()
+          && isVersionRollback(table.tableDAO().getCurrentVersion(), returnedVersion)) {
+        return versionRollbackResult(
+            result, table.tableDAO().getCurrentVersion(), returnedVersion);
+      }
       if (table.tableRef().declaredOnly()) {
         String storageLocation = firstString(payload, "storage_location", "storageLocation");
         if (storageLocation == null) {
@@ -41,13 +48,13 @@ class LanceDataPlaneMetadataUpdater {
             storageLocation,
             tableUri,
             firstString(payload, "arrow_schema_json", "arrowSchemaJson"),
-            longValue(payload.get("version")),
+            returnedVersion,
             statsJson(payload),
             updatedBy(table, context));
       } else {
         tableRepository.updateTableExecutionMetadata(
             table.assetDAO().getId(),
-            longValue(payload.get("version")),
+            returnedVersion,
             firstString(payload, "arrow_schema_json", "arrowSchemaJson"),
             statsJson(payload),
             updatedBy(table, context));
@@ -57,6 +64,26 @@ class LanceDataPlaneMetadataUpdater {
           "Lance backend write completed but UC metadata update failed.", e);
     }
     return result;
+  }
+
+  private boolean isVersionRollback(Long currentVersion, Long returnedVersion) {
+    return currentVersion != null && returnedVersion != null && returnedVersion < currentVersion;
+  }
+
+  private LanceExecutionResult versionRollbackResult(
+      LanceExecutionResult result, Long currentVersion, Long returnedVersion) {
+    Map<String, Object> payload = new LinkedHashMap<>(result.payload());
+    payload.put("metadataVersionUpdated", false);
+    payload.put("currentVersion", currentVersion);
+    payload.put(
+        "warnings",
+        List.of(
+            "Backend returned version "
+                + returnedVersion
+                + " below current UC version "
+                + currentVersion
+                + "; metadata was not updated."));
+    return new LanceExecutionResult(payload);
   }
 
   LanceExecutionResult afterStats(
