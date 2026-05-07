@@ -264,6 +264,18 @@
 
 **参考来源：** 设计文档 Section 10.4，测试设计文档 Section 9.8
 
+### 2.22 Data Plane Audit/Metrics（W2-7 收口）
+
+| 功能 | Commit | 设计章节 | 说明 |
+|------|--------|----------|------|
+| data audit payload | 本次小步 | Section 12.3 | data plane 成功响应包含 operation、principal、table、version、bytes、rows、status 等 audit 字段 |
+| backend failure audit | 本次小步 | Section 12.3 | backend timeout/error 响应包含 errorCode、backendRequestId、status 和 latency |
+| audit redaction guard | 本次小步 | Section 12.3 / 14.2 | audit 只记录 storage scheme，不记录 runtime credential/header secret 原文 |
+| Lance metrics endpoint | 本次小步 | Section 12.4 | 新增 `/metrics` 暴露 lance_data_* operation/status/backend label 计数和 latency/bytes 观测值 |
+| Observability REST coverage | 本次小步 | Section 9.10 | 新增 enabled REST tests 覆盖 P2-AUTH-011~014 audit/metrics |
+
+**参考来源：** 设计文档 Section 12.3, Section 12.4，测试设计文档 Section 9.10
+
 ---
 
 ## 3. 待完成功能
@@ -277,8 +289,6 @@
 | 功能 | 设计章节 | 测试阻塞 | 说明 |
 |------|----------|----------|------|
 | **Runtime Credential Vending** | Section 6.5 | P2-STORAGE-002-003 | UC StorageCredentialVendor 集成，生成临时凭证 |
-| **Audit Events** | Section 12.3 | P2-AUTH-011-013 | lance.data.* audit events |
-| **Metrics** | Section 12.4 | P2-AUTH-014 | lance_data_* metrics |
 
 ### 3.3 Worker Backend（W2-5）
 
@@ -313,7 +323,7 @@
 | W2-4: Arrow IPC | 15.5 | ✅ 高优先级完成 | 本次工作（media type/size limit + request reader + response writer 完成） |
 | W2-5: Worker HTTP backend | 15.6 | ⚠️ 部分 | 本次小步（deadline/requestId/idempotency command contract 完成，缺 WorkerHttpLanceExecutionBackend） |
 | W2-6: Metadata 状态推进 | 15.7 | ✅ 完成 | 本次工作（Repository methods + data plane success path + backend_committed marker + version 防倒退 + reconcile 完成） |
-| W2-7: 授权、审计、观测 | 15.8 | ⚠️ 部分 | 本次工作（授权和 P2-AUTH-005-008 enabled 覆盖完成，缺审计/观测） |
+| W2-7: 授权、审计、观测 | 15.8 | ✅ 完成 | 本次工作（授权 + audit/metrics + P2-AUTH-005-008、011-014 enabled 覆盖完成） |
 | W2-8: Connector 回归 | 15.9 | ❌ 未开始 | - |
 
 ---
@@ -339,6 +349,7 @@
 | LancePhase2LegacyReadConfigRestTest | 1 | Enabled | server property enables legacy bridge read |
 | LancePhase2BackendCommittedFailureRestTest | 1 | Enabled | metadata update failure returns backend_committed marker |
 | LancePhase2ReconcileRestTest | 2 | Enabled | P2-META-009/010 reconcile dry-run/backfill |
+| LancePhase2ObservabilityRestTest | 4 | Enabled | P2-AUTH-011~014 audit success/failure/redaction + metrics |
 | LancePhase2ErrorAndRegressionRestTest | ~28 | @Disabled | Error handling, regression |
 | LancePhase2WorkerAndResilienceRestTest | 16 | @Disabled | WorkerHttpLanceExecutionBackend |
 | LancePhase2EcosystemSmokeTest | ~40 | @Disabled | Real worker + connectors |
@@ -376,12 +387,11 @@
 ### 8.1 立即可做（不依赖外部环境）
 
 1. **Runtime credential vending** - StorageCredentialVendor mock
-2. **Audit/Metrics** - 测试观察点
 
 ### 8.2 需要测试 fixture
 
-3. **WorkerHttpLanceExecutionBackend** - HTTP 调用
-4. **Ecosystem smoke** - Python/Spark/Ray
+2. **WorkerHttpLanceExecutionBackend** - HTTP 调用
+3. **Ecosystem smoke** - Python/Spark/Ray
 
 ---
 
@@ -391,14 +401,14 @@
 
 | 标准 | 状态 |
 |------|------|
-| 所有 Phase 2 必做 endpoint 可用 | ❌ Query 返回 JSON 非 Arrow |
-| query 返回 Arrow IPC 且可被客户端消费 | ❌ 未实现 |
+| 所有 Phase 2 必做 endpoint 可用 | ⚠️ fake backend 路径可用，real worker 未接入 |
+| query 返回 Arrow IPC 且可被客户端消费 | ⚠️ fake backend Arrow response writer 就绪，真实 IPC/客户端消费待 real worker |
 | insert/merge/update/delete 通过真实 worker 执行 | ❌ 无 real worker |
 | declared-only table 可首次物理化 | ✅ fake backend success path 已推进 ACTIVE |
 | stats/count 和 query/DML 结果一致 | ❌ 无 real worker |
-| data endpoint 认证、授权、审计可验证 | ⚠️ 认证/授权就绪，审计缺失 |
+| data endpoint 认证、授权、审计可验证 | ✅ P2-AUTH-005-008、011-014 enabled 覆盖 |
 | runtime storage credentials 不落库、不进日志 | ⚠️ 模板过滤就绪，credential vending 缺失 |
-| backend 未配置、backend 超时、worker 错误有稳定错误语义 | ⚠️ disabled backend 就绪，timeout/error 缺失 |
+| backend 未配置、backend 超时、worker 错误有稳定错误语义 | ⚠️ disabled backend + fake backend timeout/error audit 就绪，real worker retry 缺失 |
 | data endpoint media type 和 request size 错误稳定 | ✅ 415/413 Lance error shape 就绪 |
 | Phase 1 metadata endpoint 回归通过 | ✅ Phase 1 tests passing |
 | UC 原有路由回归通过 | ✅ Phase 1 regression tests passing |
