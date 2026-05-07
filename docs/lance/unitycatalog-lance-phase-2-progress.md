@@ -288,6 +288,17 @@
 
 **参考来源：** 设计文档 Section 5.4, Section 12.3，测试设计文档 Section 9.6, Section 9.12
 
+### 2.24 Error response request identifiers（W2-3 协议一致性）
+
+| 功能 | Commit | 设计章节 | 说明 |
+|------|--------|----------|------|
+| error requestId body/header | 本次小步 | Section 12.1 | Lance 错误响应统一返回 `requestId`，并在响应 header 中回传 `x-request-id` |
+| generated requestId for pre-context errors | 本次小步 | Section 5.3 / 12.1 | Content-Type/body size 等进入 execution context 前的错误也会生成稳定 requestId |
+| backend_request_id top-level field | 本次小步 | Section 12.2 | backend timeout/error 从 audit 中提升 `backend_request_id`，便于客户端和排障系统识别 worker 请求 |
+| error response REST coverage | 本次小步 | Section 9.12 | 新增 enabled REST tests 覆盖 P2-ERROR-015 requestId 与 backend_request_id 合同 |
+
+**参考来源：** 设计文档 Section 12.1, Section 12.2，测试设计文档 Section 9.12
+
 ---
 
 ## 3. 待完成功能
@@ -331,7 +342,7 @@
 | W2-0: 准备与收口 | 15.1 | ✅ 完成 | 74fe4a4 |
 | W2-1: Backend SPI | 15.2 | ✅ 完成 | 74fe4a4, ec3e6e0, 1fbc0ba |
 | W2-2: Resolver + Storage | 15.3 | ⚠️ 部分 | ec4cee3 + 本次小步（Resolver/TableRef tableUri 完成，Storage 缺 credential vending） |
-| W2-3: Data endpoint service | 15.4 | ✅ 高优先级完成 | ec4cee3 + 本次工作（架构/Authorization/入口校验/metadata success path/legacy read 配置/Arrow response/JSON scalar response 完成） |
+| W2-3: Data endpoint service | 15.4 | ✅ 高优先级完成 | ec4cee3 + 本次工作（架构/Authorization/入口校验/metadata success path/legacy read 配置/Arrow response/JSON scalar response/error requestId 完成） |
 | W2-4: Arrow IPC | 15.5 | ✅ 高优先级完成 | 本次工作（media type/size limit + request reader + response writer 完成） |
 | W2-5: Worker HTTP backend | 15.6 | ⚠️ 部分 | 本次小步（deadline/requestId/idempotency command contract 完成，缺 WorkerHttpLanceExecutionBackend） |
 | W2-6: Metadata 状态推进 | 15.7 | ✅ 完成 | 本次工作（Repository methods + data plane success path + backend_committed marker + version 防倒退 + reconcile 完成） |
@@ -363,6 +374,7 @@
 | LancePhase2ReconcileRestTest | 2 | Enabled | P2-META-009/010 reconcile dry-run/backfill |
 | LancePhase2ObservabilityRestTest | 4 | Enabled | P2-AUTH-011~014 audit success/failure/redaction + metrics |
 | LancePhase2ScalarResponseRestTest | 3 | Enabled | P2-DATA-009、011、012 count/explain/analyze scalar response |
+| LancePhase2ErrorResponseContractRestTest | 3 | Enabled | P2-ERROR-015 requestId/backend_request_id 合同覆盖 |
 | LancePhase2ErrorAndRegressionRestTest | ~28 | @Disabled | Error handling, regression |
 | LancePhase2WorkerAndResilienceRestTest | 16 | @Disabled | WorkerHttpLanceExecutionBackend |
 | LancePhase2EcosystemSmokeTest | ~40 | @Disabled | Real worker + connectors |

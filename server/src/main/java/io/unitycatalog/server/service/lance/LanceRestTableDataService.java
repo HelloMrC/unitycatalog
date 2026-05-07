@@ -358,7 +358,10 @@ public class LanceRestTableDataService {
 
   private String requestId(AggregatedHttpRequest request) {
     String requestId = request.headers().get(REQUEST_ID_HEADER);
-    return requestId == null || requestId.isBlank() ? UUID.randomUUID().toString() : requestId;
+    String resolved =
+        requestId == null || requestId.isBlank() ? UUID.randomUUID().toString() : requestId;
+    LanceRequestContext.setCurrentRequestId(resolved);
+    return resolved;
   }
 
   private String authType(AggregatedHttpRequest request) {
