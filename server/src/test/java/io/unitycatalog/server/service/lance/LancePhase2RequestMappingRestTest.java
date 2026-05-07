@@ -25,6 +25,9 @@ class LancePhase2RequestMappingRestTest extends BaseLancePhase1RestTest {
     serverProperties.setProperty(
         Property.LANCE_EXECUTION_BACKEND_CLASS.getKey(),
         LanceTestEchoExecutionBackend.class.getName());
+    serverProperties.setProperty(Property.LANCE_EXECUTION_REQUEST_TIMEOUT_MS.getKey(), "12345");
+    serverProperties.setProperty(Property.LANCE_EXECUTION_QUERY_TIMEOUT_MS.getKey(), "43210");
+    serverProperties.setProperty(Property.LANCE_EXECUTION_WRITE_TIMEOUT_MS.getKey(), "54321");
   }
 
   @Test
@@ -83,13 +86,54 @@ class LancePhase2RequestMappingRestTest extends BaseLancePhase1RestTest {
         postJsonWithHeaders(
             "/v1/table/" + TABLE_ID + "/query",
             "{\"columns\":[\"id\",\"text\"],\"filter\":\"id > 1\"}",
-            Map.of("x-request-id", "phase2-request-42", "x-lance-tenant-id", "tenant-a"));
+            Map.of(
+                "x-request-id",
+                "phase2-request-42",
+                "x-lance-tenant-id",
+                "tenant-a",
+                "x-lance-deadline-ms",
+                "1000"));
 
     JsonNode command = command(response);
     assertThat(command.path("requestId").asText()).isEqualTo("phase2-request-42");
+    assertThat(command.path("deadlineMs").asLong()).isEqualTo(1000L);
     assertThat(command.path("context").path("tenantId").asText()).isEqualTo("tenant-a");
+    assertThat(command.path("context").path("deadlineMs").asText()).isEqualTo("1000");
+    assertThat(command.path("workerHeaders").toString()).contains("phase2-request-42", "1000");
     assertThat(command.path("querySpec").toString()).contains("columns", "filter", "id > 1");
     assertThat(response.headers().get("x-request-id")).isEqualTo("phase2-request-42");
+  }
+
+  @Test
+  @DisplayName("Phase 2 default deadlines come from operation timeout properties")
+  void defaultDeadlinesComeFromOperationTimeoutProperties() throws Exception {
+    createActiveTableFixture();
+
+    JsonNode query =
+        command(postJson("/v1/table/" + TABLE_ID + "/query", "{\"columns\":[\"id\"]}"));
+    JsonNode stats = command(postJson("/v1/table/" + TABLE_ID + "/stats", "{}"));
+    JsonNode insert =
+        command(
+            postArrow(
+                "/v1/table/" + TABLE_ID + "/insert",
+                "arrow-fixture".getBytes(StandardCharsets.UTF_8),
+                Map.of()));
+
+    assertThat(query.path("deadlineMs").asLong()).isEqualTo(43210L);
+    assertThat(stats.path("deadlineMs").asLong()).isEqualTo(12345L);
+    assertThat(insert.path("deadlineMs").asLong()).isEqualTo(54321L);
+  }
+
+  @Test
+  @DisplayName("Phase 2 invalid deadline header returns Lance error shape")
+  void invalidDeadlineHeaderReturnsLanceErrorShape() throws Exception {
+    createActiveTableFixture();
+
+    AggregatedHttpResponse response =
+        postJson("/v1/table/" + TABLE_ID + "/query", "{}", Map.of("x-lance-deadline-ms", "never"));
+
+    assertLanceErrorShape(response, 400);
+    assertThat(response.contentUtf8()).contains("invalid_deadline", "x-lance-deadline-ms");
   }
 
   @Test

@@ -72,6 +72,8 @@ public class LanceTestEchoExecutionBackend implements LanceExecutionBackend {
     payload.put("requestId", command.context().requestId());
     payload.put("principal", command.context().principal());
     payload.put("authType", command.context().authType());
+    payload.put("deadlineMs", command.context().deadlineMs());
+    payload.put("workerHeaders", workerHeaders(command));
     payload.put("idempotencyKeyHash", command.context().idempotencyKeyHash());
     payload.put("tableId", command.table().id());
     payload.put("pathKey", command.table().pathKey());
@@ -79,6 +81,18 @@ public class LanceTestEchoExecutionBackend implements LanceExecutionBackend {
     payload.put("legacyBridge", command.table().legacyBridge());
     payload.putAll(command.attributes());
     return payload;
+  }
+
+  private Map<String, Object> workerHeaders(LanceExecutionCommand command) {
+    Map<String, Object> headers = new LinkedHashMap<>();
+    headers.put("x-request-id", command.context().requestId());
+    if (command.context().deadlineMs() != null) {
+      headers.put("x-lance-deadline-ms", command.context().deadlineMs());
+    }
+    if (command.context().idempotencyKeyHash() != null) {
+      headers.put("x-lance-idempotency-key-sha256", command.context().idempotencyKeyHash());
+    }
+    return headers;
   }
 
   private Map<String, Object> writePayload(String operation) {

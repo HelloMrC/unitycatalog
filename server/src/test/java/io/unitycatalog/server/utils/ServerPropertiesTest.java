@@ -163,6 +163,9 @@ public class ServerPropertiesTest {
     // Valid values
     testValidProperty(Property.REDIRECT_PORT, "8080");
     testValidProperty(Property.REDIRECT_PORT, "65535");
+    testValidProperty(Property.LANCE_EXECUTION_REQUEST_TIMEOUT_MS, "60000");
+    testValidProperty(Property.LANCE_EXECUTION_QUERY_TIMEOUT_MS, "60000");
+    testValidProperty(Property.LANCE_EXECUTION_WRITE_TIMEOUT_MS, "120000");
 
     // Invalid values
     testInvalidProperty(
@@ -189,6 +192,12 @@ public class ServerPropertiesTest {
         "Invalid value '8080.5'",
         "server.redirect-port",
         "Expected an integer");
+    testInvalidProperty(
+        Property.LANCE_EXECUTION_QUERY_TIMEOUT_MS,
+        "0",
+        "Invalid value '0'",
+        "lance.execution.query-timeout-ms",
+        "Expected a positive integer");
   }
 
   @Test

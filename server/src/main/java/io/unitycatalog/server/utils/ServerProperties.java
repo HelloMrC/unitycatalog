@@ -208,6 +208,12 @@ public class ServerProperties {
     LANCE_EXECUTION_BACKEND_CLASS("lance.execution.backend.class"),
     LANCE_EXECUTION_LEGACY_READ_ENABLED(
         "lance.execution.legacy-read-enabled", "false", BOOLEAN_VALIDATOR),
+    LANCE_EXECUTION_REQUEST_TIMEOUT_MS(
+        "lance.execution.request-timeout-ms", "60000", POSITIVE_INTEGER_VALIDATOR),
+    LANCE_EXECUTION_QUERY_TIMEOUT_MS(
+        "lance.execution.query-timeout-ms", "60000", POSITIVE_INTEGER_VALIDATOR),
+    LANCE_EXECUTION_WRITE_TIMEOUT_MS(
+        "lance.execution.write-timeout-ms", "120000", POSITIVE_INTEGER_VALIDATOR),
     LANCE_EXECUTION_MAX_ARROW_REQUEST_BYTES(
         "lance.execution.max-arrow-request-bytes", "1073741824", POSITIVE_INTEGER_VALIDATOR),
     LANCE_EXECUTION_MAX_JSON_REQUEST_BYTES(
@@ -453,6 +459,18 @@ public class ServerProperties {
 
   public int getLanceExecutionMaxJsonRequestBytes() {
     return Integer.parseInt(get(Property.LANCE_EXECUTION_MAX_JSON_REQUEST_BYTES));
+  }
+
+  public int getLanceExecutionRequestTimeoutMs() {
+    return Integer.parseInt(get(Property.LANCE_EXECUTION_REQUEST_TIMEOUT_MS));
+  }
+
+  public int getLanceExecutionQueryTimeoutMs() {
+    return Integer.parseInt(get(Property.LANCE_EXECUTION_QUERY_TIMEOUT_MS));
+  }
+
+  public int getLanceExecutionWriteTimeoutMs() {
+    return Integer.parseInt(get(Property.LANCE_EXECUTION_WRITE_TIMEOUT_MS));
   }
 
   public boolean isLanceExecutionLegacyReadEnabled() {

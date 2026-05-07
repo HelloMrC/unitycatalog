@@ -35,6 +35,7 @@ public class LanceRestTableDataService {
       MediaType.parse("application/vnd.apache.arrow.stream");
   private static final String REQUEST_ID_HEADER = "x-request-id";
   private static final String IDEMPOTENCY_KEY_HEADER = "idempotency-key";
+  private static final String DEADLINE_MS_HEADER = "x-lance-deadline-ms";
 
   private final LanceDataPlaneService dataPlaneService;
   private final ServerProperties serverProperties;
@@ -61,7 +62,8 @@ public class LanceRestTableDataService {
       @Param("delimiter") Optional<String> delimiter,
       AggregatedHttpRequest request) {
     validateJsonRequest(request);
-    LanceExecutionContext context = executionContext(request);
+    LanceExecutionContext context =
+        executionContext(request, serverProperties.getLanceExecutionQueryTimeoutMs());
     return json(
         dataPlaneService.query(id, delimiter, context, queryAttributes(jsonBody(request))),
         context);
@@ -73,7 +75,8 @@ public class LanceRestTableDataService {
       @Param("delimiter") Optional<String> delimiter,
       AggregatedHttpRequest request) {
     validateJsonRequest(request);
-    LanceExecutionContext context = executionContext(request);
+    LanceExecutionContext context =
+        executionContext(request, serverProperties.getLanceExecutionQueryTimeoutMs());
     return json(
         dataPlaneService.countRows(id, delimiter, context, safeBody(jsonBody(request))), context);
   }
@@ -84,7 +87,8 @@ public class LanceRestTableDataService {
       @Param("delimiter") Optional<String> delimiter,
       AggregatedHttpRequest request) {
     validateJsonRequest(request);
-    LanceExecutionContext context = executionContext(request);
+    LanceExecutionContext context =
+        executionContext(request, serverProperties.getLanceExecutionRequestTimeoutMs());
     return json(
         dataPlaneService.stats(id, delimiter, context, safeBody(jsonBody(request))), context);
   }
@@ -95,7 +99,8 @@ public class LanceRestTableDataService {
       @Param("delimiter") Optional<String> delimiter,
       AggregatedHttpRequest request) {
     validateArrowRequest(request);
-    LanceExecutionContext context = executionContext(request);
+    LanceExecutionContext context =
+        executionContext(request, serverProperties.getLanceExecutionWriteTimeoutMs());
     return json(
         dataPlaneService.insert(id, delimiter, context, arrowAttributes(request, Optional.empty())),
         context);
@@ -107,7 +112,8 @@ public class LanceRestTableDataService {
       @Param("delimiter") Optional<String> delimiter,
       AggregatedHttpRequest request) {
     validateArrowRequest(request);
-    LanceExecutionContext context = executionContext(request);
+    LanceExecutionContext context =
+        executionContext(request, serverProperties.getLanceExecutionWriteTimeoutMs());
     return json(
         dataPlaneService.mergeInsert(
             id, delimiter, context, arrowAttributes(request, Optional.of("x-lance-merge-options"))),
@@ -120,7 +126,8 @@ public class LanceRestTableDataService {
       @Param("delimiter") Optional<String> delimiter,
       AggregatedHttpRequest request) {
     validateJsonRequest(request);
-    LanceExecutionContext context = executionContext(request);
+    LanceExecutionContext context =
+        executionContext(request, serverProperties.getLanceExecutionWriteTimeoutMs());
     return json(
         dataPlaneService.update(id, delimiter, context, safeBody(jsonBody(request))), context);
   }
@@ -131,7 +138,8 @@ public class LanceRestTableDataService {
       @Param("delimiter") Optional<String> delimiter,
       AggregatedHttpRequest request) {
     validateJsonRequest(request);
-    LanceExecutionContext context = executionContext(request);
+    LanceExecutionContext context =
+        executionContext(request, serverProperties.getLanceExecutionWriteTimeoutMs());
     return json(
         dataPlaneService.delete(id, delimiter, context, safeBody(jsonBody(request))), context);
   }
@@ -142,7 +150,8 @@ public class LanceRestTableDataService {
       @Param("delimiter") Optional<String> delimiter,
       AggregatedHttpRequest request) {
     validateJsonRequest(request);
-    LanceExecutionContext context = executionContext(request);
+    LanceExecutionContext context =
+        executionContext(request, serverProperties.getLanceExecutionQueryTimeoutMs());
     return json(
         dataPlaneService.explainPlan(id, delimiter, context, planAttributes(jsonBody(request))),
         context);
@@ -154,7 +163,8 @@ public class LanceRestTableDataService {
       @Param("delimiter") Optional<String> delimiter,
       AggregatedHttpRequest request) {
     validateJsonRequest(request);
-    LanceExecutionContext context = executionContext(request);
+    LanceExecutionContext context =
+        executionContext(request, serverProperties.getLanceExecutionQueryTimeoutMs());
     return json(
         dataPlaneService.analyzePlan(id, delimiter, context, planAttributes(jsonBody(request))),
         context);
@@ -166,7 +176,8 @@ public class LanceRestTableDataService {
       @Param("delimiter") Optional<String> delimiter,
       AggregatedHttpRequest request) {
     validateArrowRequest(request);
-    LanceExecutionContext context = executionContext(request);
+    LanceExecutionContext context =
+        executionContext(request, serverProperties.getLanceExecutionWriteTimeoutMs());
     return json(
         dataPlaneService.create(
             id,
@@ -224,15 +235,35 @@ public class LanceRestTableDataService {
         "Expected Content-Type " + expected + " but received " + actualValue + ".");
   }
 
-  private LanceExecutionContext executionContext(AggregatedHttpRequest request) {
+  private LanceExecutionContext executionContext(
+      AggregatedHttpRequest request, long defaultDeadlineMs) {
     String idempotencyKey = request.headers().get(IDEMPOTENCY_KEY_HEADER);
     return new LanceExecutionContext(
         requestId(request),
         LanceRequestContext.currentPrincipal(),
         authType(request),
-        null,
+        deadlineMs(request, defaultDeadlineMs),
         context(LanceRequestContext.currentContextHeaders()),
         idempotencyKey == null || idempotencyKey.isBlank() ? null : sha256(idempotencyKey));
+  }
+
+  private long deadlineMs(AggregatedHttpRequest request, long defaultDeadlineMs) {
+    String deadline = request.headers().get(DEADLINE_MS_HEADER);
+    if (deadline == null || deadline.isBlank()) {
+      return defaultDeadlineMs;
+    }
+    try {
+      long parsed = Long.parseLong(deadline);
+      if (parsed > 0) {
+        return parsed;
+      }
+    } catch (NumberFormatException ignored) {
+      // Fall through to the stable Lance error below.
+    }
+    throw new LanceProtocolException(
+        HttpStatus.BAD_REQUEST,
+        "invalid_deadline",
+        DEADLINE_MS_HEADER + " must be a positive integer.");
   }
 
   private Map<String, Object> jsonBody(AggregatedHttpRequest request) {

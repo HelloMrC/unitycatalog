@@ -186,6 +186,17 @@
 
 **参考来源：** 设计文档 Section 6.5, Section 7.3，测试设计文档 Section 9.3, Section 9.9
 
+### 2.15 Deadline/Timeout command contract（W2-5 部分）
+
+| 功能 | Commit | 设计章节 | 说明 |
+|------|--------|----------|------|
+| timeout server properties | 本次小步 | Section 8.3 | 新增 `lance.execution.request-timeout-ms`、`query-timeout-ms`、`write-timeout-ms`，均为正整数 |
+| deadline header override | 本次小步 | Section 8.3 | `x-lance-deadline-ms` 优先填充 `LanceExecutionContext.deadlineMs`，非法值返回 Lance error shape |
+| operation 默认 deadline | 本次小步 | Section 8.3 | query/count/plan 使用 query timeout，stats 使用 request timeout，write/create 使用 write timeout |
+| Worker header echo coverage | 本次小步 | Section 9.3 / 9.11 | enabled REST tests 验证 requestId/deadline/idempotency hash contract，不透传明文 idempotency key |
+
+**参考来源：** 设计文档 Section 8.3，测试设计文档 Section 9.3, Section 9.11
+
 ---
 
 ## 3. 待完成功能
@@ -203,7 +214,6 @@
 | 功能 | 设计章节 | 测试阻塞 | 说明 |
 |------|----------|----------|------|
 | **Runtime Credential Vending** | Section 6.5 | P2-STORAGE-002-003 | UC StorageCredentialVendor 集成，生成临时凭证 |
-| **Deadline/Timeout** | Section 8.3 | P2-WORKER-006 | deadlineMs 从配置或 header 填充 |
 | **Audit Events** | Section 12.3 | P2-AUTH-011-013 | lance.data.* audit events |
 | **Metrics** | Section 12.4 | P2-AUTH-014 | lance_data_* metrics |
 | **Backend Committed Failure** | Section 10.4 | P2-ERROR-014 | backend_committed=true 错误标记 |
@@ -246,7 +256,7 @@
 | W2-2: Resolver + Storage | 15.3 | ⚠️ 部分 | ec4cee3 + 本次小步（Resolver/TableRef tableUri 完成，Storage 缺 credential vending） |
 | W2-3: Data endpoint service | 15.4 | ⚠️ 部分 | ec4cee3 + 本次工作（架构/Authorization/入口校验/metadata success path/legacy read 配置完成，缺 Arrow response） |
 | W2-4: Arrow IPC | 15.5 | ⚠️ 部分 | 本次工作（media type/size limit 完成，缺 reader/writer） |
-| W2-5: Worker HTTP backend | 15.6 | ❌ 未开始 | - |
+| W2-5: Worker HTTP backend | 15.6 | ⚠️ 部分 | 本次小步（deadline/requestId/idempotency command contract 完成，缺 WorkerHttpLanceExecutionBackend） |
 | W2-6: Metadata 状态推进 | 15.7 | ⚠️ 部分 | 本次工作（Repository methods + data plane success path 完成，缺 backend_committed/reconcile） |
 | W2-7: 授权、审计、观测 | 15.8 | ⚠️ 部分 | 本次工作（授权完成，缺审计/观测） |
 | W2-8: Connector 回归 | 15.9 | ❌ 未开始 | - |
@@ -264,7 +274,7 @@
 | LancePhase2DataWriteRestTest | 11 | @Disabled | LanceTableRepository methods |
 | LancePhase2MetadataAndStorageRestTest | 18 | @Disabled | Repository methods, credential vending |
 | LancePhase2AuthGovernanceRestTest | 17 | @Disabled | Audit/Metrics，完整 grant 路径拆分后可部分启用 |
-| LancePhase2RequestMappingRestTest | 4 | Enabled | request mapping + header spoofing guard |
+| LancePhase2RequestMappingRestTest | 7 | Enabled | request mapping + storage/deadline contract + header spoofing guard |
 | LancePhase2DataPlaneAuthorizationRestTest | 3 | Enabled | owner read/write allow + non-owner write deny |
 | LanceDataPlaneAuthorizerTest | 3 | Enabled | READ_DATA/WRITE_DATA 兼容权限映射 |
 | LancePhase2RequestValidationRestTest | 4 | Enabled | Content-Type 415 + JSON/Arrow size 413 |
@@ -306,11 +316,10 @@
 
 ### 8.1 立即可做（不依赖外部环境）
 
-1. **Deadline 填充** - 从配置读取
-2. **Authorization skeleton 拆分启用** - 将 P2-AUTH-005-008 从大 disabled 类中拆出
-3. **Arrow IPC request reader** - stream handling、schema peek
-4. **Arrow IPC response writer** - query 返回 Arrow IPC file/stream
-5. **Backend committed failure marker** - metadata update failure 返回 `backend_committed=true`
+1. **Authorization skeleton 拆分启用** - 将 P2-AUTH-005-008 从大 disabled 类中拆出
+2. **Arrow IPC request reader** - stream handling、schema peek
+3. **Arrow IPC response writer** - query 返回 Arrow IPC file/stream
+4. **Backend committed failure marker** - metadata update failure 返回 `backend_committed=true`
 
 ### 8.2 需要测试 fixture
 
