@@ -27,7 +27,7 @@ class LancePhase2LegacyReadConfigRestTest extends BaseLancePhase1RestTest {
     createLegacyLanceTable();
 
     AggregatedHttpResponse response =
-        postJson("/v1/table/" + LEGACY_TABLE_FULL_NAME + "/count_rows?delimiter=.", "{}");
+        postJson("/v1/table/" + LEGACY_TABLE_FULL_NAME + "/stats?delimiter=.", "{}");
 
     assertSuccess(response);
     JsonNode command = json(response).path("command");

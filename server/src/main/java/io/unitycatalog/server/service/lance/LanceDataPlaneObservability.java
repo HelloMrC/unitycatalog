@@ -106,7 +106,9 @@ public class LanceDataPlaneObservability {
     audit.put("requestId", context.requestId());
     audit.put("principal", context.principal());
     audit.put("authType", context.authType());
-    audit.put("tableAssetId", String.valueOf(table.assetDAO().getId()));
+    audit.put(
+        "tableAssetId",
+        table.assetDAO() == null ? null : String.valueOf(table.assetDAO().getId()));
     audit.put("tableIdentifier", command.table().pathKey());
     audit.put("operation", command.operation());
     audit.put("backendType", backendType(payload));

@@ -37,7 +37,7 @@ class LancePhase2RequestMappingRestTest extends BaseLancePhase1RestTest {
 
     AggregatedHttpResponse response =
         postJson(
-            "/v1/table/" + TABLE_ID + "/count_rows",
+            "/v1/table/" + TABLE_ID + "/stats",
             "{"
                 + "\"id\":\"prod$team_a$spoofed\","
                 + "\"predicate\":\"id > 0\","

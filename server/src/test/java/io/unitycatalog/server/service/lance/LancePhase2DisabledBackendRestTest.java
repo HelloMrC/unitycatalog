@@ -7,13 +7,15 @@ import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 
-class LancePhase2DisabledBackendRestTest extends BaseLancePhase1RestTest {
+class LancePhase2DisabledBackendRestTest extends BaseLancePhase2RestTest {
 
   @Test
   @DisplayName("Phase 2 data endpoints return UNIMPLEMENTED when execution backend is disabled")
   void dataEndpointsReturnUnimplementedWhenBackendIsDisabled() throws Exception {
+    createActiveTableFixture();
+
     for (String endpoint : phase2DataEndpoints()) {
-      AggregatedHttpResponse response = postJson(endpoint.replace("{id}", TABLE_ID), "{}");
+      AggregatedHttpResponse response = requestForEndpoint(endpoint.replace("{id}", TABLE_ID));
 
       assertLanceErrorShape(response, 501);
       assertThat(json(response).path("type").asText()).containsIgnoringCase("unimplemented");
@@ -33,5 +35,14 @@ class LancePhase2DisabledBackendRestTest extends BaseLancePhase1RestTest {
         "/v1/table/{id}/explain_plan",
         "/v1/table/{id}/analyze_plan",
         "/v1/table/{id}/create");
+  }
+
+  private AggregatedHttpResponse requestForEndpoint(String endpoint) {
+    if (endpoint.endsWith("/insert")
+        || endpoint.endsWith("/merge_insert")
+        || endpoint.endsWith("/create")) {
+      return postArrow(endpoint, arrowSmallStreamFixture());
+    }
+    return postJson(endpoint, "{}");
   }
 }

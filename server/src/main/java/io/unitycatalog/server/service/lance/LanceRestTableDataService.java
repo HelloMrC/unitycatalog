@@ -93,8 +93,11 @@ public class LanceRestTableDataService {
     validateJsonRequest(request);
     LanceExecutionContext context =
         executionContext(request, serverProperties.getLanceExecutionQueryTimeoutMs());
-    return json(
-        dataPlaneService.countRows(id, delimiter, context, safeBody(jsonBody(request))), context);
+    return jsonValue(
+        requiredPayloadValue(
+            dataPlaneService.countRows(id, delimiter, context, safeBody(jsonBody(request))),
+            "count"),
+        context);
   }
 
   @Post("/v1/table/{id}/stats")
@@ -168,8 +171,10 @@ public class LanceRestTableDataService {
     validateJsonRequest(request);
     LanceExecutionContext context =
         executionContext(request, serverProperties.getLanceExecutionQueryTimeoutMs());
-    return json(
-        dataPlaneService.explainPlan(id, delimiter, context, planAttributes(jsonBody(request))),
+    return jsonValue(
+        requiredPayloadValue(
+            dataPlaneService.explainPlan(id, delimiter, context, planAttributes(jsonBody(request))),
+            "plan"),
         context);
   }
 
@@ -181,8 +186,10 @@ public class LanceRestTableDataService {
     validateJsonRequest(request);
     LanceExecutionContext context =
         executionContext(request, serverProperties.getLanceExecutionQueryTimeoutMs());
-    return json(
-        dataPlaneService.analyzePlan(id, delimiter, context, planAttributes(jsonBody(request))),
+    return jsonValue(
+        requiredPayloadValue(
+            dataPlaneService.analyzePlan(id, delimiter, context, planAttributes(jsonBody(request))),
+            "plan"),
         context);
   }
 
@@ -204,12 +211,23 @@ public class LanceRestTableDataService {
   }
 
   private HttpResponse json(LanceExecutionResult result, LanceExecutionContext context) {
+    return jsonValue(result.payload(), context);
+  }
+
+  private HttpResponse jsonValue(Object value, LanceExecutionContext context) {
     ResponseHeaders headers =
         ResponseHeaders.builder(HttpStatus.OK)
             .contentType(MediaType.JSON_UTF_8)
             .add(REQUEST_ID_HEADER, context.requestId())
             .build();
-    return HttpResponse.ofJson(headers, result.payload());
+    return HttpResponse.ofJson(headers, value);
+  }
+
+  private Object requiredPayloadValue(LanceExecutionResult result, String field) {
+    if (!result.payload().containsKey(field)) {
+      throw new BaseException(ErrorCode.INTERNAL, "Lance backend response missing " + field + ".");
+    }
+    return result.payload().get(field);
   }
 
   private void validateJsonRequest(AggregatedHttpRequest request) {

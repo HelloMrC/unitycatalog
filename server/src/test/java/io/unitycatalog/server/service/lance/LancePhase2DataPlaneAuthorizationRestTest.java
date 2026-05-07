@@ -49,12 +49,12 @@ class LancePhase2DataPlaneAuthorizationRestTest extends BaseLancePhase2RestTest 
     createActiveTableFixtureAsAdmin();
     setTableOwner(READER);
 
-    JsonNode command =
-        assertCommandEcho(
-            postJsonWithHeaders(
-                "/v1/table/" + P2_ACTIVE_TABLE_ID + "/count_rows", "{}", authHeader(READER)));
+    AggregatedHttpResponse response =
+        postJsonWithHeaders(
+            "/v1/table/" + P2_ACTIVE_TABLE_ID + "/count_rows", "{}", authHeader(READER));
 
-    assertThat(command.path("requiredPrivilege").asText()).isEqualTo("READ_DATA");
+    assertSuccess(response);
+    assertThat(json(response).isIntegralNumber()).as(response.contentUtf8()).isTrue();
   }
 
   @Test

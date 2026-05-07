@@ -136,7 +136,7 @@ class LancePhase2DataReadRestTest extends BaseLancePhase2RestTest {
             "{\"predicate\":\"id > 1\",\"version\":1}");
 
     assertSuccess(response);
-    assertThat(json(response).path("count").isIntegralNumber()).isTrue();
+    assertThat(json(response).isIntegralNumber()).isTrue();
   }
 
   @Test
@@ -163,7 +163,7 @@ class LancePhase2DataReadRestTest extends BaseLancePhase2RestTest {
         postJson("/v1/table/" + P2_ACTIVE_TABLE_ID + "/explain_plan", "{\"verbose\":true}");
 
     assertSuccess(response);
-    assertThat(json(response).path("plan").isTextual()).isTrue();
+    assertThat(json(response).isTextual()).isTrue();
   }
 
   @Test
@@ -175,7 +175,7 @@ class LancePhase2DataReadRestTest extends BaseLancePhase2RestTest {
         postJson("/v1/table/" + P2_ACTIVE_TABLE_ID + "/analyze_plan", "{}");
 
     assertSuccess(response);
-    assertThat(json(response).path("plan").isTextual()).isTrue();
+    assertThat(json(response).isTextual()).isTrue();
   }
 
   @Test
@@ -192,6 +192,6 @@ class LancePhase2DataReadRestTest extends BaseLancePhase2RestTest {
     assertArrowResponse(query);
     assertSuccess(count);
     assertSuccess(stats);
-    assertThat(json(stats).path("numRows").asLong()).isEqualTo(json(count).path("count").asLong());
+    assertThat(json(stats).path("numRows").asLong()).isEqualTo(json(count).asLong());
   }
 }

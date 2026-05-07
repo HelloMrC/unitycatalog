@@ -24,13 +24,12 @@ class LancePhase2ConfigurableBackendRestTest extends BaseLancePhase1RestTest {
   void dataEndpointsCanUseConfiguredExecutionBackend() throws Exception {
     createActiveTableFixture();
 
-    AggregatedHttpResponse response = postJson("/v1/table/" + TABLE_ID + "/count_rows", "{}");
+    AggregatedHttpResponse response = postJson("/v1/table/" + TABLE_ID + "/query", "{}");
 
     assertSuccess(response);
     JsonNode body = json(response);
-    assertThat(body.path("count").asInt()).isEqualTo(0);
     assertThat(body.path("backendType").asText()).isEqualTo("test-echo");
-    assertThat(body.path("command").path("operation").asText()).isEqualTo("count_rows");
+    assertThat(body.path("command").path("operation").asText()).isEqualTo("query");
     assertThat(body.path("command").path("tableId").asText()).isEqualTo(TABLE_ID);
     assertThat(body.has("payload")).as(response.contentUtf8()).isFalse();
   }

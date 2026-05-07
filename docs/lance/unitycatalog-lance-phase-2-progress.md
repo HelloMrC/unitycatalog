@@ -1,6 +1,6 @@
 # Unity Catalog Lance REST API Phase 2 开发进度
 
-更新日期：2026-05-06
+更新日期：2026-05-07
 
 ## 1. 文档目标
 
@@ -276,6 +276,18 @@
 
 **参考来源：** 设计文档 Section 12.3, Section 12.4，测试设计文档 Section 9.10
 
+### 2.23 JSON scalar response alignment（W2-3 协议一致性）
+
+| 功能 | Commit | 设计章节 | 说明 |
+|------|--------|----------|------|
+| count_rows scalar response | 本次小步 | Section 5.4 | `count_rows` 成功响应不再返回 command wrapper，而是直接返回 JSON integer body |
+| explain/analyze scalar response | 本次小步 | Section 5.4 | `explain_plan` / `analyze_plan` 成功响应直接返回 JSON string body |
+| scalar response coverage | 本次小步 | Section 9.6 | 新增 enabled REST tests 覆盖 P2-DATA-009、011、012 |
+| legacy audit guard | 本次小步 | Section 12.3 | legacy bridge read 的 audit 允许 tableAssetId 为空，避免非 native Lance asset 触发 NPE |
+| disabled backend contract fix | 本次小步 | Section 8.3 / 12.1 | disabled backend 覆盖先解析存在的表，并按 JSON/Arrow endpoint 的真实 media type 调用 |
+
+**参考来源：** 设计文档 Section 5.4, Section 12.3，测试设计文档 Section 9.6, Section 9.12
+
 ---
 
 ## 3. 待完成功能
@@ -319,7 +331,7 @@
 | W2-0: 准备与收口 | 15.1 | ✅ 完成 | 74fe4a4 |
 | W2-1: Backend SPI | 15.2 | ✅ 完成 | 74fe4a4, ec3e6e0, 1fbc0ba |
 | W2-2: Resolver + Storage | 15.3 | ⚠️ 部分 | ec4cee3 + 本次小步（Resolver/TableRef tableUri 完成，Storage 缺 credential vending） |
-| W2-3: Data endpoint service | 15.4 | ✅ 高优先级完成 | ec4cee3 + 本次工作（架构/Authorization/入口校验/metadata success path/legacy read 配置/Arrow response 完成） |
+| W2-3: Data endpoint service | 15.4 | ✅ 高优先级完成 | ec4cee3 + 本次工作（架构/Authorization/入口校验/metadata success path/legacy read 配置/Arrow response/JSON scalar response 完成） |
 | W2-4: Arrow IPC | 15.5 | ✅ 高优先级完成 | 本次工作（media type/size limit + request reader + response writer 完成） |
 | W2-5: Worker HTTP backend | 15.6 | ⚠️ 部分 | 本次小步（deadline/requestId/idempotency command contract 完成，缺 WorkerHttpLanceExecutionBackend） |
 | W2-6: Metadata 状态推进 | 15.7 | ✅ 完成 | 本次工作（Repository methods + data plane success path + backend_committed marker + version 防倒退 + reconcile 完成） |
@@ -350,6 +362,7 @@
 | LancePhase2BackendCommittedFailureRestTest | 1 | Enabled | metadata update failure returns backend_committed marker |
 | LancePhase2ReconcileRestTest | 2 | Enabled | P2-META-009/010 reconcile dry-run/backfill |
 | LancePhase2ObservabilityRestTest | 4 | Enabled | P2-AUTH-011~014 audit success/failure/redaction + metrics |
+| LancePhase2ScalarResponseRestTest | 3 | Enabled | P2-DATA-009、011、012 count/explain/analyze scalar response |
 | LancePhase2ErrorAndRegressionRestTest | ~28 | @Disabled | Error handling, regression |
 | LancePhase2WorkerAndResilienceRestTest | 16 | @Disabled | WorkerHttpLanceExecutionBackend |
 | LancePhase2EcosystemSmokeTest | ~40 | @Disabled | Real worker + connectors |
@@ -405,7 +418,7 @@
 | query 返回 Arrow IPC 且可被客户端消费 | ⚠️ fake backend Arrow response writer 就绪，真实 IPC/客户端消费待 real worker |
 | insert/merge/update/delete 通过真实 worker 执行 | ❌ 无 real worker |
 | declared-only table 可首次物理化 | ✅ fake backend success path 已推进 ACTIVE |
-| stats/count 和 query/DML 结果一致 | ❌ 无 real worker |
+| stats/count 和 query/DML 结果一致 | ⚠️ fake backend scalar 响应形状对齐，real worker 一致性待接入 |
 | data endpoint 认证、授权、审计可验证 | ✅ P2-AUTH-005-008、011-014 enabled 覆盖 |
 | runtime storage credentials 不落库、不进日志 | ⚠️ 模板过滤就绪，credential vending 缺失 |
 | backend 未配置、backend 超时、worker 错误有稳定错误语义 | ⚠️ disabled backend + fake backend timeout/error audit 就绪，real worker retry 缺失 |
