@@ -241,15 +241,25 @@
 
 **参考来源：** 设计文档 Section 9.5，测试设计文档 Section 9.5
 
+### 2.20 Arrow IPC Response Writer（W2-4 高优先级）
+
+| 功能 | Commit | 设计章节 | 说明 |
+|------|--------|----------|------|
+| LanceArrowResponseWriter | 本次小步 | Section 4.1 / 9.5 | query endpoint 可根据 Accept 写出 Arrow file/stream 响应 |
+| Arrow file negotiation | 本次小步 | Section 9.5 | `Accept=application/vnd.apache.arrow.file` 返回 Arrow file content type |
+| Arrow stream negotiation | 本次小步 | Section 9.5 | `Accept=application/vnd.apache.arrow.stream` 返回 Arrow stream content type |
+| JSON fallback | 本次小步 | Section 9.2 / 9.3 | 显式 `Accept=application/json` 时保留 JSON command echo，便于 request mapping 覆盖 |
+| Response coverage | 本次小步 | Section 9.5 / 9.6 | 新增 enabled REST tests 覆盖 P2-DATA-001、P2-ARROW-007~009 |
+
+**参考来源：** 设计文档 Section 4.1, Section 9.5，测试设计文档 Section 9.5, Section 9.6
+
 ---
 
 ## 3. 待完成功能
 
 ### 3.1 高优先级（阻塞测试启用）
 
-| 功能 | 设计章节 | 测试阻塞 | 说明 |
-|------|----------|----------|------|
-| **Arrow IPC Response Writer** | Section 4.1, 9.1 | P2-DATA-001, P2-ARROW-007-008 | Query 返回 Arrow IPC file/stream，不是 JSON |
+高优先级阻塞项已完成；剩余工作见中优先级、Worker Backend 和 Ecosystem Smoke。
 
 ### 3.2 中优先级（影响部分测试）
 
@@ -294,8 +304,8 @@
 | W2-0: 准备与收口 | 15.1 | ✅ 完成 | 74fe4a4 |
 | W2-1: Backend SPI | 15.2 | ✅ 完成 | 74fe4a4, ec3e6e0, 1fbc0ba |
 | W2-2: Resolver + Storage | 15.3 | ⚠️ 部分 | ec4cee3 + 本次小步（Resolver/TableRef tableUri 完成，Storage 缺 credential vending） |
-| W2-3: Data endpoint service | 15.4 | ⚠️ 部分 | ec4cee3 + 本次工作（架构/Authorization/入口校验/metadata success path/legacy read 配置完成，缺 Arrow response） |
-| W2-4: Arrow IPC | 15.5 | ⚠️ 部分 | 本次工作（media type/size limit + request reader 完成，缺 response writer） |
+| W2-3: Data endpoint service | 15.4 | ✅ 高优先级完成 | ec4cee3 + 本次工作（架构/Authorization/入口校验/metadata success path/legacy read 配置/Arrow response 完成） |
+| W2-4: Arrow IPC | 15.5 | ✅ 高优先级完成 | 本次工作（media type/size limit + request reader + response writer 完成） |
 | W2-5: Worker HTTP backend | 15.6 | ⚠️ 部分 | 本次小步（deadline/requestId/idempotency command contract 完成，缺 WorkerHttpLanceExecutionBackend） |
 | W2-6: Metadata 状态推进 | 15.7 | ⚠️ 部分 | 本次工作（Repository methods + data plane success path + backend_committed marker + version 防倒退完成，缺 reconcile） |
 | W2-7: 授权、审计、观测 | 15.8 | ⚠️ 部分 | 本次工作（授权和 P2-AUTH-005-008 enabled 覆盖完成，缺审计/观测） |
@@ -319,6 +329,7 @@
 | LanceDataPlaneAuthorizerTest | 3 | Enabled | READ_DATA/WRITE_DATA 兼容权限映射 |
 | LancePhase2RequestValidationRestTest | 4 | Enabled | Content-Type 415 + JSON/Arrow size 413 |
 | LancePhase2ArrowRequestReaderRestTest | 8 | Enabled | P2-ARROW-001~006、010~011 request reader 覆盖 |
+| LancePhase2ArrowResponseWriterRestTest | 5 | Enabled | P2-DATA-001、P2-ARROW-007~009 response writer 覆盖 |
 | LancePhase2DataPlaneMetadataUpdateRestTest | 4 | Enabled | declared materialization + write/stats metadata cache + version 防倒退 |
 | LancePhase2LegacyReadConfigRestTest | 1 | Enabled | server property enables legacy bridge read |
 | LancePhase2BackendCommittedFailureRestTest | 1 | Enabled | metadata update failure returns backend_committed marker |

@@ -40,6 +40,7 @@ public class LanceRestTableDataService {
   private final LanceDataPlaneService dataPlaneService;
   private final ServerProperties serverProperties;
   private final LanceArrowRequestReader arrowRequestReader = new LanceArrowRequestReader();
+  private final LanceArrowResponseWriter arrowResponseWriter = new LanceArrowResponseWriter();
 
   public LanceRestTableDataService(
       Repositories repositories,
@@ -65,9 +66,12 @@ public class LanceRestTableDataService {
     validateJsonRequest(request);
     LanceExecutionContext context =
         executionContext(request, serverProperties.getLanceExecutionQueryTimeoutMs());
-    return json(
-        dataPlaneService.query(id, delimiter, context, queryAttributes(jsonBody(request))),
-        context);
+    LanceExecutionResult result =
+        dataPlaneService.query(id, delimiter, context, queryAttributes(jsonBody(request)));
+    if (arrowResponseWriter.acceptsArrow(request)) {
+      return arrowResponseWriter.write(request, result, context);
+    }
+    return json(result, context);
   }
 
   @Post("/v1/table/{id}/count_rows")
