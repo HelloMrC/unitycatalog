@@ -26,30 +26,35 @@ class LanceDataPlaneMetadataUpdater {
     }
 
     Map<String, Object> payload = result.payload();
-    if (table.tableRef().declaredOnly()) {
-      String storageLocation = firstString(payload, "storage_location", "storageLocation");
-      if (storageLocation == null) {
-        storageLocation = table.tableDAO().getStorageLocation();
+    try {
+      if (table.tableRef().declaredOnly()) {
+        String storageLocation = firstString(payload, "storage_location", "storageLocation");
+        if (storageLocation == null) {
+          storageLocation = table.tableDAO().getStorageLocation();
+        }
+        String tableUri = firstString(payload, "table_uri", "tableUri");
+        if (tableUri == null) {
+          tableUri = table.tableDAO().getTableUri();
+        }
+        tableRepository.markTableMaterialized(
+            table.assetDAO().getId(),
+            storageLocation,
+            tableUri,
+            firstString(payload, "arrow_schema_json", "arrowSchemaJson"),
+            longValue(payload.get("version")),
+            statsJson(payload),
+            updatedBy(table, context));
+      } else {
+        tableRepository.updateTableExecutionMetadata(
+            table.assetDAO().getId(),
+            longValue(payload.get("version")),
+            firstString(payload, "arrow_schema_json", "arrowSchemaJson"),
+            statsJson(payload),
+            updatedBy(table, context));
       }
-      String tableUri = firstString(payload, "table_uri", "tableUri");
-      if (tableUri == null) {
-        tableUri = table.tableDAO().getTableUri();
-      }
-      tableRepository.markTableMaterialized(
-          table.assetDAO().getId(),
-          storageLocation,
-          tableUri,
-          firstString(payload, "arrow_schema_json", "arrowSchemaJson"),
-          longValue(payload.get("version")),
-          statsJson(payload),
-          updatedBy(table, context));
-    } else {
-      tableRepository.updateTableExecutionMetadata(
-          table.assetDAO().getId(),
-          longValue(payload.get("version")),
-          firstString(payload, "arrow_schema_json", "arrowSchemaJson"),
-          statsJson(payload),
-          updatedBy(table, context));
+    } catch (RuntimeException e) {
+      throw new LanceBackendCommittedException(
+          "Lance backend write completed but UC metadata update failed.", e);
     }
     return result;
   }

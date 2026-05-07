@@ -19,6 +19,9 @@ public class LanceExceptionHandler extends BaseExceptionHandler {
     if (unwrapped instanceof LanceProtocolException exception) {
       return createProtocolErrorResponse(exception);
     }
+    if (unwrapped instanceof LanceBackendCommittedException exception) {
+      return createBackendCommittedErrorResponse(exception);
+    }
     return super.handleException(ctx, req, unwrapped);
   }
 
@@ -39,11 +42,41 @@ public class LanceExceptionHandler extends BaseExceptionHandler {
     return HttpResponse.ofJson(exception.status(), response);
   }
 
+  private HttpResponse createBackendCommittedErrorResponse(
+      LanceBackendCommittedException exception) {
+    Map<String, Object> response = new HashMap<>();
+    response.put("type", exception.type());
+    response.put("message", exception.getMessage());
+    response.put("code", exception.status().code());
+    response.put("backend_committed", true);
+    response.put("reconcileRequired", true);
+    return HttpResponse.ofJson(exception.status(), response);
+  }
+
   private Throwable unwrap(Throwable cause) {
     if (cause instanceof CompletionException && cause.getCause() != null) {
       return cause.getCause();
     }
     return cause;
+  }
+}
+
+class LanceBackendCommittedException extends RuntimeException {
+  private final HttpStatus status;
+  private final String type;
+
+  LanceBackendCommittedException(String message, Throwable cause) {
+    super(message, cause);
+    this.status = HttpStatus.INTERNAL_SERVER_ERROR;
+    this.type = "metadata_update_failed";
+  }
+
+  HttpStatus status() {
+    return status;
+  }
+
+  String type() {
+    return type;
   }
 }
 

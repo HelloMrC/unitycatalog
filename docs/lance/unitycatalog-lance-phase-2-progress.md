@@ -197,6 +197,17 @@
 
 **参考来源：** 设计文档 Section 8.3，测试设计文档 Section 9.3, Section 9.11
 
+### 2.16 Backend committed metadata failure（W2-6 部分）
+
+| 功能 | Commit | 设计章节 | 说明 |
+|------|--------|----------|------|
+| metadata update failure wrapper | 本次小步 | Section 10.4 | backend write 成功后，UC metadata 更新失败时返回稳定 Lance error |
+| backend_committed marker | 本次小步 | Section 10.4 | 错误响应包含 `backend_committed=true` 和 `reconcileRequired=true`，避免误导客户端重试为纯 backend 失败 |
+| 写路径限定 | 本次小步 | Section 10.4 | 仅包裹 write/create/merge/update/delete 的 metadata success path，stats cache 更新不标记 backend committed |
+| Failure REST coverage | 本次小步 | Section 9.8 / 9.11 | 新增 enabled REST test 使用 test backend 触发 metadata 更新失败，验证错误语义和 UC version 未推进 |
+
+**参考来源：** 设计文档 Section 10.4，测试设计文档 Section 9.8, Section 9.11
+
 ---
 
 ## 3. 待完成功能
@@ -216,7 +227,6 @@
 | **Runtime Credential Vending** | Section 6.5 | P2-STORAGE-002-003 | UC StorageCredentialVendor 集成，生成临时凭证 |
 | **Audit Events** | Section 12.3 | P2-AUTH-011-013 | lance.data.* audit events |
 | **Metrics** | Section 12.4 | P2-AUTH-014 | lance_data_* metrics |
-| **Backend Committed Failure** | Section 10.4 | P2-ERROR-014 | backend_committed=true 错误标记 |
 
 ### 3.3 低优先级（设计一致性）
 
@@ -257,7 +267,7 @@
 | W2-3: Data endpoint service | 15.4 | ⚠️ 部分 | ec4cee3 + 本次工作（架构/Authorization/入口校验/metadata success path/legacy read 配置完成，缺 Arrow response） |
 | W2-4: Arrow IPC | 15.5 | ⚠️ 部分 | 本次工作（media type/size limit 完成，缺 reader/writer） |
 | W2-5: Worker HTTP backend | 15.6 | ⚠️ 部分 | 本次小步（deadline/requestId/idempotency command contract 完成，缺 WorkerHttpLanceExecutionBackend） |
-| W2-6: Metadata 状态推进 | 15.7 | ⚠️ 部分 | 本次工作（Repository methods + data plane success path 完成，缺 backend_committed/reconcile） |
+| W2-6: Metadata 状态推进 | 15.7 | ⚠️ 部分 | 本次工作（Repository methods + data plane success path + backend_committed marker 完成，缺 reconcile） |
 | W2-7: 授权、审计、观测 | 15.8 | ⚠️ 部分 | 本次工作（授权完成，缺审计/观测） |
 | W2-8: Connector 回归 | 15.9 | ❌ 未开始 | - |
 
@@ -280,6 +290,7 @@
 | LancePhase2RequestValidationRestTest | 4 | Enabled | Content-Type 415 + JSON/Arrow size 413 |
 | LancePhase2DataPlaneMetadataUpdateRestTest | 3 | Enabled | declared materialization + write/stats metadata cache |
 | LancePhase2LegacyReadConfigRestTest | 1 | Enabled | server property enables legacy bridge read |
+| LancePhase2BackendCommittedFailureRestTest | 1 | Enabled | metadata update failure returns backend_committed marker |
 | LancePhase2ErrorAndRegressionRestTest | ~28 | @Disabled | Error handling, regression |
 | LancePhase2WorkerAndResilienceRestTest | 16 | @Disabled | WorkerHttpLanceExecutionBackend |
 | LancePhase2EcosystemSmokeTest | ~40 | @Disabled | Real worker + connectors |
@@ -319,7 +330,7 @@
 1. **Authorization skeleton 拆分启用** - 将 P2-AUTH-005-008 从大 disabled 类中拆出
 2. **Arrow IPC request reader** - stream handling、schema peek
 3. **Arrow IPC response writer** - query 返回 Arrow IPC file/stream
-4. **Backend committed failure marker** - metadata update failure 返回 `backend_committed=true`
+4. **Version 防倒退** - backend version < current_version 时警告或拒绝回写
 
 ### 8.2 需要测试 fixture
 
