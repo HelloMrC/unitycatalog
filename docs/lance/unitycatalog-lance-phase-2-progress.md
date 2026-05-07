@@ -219,6 +219,17 @@
 
 **参考来源：** 设计文档 Section 13.1，测试设计文档 Section 9.7, Section 9.13
 
+### 2.18 Authorization skeleton 拆分启用（W2-7 高优先级）
+
+| 功能 | Commit | 设计章节 | 说明 |
+|------|--------|----------|------|
+| P2-AUTH-005 read allow | 本次小步 | Section 11.2-11.3 | enabled REST test 验证 READ_DATA 读路径允许 |
+| P2-AUTH-006 read deny | 本次小步 | Section 11.2-11.3 | enabled REST test 验证非授权 principal 读路径 403 且 backend 不执行 |
+| P2-AUTH-007 write allow | 本次小步 | Section 11.2-11.3 | enabled REST test 验证 WRITE_DATA 写路径允许 |
+| P2-AUTH-008 write deny | 本次小步 | Section 11.2-11.3 | enabled REST test 验证 READ_DATA/非 owner principal 不能执行写路径 |
+
+**参考来源：** 设计文档 Section 11.2-11.3，测试设计文档 Section 9.10
+
 ---
 
 ## 3. 待完成功能
@@ -227,7 +238,6 @@
 
 | 功能 | 设计章节 | 测试阻塞 | 说明 |
 |------|----------|----------|------|
-| **Authorization test enablement** | Section 11.2-11.3 | P2-AUTH-005-008 | LanceDataPlaneAuthorizer 已实现，剩余拆分/启用 disabled skeleton 中的完整 grant 路径用例 |
 | **Arrow IPC Request Reader** | Section 9.2 | P2-ARROW-001-006 | Content-Type 和 size limit 已完成，剩余 stream handling、schema peek |
 | **Arrow IPC Response Writer** | Section 4.1, 9.1 | P2-DATA-001, P2-ARROW-007-008 | Query 返回 Arrow IPC file/stream，不是 JSON |
 
@@ -278,7 +288,7 @@
 | W2-4: Arrow IPC | 15.5 | ⚠️ 部分 | 本次工作（media type/size limit 完成，缺 reader/writer） |
 | W2-5: Worker HTTP backend | 15.6 | ⚠️ 部分 | 本次小步（deadline/requestId/idempotency command contract 完成，缺 WorkerHttpLanceExecutionBackend） |
 | W2-6: Metadata 状态推进 | 15.7 | ⚠️ 部分 | 本次工作（Repository methods + data plane success path + backend_committed marker + version 防倒退完成，缺 reconcile） |
-| W2-7: 授权、审计、观测 | 15.8 | ⚠️ 部分 | 本次工作（授权完成，缺审计/观测） |
+| W2-7: 授权、审计、观测 | 15.8 | ⚠️ 部分 | 本次工作（授权和 P2-AUTH-005-008 enabled 覆盖完成，缺审计/观测） |
 | W2-8: Connector 回归 | 15.9 | ❌ 未开始 | - |
 
 ---
@@ -295,7 +305,7 @@
 | LancePhase2MetadataAndStorageRestTest | 18 | @Disabled | Repository methods, credential vending |
 | LancePhase2AuthGovernanceRestTest | 17 | @Disabled | Audit/Metrics，完整 grant 路径拆分后可部分启用 |
 | LancePhase2RequestMappingRestTest | 7 | Enabled | request mapping + storage/deadline contract + header spoofing guard |
-| LancePhase2DataPlaneAuthorizationRestTest | 3 | Enabled | owner read/write allow + non-owner write deny |
+| LancePhase2DataPlaneAuthorizationRestTest | 4 | Enabled | P2-AUTH-005-008 read/write allow-deny 覆盖 |
 | LanceDataPlaneAuthorizerTest | 3 | Enabled | READ_DATA/WRITE_DATA 兼容权限映射 |
 | LancePhase2RequestValidationRestTest | 4 | Enabled | Content-Type 415 + JSON/Arrow size 413 |
 | LancePhase2DataPlaneMetadataUpdateRestTest | 4 | Enabled | declared materialization + write/stats metadata cache + version 防倒退 |

@@ -44,7 +44,7 @@ class LancePhase2DataPlaneAuthorizationRestTest extends BaseLancePhase2RestTest 
   }
 
   @Test
-  @DisplayName("P2-AUTH table owner can read through READ_DATA gate")
+  @DisplayName("P2-AUTH-005 READ_DATA allows read endpoints")
   void tableOwnerCanReadThroughReadDataGate() throws Exception {
     createActiveTableFixtureAsAdmin();
     setTableOwner(READER);
@@ -58,7 +58,21 @@ class LancePhase2DataPlaneAuthorizationRestTest extends BaseLancePhase2RestTest 
   }
 
   @Test
-  @DisplayName("P2-AUTH table owner can write through WRITE_DATA gate")
+  @DisplayName("P2-AUTH-006 READ_DATA deny returns 403")
+  void readDataDenyReturns403() throws Exception {
+    createActiveTableFixtureAsAdmin();
+    setTableOwner(WRITER);
+
+    AggregatedHttpResponse response =
+        postJsonWithHeaders(
+            "/v1/table/" + P2_ACTIVE_TABLE_ID + "/count_rows", "{}", authHeader(READER));
+
+    assertLanceErrorShape(response, 403);
+    assertThat(response.contentUtf8()).doesNotContain("backendType", "test-echo");
+  }
+
+  @Test
+  @DisplayName("P2-AUTH-007 WRITE_DATA allows write endpoints")
   void tableOwnerCanWriteThroughWriteDataGate() throws Exception {
     createActiveTableFixtureAsAdmin();
     setTableOwner(WRITER);
@@ -74,7 +88,7 @@ class LancePhase2DataPlaneAuthorizationRestTest extends BaseLancePhase2RestTest 
   }
 
   @Test
-  @DisplayName("P2-AUTH READ_DATA principal cannot write table data")
+  @DisplayName("P2-AUTH-008 WRITE_DATA deny returns 403")
   void readDataPrincipalCannotWriteTableData() throws Exception {
     createActiveTableFixtureAsAdmin();
     setTableOwner(WRITER);
