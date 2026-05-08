@@ -10,6 +10,7 @@ import com.linecorp.armeria.common.HttpData;
 import com.linecorp.armeria.common.HttpHeaderNames;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
+import com.linecorp.armeria.common.MediaType;
 import com.linecorp.armeria.common.RequestHeaders;
 import com.linecorp.armeria.common.ResponseHeaders;
 import com.linecorp.armeria.server.ServiceRequestContext;
@@ -188,6 +189,22 @@ class LancePhase2WorkerHttpBackendRestTest extends BaseLancePhase2RestTest {
   }
 
   @Test
+  @DisplayName("P2-WORKER-007B non-JSON worker errors preserve worker status")
+  void nonJsonWorkerErrorsPreserveWorkerStatus() throws Exception {
+    createActiveTableFixture();
+
+    var response =
+        postJsonWithHeaders(
+            "/v1/table/" + P2_ACTIVE_TABLE_ID + "/stats",
+            "{}",
+            Map.of("x-lance-fake-worker-error", "non-json"));
+
+    assertLanceErrorShape(response, 502);
+    assertThat(json(response).path("type").asText()).isEqualTo("worker_error");
+    assertThat(json(response).path("audit").path("errorCode").asText()).isEqualTo("worker_error");
+  }
+
+  @Test
   @DisplayName("P2-WORKER-008 worker timeout maps to 504")
   void workerTimeoutMapsToGatewayTimeout() throws Exception {
     createActiveTableFixture();
@@ -321,6 +338,13 @@ class LancePhase2WorkerHttpBackendRestTest extends BaseLancePhase2RestTest {
               "message", "fake worker timed out",
               "code", 504,
               "backend_request_id", "fake-worker-timeout"));
+    }
+    if ("non-json".equals(mode)) {
+      ResponseHeaders responseHeaders =
+          ResponseHeaders.builder(HttpStatus.BAD_GATEWAY)
+              .contentType(MediaType.PLAIN_TEXT_UTF_8)
+              .build();
+      return HttpResponse.of(responseHeaders, HttpData.ofUtf8("plain worker failure"));
     }
     if ("true".equals(contextValue(command, "fakeWorkerArrowResponse"))) {
       ResponseHeaders responseHeaders =

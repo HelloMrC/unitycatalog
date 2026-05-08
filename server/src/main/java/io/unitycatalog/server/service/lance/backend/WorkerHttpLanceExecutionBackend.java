@@ -267,12 +267,22 @@ public class WorkerHttpLanceExecutionBackend implements LanceExecutionBackend {
   }
 
   private LanceBackendException workerError(AggregatedHttpResponse response) {
-    Map<String, Object> error = readJson(response.contentUtf8());
+    Map<String, Object> error = readWorkerError(response);
     return new LanceBackendException(
         response.status(),
         stringValue(error.getOrDefault("type", "worker_error")),
         stringValue(error.get("backend_request_id")),
         stringValue(error.getOrDefault("message", "Lance worker request failed.")));
+  }
+
+  private Map<String, Object> readWorkerError(AggregatedHttpResponse response) {
+    try {
+      return readJson(response.contentUtf8());
+    } catch (BaseException e) {
+      Map<String, Object> error = new LinkedHashMap<>();
+      error.put("message", "Lance worker returned a non-JSON error response.");
+      return error;
+    }
   }
 
   private LanceBackendException workerUnavailable(RuntimeException cause) {
