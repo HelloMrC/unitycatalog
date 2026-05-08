@@ -29,6 +29,7 @@ class LancePhase2WorkerHttpBackendRestTest extends BaseLancePhase2RestTest {
 
   private Server fakeWorker;
   private String workerBaseUrl;
+  private HttpStatus workerHealthStatus = HttpStatus.OK;
   private final ConcurrentMap<String, AtomicInteger> workerAttempts = new ConcurrentHashMap<>();
 
   @Override
@@ -75,6 +76,22 @@ class LancePhase2WorkerHttpBackendRestTest extends BaseLancePhase2RestTest {
 
     assertThat(command.path("workerBaseUrl").asText()).isEqualTo(workerBaseUrl);
     assertThat(command.toString()).doesNotContain("evil.example.com");
+  }
+
+  @Test
+  @DisplayName("P2-WORKER-003 worker health path has explicit success and failure behavior")
+  void workerHealthPathHasExplicitBehavior() throws Exception {
+    var healthy = postJson("/admin/worker/health", "{}");
+
+    assertThat(healthy.status().code()).isEqualTo(200);
+    assertThat(json(healthy).path("worker").asText()).isEqualTo("healthy");
+    assertThat(json(healthy).path("details").path("worker").asText()).isEqualTo("fake-worker");
+
+    workerHealthStatus = HttpStatus.INTERNAL_SERVER_ERROR;
+    var unhealthy = postJson("/admin/worker/health", "{}");
+
+    assertThat(unhealthy.status().code()).isEqualTo(503);
+    assertThat(unhealthy.contentUtf8()).contains("worker", "unhealthy");
   }
 
   @Test
@@ -190,11 +207,23 @@ class LancePhase2WorkerHttpBackendRestTest extends BaseLancePhase2RestTest {
     fakeWorker =
         Server.builder()
             .http(0)
+            .service("/internal/lance/v1/health", this::fakeWorkerHealth)
             .serviceUnder("/internal/lance/v1/commands", this::fakeWorkerResponse)
             .serviceUnder("/internal/lance/v1/arrow", this::fakeWorkerResponse)
             .build();
     fakeWorker.start().join();
     workerBaseUrl = "http://127.0.0.1:" + fakeWorker.activeLocalPort();
+  }
+
+  private HttpResponse fakeWorkerHealth(
+      ServiceRequestContext ctx, com.linecorp.armeria.common.HttpRequest req) {
+    return HttpResponse.ofJson(
+        workerHealthStatus,
+        Map.of(
+            "worker",
+            "fake-worker",
+            "status",
+            workerHealthStatus.isSuccess() ? "ok" : "failed"));
   }
 
   private HttpResponse fakeWorkerResponse(

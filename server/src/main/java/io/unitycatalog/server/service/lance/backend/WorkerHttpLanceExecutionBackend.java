@@ -23,25 +23,28 @@ public class WorkerHttpLanceExecutionBackend implements LanceExecutionBackend {
   private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
 
   private final String baseUrl;
+  private final String healthPath;
   private final boolean readRetryEnabled;
   private final WebClient client;
 
   public WorkerHttpLanceExecutionBackend(ServerProperties serverProperties) {
     this(
         serverProperties.getLanceExecutionWorkerBaseUrl(),
+        serverProperties.getLanceExecutionWorkerHealthPath(),
         serverProperties.isLanceExecutionRetryReadsEnabled());
   }
 
   WorkerHttpLanceExecutionBackend(String baseUrl) {
-    this(baseUrl, true);
+    this(baseUrl, "/internal/lance/v1/health", true);
   }
 
-  WorkerHttpLanceExecutionBackend(String baseUrl, boolean readRetryEnabled) {
+  WorkerHttpLanceExecutionBackend(String baseUrl, String healthPath, boolean readRetryEnabled) {
     if (baseUrl == null || baseUrl.isBlank()) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT, "lance.execution.worker.base-url must be configured.");
     }
     this.baseUrl = stripTrailingSlash(baseUrl);
+    this.healthPath = normalizePath(healthPath);
     this.readRetryEnabled = readRetryEnabled;
     this.client = WebClient.builder(this.baseUrl).build();
   }
@@ -94,6 +97,39 @@ public class WorkerHttpLanceExecutionBackend implements LanceExecutionBackend {
   @Override
   public LanceExecutionResult create(LanceExecutionCommand command) {
     return arrowCommand("create", command);
+  }
+
+  public WorkerHealthStatus health() {
+    RequestHeaders headers =
+        RequestHeaders.builder()
+            .method(HttpMethod.GET)
+            .path(healthPath)
+            .add(HttpHeaderNames.ACCEPT, MediaType.JSON.toString())
+            .build();
+    AggregatedHttpResponse response;
+    try {
+      response = client.execute(headers).aggregate().join();
+    } catch (RuntimeException e) {
+      Map<String, Object> payload = workerHealthPayload(HttpStatus.SERVICE_UNAVAILABLE, Map.of());
+      payload.put("message", "Lance worker health request failed.");
+      return new WorkerHealthStatus(HttpStatus.SERVICE_UNAVAILABLE, payload);
+    }
+    Map<String, Object> details = readJson(response.contentUtf8());
+    return new WorkerHealthStatus(
+        response.status().isSuccess() ? HttpStatus.OK : HttpStatus.SERVICE_UNAVAILABLE,
+        workerHealthPayload(response.status(), details));
+  }
+
+  private Map<String, Object> workerHealthPayload(
+      HttpStatus workerStatus, Map<String, Object> details) {
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("worker", workerStatus.isSuccess() ? "healthy" : "unhealthy");
+    payload.put("backendType", "worker-http");
+    payload.put("workerBaseUrl", baseUrl);
+    payload.put("workerHealthPath", healthPath);
+    payload.put("workerStatusCode", workerStatus.code());
+    payload.put("details", details);
+    return payload;
   }
 
   private LanceExecutionResult jsonCommand(
@@ -214,4 +250,13 @@ public class WorkerHttpLanceExecutionBackend implements LanceExecutionBackend {
   private static String stripTrailingSlash(String value) {
     return value.endsWith("/") ? value.substring(0, value.length() - 1) : value;
   }
+
+  private static String normalizePath(String path) {
+    if (path == null || path.isBlank()) {
+      return "/internal/lance/v1/health";
+    }
+    return path.startsWith("/") ? path : "/" + path;
+  }
+
+  public record WorkerHealthStatus(HttpStatus status, Map<String, Object> payload) {}
 }

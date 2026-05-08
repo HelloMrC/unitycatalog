@@ -18,6 +18,7 @@ import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.service.lance.backend.LanceExecutionBackend;
 import io.unitycatalog.server.service.lance.backend.LanceExecutionContext;
 import io.unitycatalog.server.service.lance.backend.LanceExecutionResult;
+import io.unitycatalog.server.service.lance.backend.WorkerHttpLanceExecutionBackend;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -37,6 +38,7 @@ public class LanceRestTableDataService {
   private static final String IDEMPOTENCY_KEY_HEADER = "idempotency-key";
   private static final String DEADLINE_MS_HEADER = "x-lance-deadline-ms";
 
+  private final LanceExecutionBackend backend;
   private final LanceDataPlaneService dataPlaneService;
   private final LanceReconcileService reconcileService;
   private final ServerProperties serverProperties;
@@ -48,6 +50,7 @@ public class LanceRestTableDataService {
       LanceExecutionBackend backend,
       UnityCatalogAuthorizer authorizer,
       ServerProperties serverProperties) {
+    this.backend = backend;
     this.serverProperties = serverProperties;
     this.reconcileService = new LanceReconcileService(repositories.getLanceTableRepository());
     this.dataPlaneService =
@@ -68,6 +71,27 @@ public class LanceRestTableDataService {
         executionContext(request, serverProperties.getLanceExecutionRequestTimeoutMs());
     return json(
         new LanceExecutionResult(reconcileService.reconcile(jsonBody(request), context)), context);
+  }
+
+  @Post("/admin/worker/health")
+  public HttpResponse workerHealth(AggregatedHttpRequest request) {
+    validateJsonRequest(request);
+    LanceExecutionContext context =
+        executionContext(request, serverProperties.getLanceExecutionRequestTimeoutMs());
+    if (backend instanceof WorkerHttpLanceExecutionBackend workerBackend) {
+      WorkerHttpLanceExecutionBackend.WorkerHealthStatus health = workerBackend.health();
+      return jsonValue(health.payload(), context, health.status());
+    }
+    return jsonValue(
+        Map.of(
+            "worker",
+            "unavailable",
+            "backendType",
+            backend.getClass().getSimpleName(),
+            "message",
+            "Lance worker health is only available for the worker-http backend."),
+        context,
+        HttpStatus.SERVICE_UNAVAILABLE);
   }
 
   @Post("/v1/table/{id}/query")
@@ -216,8 +240,12 @@ public class LanceRestTableDataService {
   }
 
   private HttpResponse jsonValue(Object value, LanceExecutionContext context) {
+    return jsonValue(value, context, HttpStatus.OK);
+  }
+
+  private HttpResponse jsonValue(Object value, LanceExecutionContext context, HttpStatus status) {
     ResponseHeaders headers =
-        ResponseHeaders.builder(HttpStatus.OK)
+        ResponseHeaders.builder(status)
             .contentType(MediaType.JSON_UTF_8)
             .add(REQUEST_ID_HEADER, context.requestId())
             .build();
