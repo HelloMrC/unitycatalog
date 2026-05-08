@@ -62,6 +62,7 @@ public class LanceTestEchoExecutionBackend implements LanceExecutionBackend {
     Map<String, Object> response = new LinkedHashMap<>(payload);
     copyCommandAttribute(command, response, "requestBufferedBytes");
     copyCommandAttribute(command, response, "streamPassedThrough");
+    copyCommandAttribute(command, response, "ucRequestMode");
     copyCommandAttribute(command, response, "schemaPeeked");
     copyCommandAttribute(command, response, "recordBatchesParsedByUc");
     copyCommandAttribute(command, response, "schemaSource");

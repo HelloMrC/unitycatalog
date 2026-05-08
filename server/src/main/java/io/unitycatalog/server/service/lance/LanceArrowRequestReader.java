@@ -16,7 +16,8 @@ class LanceArrowRequestReader {
     attributes.put("inputBytes", arrowBody.length);
     attributes.put("inputMediaType", request.contentType().withoutParameters().toString());
     attributes.put("requestBufferedBytes", arrowBody.length);
-    attributes.put("streamPassedThrough", true);
+    attributes.put("streamPassedThrough", false);
+    attributes.put("ucRequestMode", "aggregated");
     attributes.put("schemaPeeked", schemaPeeked);
     attributes.put("recordBatchesParsedByUc", 0);
     attributes.put("schemaSource", schemaPeeked ? "arrow-peek" : "worker");

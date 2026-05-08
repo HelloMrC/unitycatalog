@@ -235,7 +235,7 @@
 | 功能 | Commit | 设计章节 | 说明 |
 |------|--------|----------|------|
 | LanceArrowRequestReader | 本次小步 | Section 9.5 | 将 Arrow write 请求解析为稳定 command metadata，而不是散落在 REST service 中 |
-| stream passthrough metadata | 本次小步 | Section 9.5 | command 暴露 inputData/inputBytes/inputMediaType/requestBufferedBytes/streamPassedThrough |
+| buffered boundary metadata | Add Lance Arrow buffered boundary metadata | Section 9.5 / 13.3 | 当前 UC 入口仍为聚合请求，command 明确暴露 requestBufferedBytes、streamPassedThrough=false、ucRequestMode=aggregated，避免误判为真实 streaming |
 | schema peek contract | 本次小步 | Section 9.5 | 默认不 peek；启用时标记 schemaPeeked=true 且 recordBatchesParsedByUc=0 |
 | P2-ARROW request coverage | 本次小步 | Section 9.5 | 新增 enabled REST tests 覆盖 P2-ARROW-001~006、010~011 |
 

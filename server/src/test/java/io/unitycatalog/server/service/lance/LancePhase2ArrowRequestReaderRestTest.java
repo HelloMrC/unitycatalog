@@ -81,18 +81,20 @@ class LancePhase2ArrowRequestReaderRestTest extends BaseLancePhase2RestTest {
   }
 
   @Test
-  @DisplayName("P2-ARROW-006 Arrow stream metadata is passed through to backend command")
-  void arrowStreamMetadataIsPassedThroughToBackendCommand() throws Exception {
+  @DisplayName("P2-ARROW-006 Arrow stream metadata records current UC buffering boundary")
+  void arrowStreamMetadataRecordsCurrentUcBufferingBoundary() throws Exception {
     createActiveTableFixture();
 
     JsonNode body =
         json(postArrow("/v1/table/" + P2_ACTIVE_TABLE_ID + "/insert", arrowSmallStreamFixture()));
 
     assertThat(body.path("requestBufferedBytes").asLong()).isLessThan(1024);
-    assertThat(body.path("streamPassedThrough").asBoolean()).isTrue();
+    assertThat(body.path("streamPassedThrough").asBoolean()).isFalse();
+    assertThat(body.path("ucRequestMode").asText()).isEqualTo("aggregated");
     assertThat(body.path("command").path("inputData").asText()).isEqualTo("arrow-stream");
     assertThat(body.path("command").path("inputMediaType").asText())
         .isEqualTo(ARROW_STREAM.toString());
+    assertThat(body.path("command").path("ucRequestMode").asText()).isEqualTo("aggregated");
   }
 
   @Test
