@@ -14,6 +14,9 @@ import com.linecorp.armeria.server.Server;
 import io.unitycatalog.server.utils.ServerProperties.Property;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
@@ -26,6 +29,7 @@ class LancePhase2WorkerHttpBackendRestTest extends BaseLancePhase2RestTest {
 
   private Server fakeWorker;
   private String workerBaseUrl;
+  private final ConcurrentMap<String, AtomicInteger> workerAttempts = new ConcurrentHashMap<>();
 
   @Override
   protected void setUpProperties() {
@@ -148,6 +152,40 @@ class LancePhase2WorkerHttpBackendRestTest extends BaseLancePhase2RestTest {
     assertLanceErrorShape(response, 504);
   }
 
+  @Test
+  @DisplayName("P2-WORKER-009 read retry is bounded and audited")
+  void readRetryIsBoundedAndAudited() throws Exception {
+    createActiveTableFixture();
+
+    var response =
+        postJsonWithHeaders(
+            "/v1/table/" + P2_ACTIVE_TABLE_ID + "/stats",
+            "{}",
+            Map.of("x-lance-fake-worker-error", "retry-once"));
+
+    assertSuccess(response);
+    assertThat(json(response).path("retryCount").asInt()).isEqualTo(1);
+    assertThat(json(response).path("audit").path("retryCount").asInt()).isEqualTo(1);
+    assertThat(json(response).path("audit").path("retryReason").asText()).isEqualTo("worker_503");
+    assertThat(attemptsFor("stats")).isEqualTo(2);
+  }
+
+  @Test
+  @DisplayName("P2-WORKER-010 write retry is disabled after body is sent")
+  void writeRetryIsDisabledAfterBodyIsSent() throws Exception {
+    createActiveTableFixture();
+
+    var response =
+        postArrow(
+            "/v1/table/" + P2_ACTIVE_TABLE_ID + "/insert",
+            arrowSmallStreamFixture(),
+            Map.of("x-lance-fake-worker-error", "503-after-body"));
+
+    assertLanceErrorShape(response, 503);
+    assertThat(json(response).path("audit").path("operation").asText()).isEqualTo("insert");
+    assertThat(attemptsFor("insert")).isEqualTo(1);
+  }
+
   private void startFakeWorker() {
     fakeWorker =
         Server.builder()
@@ -168,7 +206,28 @@ class LancePhase2WorkerHttpBackendRestTest extends BaseLancePhase2RestTest {
   private HttpResponse fakeWorkerResponse(
       ServiceRequestContext ctx, RequestHeaders headers, AggregatedHttpRequest request) {
     Map<String, Object> command = readJson(request.contentUtf8());
+    String operation = String.valueOf(command.get("operation"));
+    int attempt =
+        workerAttempts.computeIfAbsent(operation, ignored -> new AtomicInteger()).incrementAndGet();
     String mode = contextValue(command, "fakeWorkerError");
+    if ("retry-once".equals(mode) && attempt == 1) {
+      return HttpResponse.ofJson(
+          HttpStatus.SERVICE_UNAVAILABLE,
+          Map.of(
+              "type", "worker_unavailable",
+              "message", "fake worker retryable unavailable",
+              "code", 503,
+              "backend_request_id", "fake-worker-retry-1"));
+    }
+    if ("503-after-body".equals(mode)) {
+      return HttpResponse.ofJson(
+          HttpStatus.SERVICE_UNAVAILABLE,
+          Map.of(
+              "type", "worker_unavailable",
+              "message", "fake worker write failed after body",
+              "code", 503,
+              "backend_request_id", "fake-worker-write-1"));
+    }
     if ("standard-envelope".equals(mode)) {
       return HttpResponse.ofJson(
           HttpStatus.INTERNAL_SERVER_ERROR,
@@ -191,6 +250,7 @@ class LancePhase2WorkerHttpBackendRestTest extends BaseLancePhase2RestTest {
     Map<String, Object> response = responsePayload(command);
     command.put("workerPath", ctx.path());
     command.put("workerHeaders", workerHeaders(headers));
+    command.put("workerAttempt", attempt);
     response.put("command", command);
     response.put("backendType", "worker-http");
     return HttpResponse.ofJson(response);
@@ -242,5 +302,10 @@ class LancePhase2WorkerHttpBackendRestTest extends BaseLancePhase2RestTest {
     } catch (JsonProcessingException e) {
       throw new IllegalArgumentException(e);
     }
+  }
+
+  private int attemptsFor(String operation) {
+    AtomicInteger attempts = workerAttempts.get(operation);
+    return attempts == null ? 0 : attempts.get();
   }
 }

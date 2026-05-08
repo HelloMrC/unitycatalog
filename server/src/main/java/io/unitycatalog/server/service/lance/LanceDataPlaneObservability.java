@@ -123,7 +123,16 @@ public class LanceDataPlaneObservability {
     audit.put("status", status);
     audit.put("errorCode", errorCode);
     audit.put("latencyMs", latencyMs);
+    copyIfPresent(audit, payload, "retryCount");
+    copyIfPresent(audit, payload, "retryAttempted");
+    copyIfPresent(audit, payload, "retryReason");
     return audit;
+  }
+
+  private void copyIfPresent(Map<String, Object> target, Map<String, Object> source, String key) {
+    if (source.containsKey(key)) {
+      target.put(key, source.get(key));
+    }
   }
 
   private Map<String, Object> recordMetrics(

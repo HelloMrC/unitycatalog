@@ -8,6 +8,7 @@ import com.linecorp.armeria.common.AggregatedHttpResponse;
 import com.linecorp.armeria.common.HttpData;
 import com.linecorp.armeria.common.HttpHeaderNames;
 import com.linecorp.armeria.common.HttpMethod;
+import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.common.MediaType;
 import com.linecorp.armeria.common.RequestHeaders;
 import com.linecorp.armeria.common.RequestHeadersBuilder;
@@ -22,34 +23,42 @@ public class WorkerHttpLanceExecutionBackend implements LanceExecutionBackend {
   private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
 
   private final String baseUrl;
+  private final boolean readRetryEnabled;
   private final WebClient client;
 
   public WorkerHttpLanceExecutionBackend(ServerProperties serverProperties) {
-    this(serverProperties.getLanceExecutionWorkerBaseUrl());
+    this(
+        serverProperties.getLanceExecutionWorkerBaseUrl(),
+        serverProperties.isLanceExecutionRetryReadsEnabled());
   }
 
   WorkerHttpLanceExecutionBackend(String baseUrl) {
+    this(baseUrl, true);
+  }
+
+  WorkerHttpLanceExecutionBackend(String baseUrl, boolean readRetryEnabled) {
     if (baseUrl == null || baseUrl.isBlank()) {
       throw new BaseException(
           ErrorCode.INVALID_ARGUMENT, "lance.execution.worker.base-url must be configured.");
     }
     this.baseUrl = stripTrailingSlash(baseUrl);
+    this.readRetryEnabled = readRetryEnabled;
     this.client = WebClient.builder(this.baseUrl).build();
   }
 
   @Override
   public LanceExecutionResult query(LanceExecutionCommand command) {
-    return jsonCommand("query", command);
+    return jsonCommand("query", command, true);
   }
 
   @Override
   public LanceExecutionResult countRows(LanceExecutionCommand command) {
-    return jsonCommand("count_rows", command);
+    return jsonCommand("count_rows", command, true);
   }
 
   @Override
   public LanceExecutionResult stats(LanceExecutionCommand command) {
-    return jsonCommand("stats", command);
+    return jsonCommand("stats", command, true);
   }
 
   @Override
@@ -64,22 +73,22 @@ public class WorkerHttpLanceExecutionBackend implements LanceExecutionBackend {
 
   @Override
   public LanceExecutionResult update(LanceExecutionCommand command) {
-    return jsonCommand("update", command);
+    return jsonCommand("update", command, false);
   }
 
   @Override
   public LanceExecutionResult delete(LanceExecutionCommand command) {
-    return jsonCommand("delete", command);
+    return jsonCommand("delete", command, false);
   }
 
   @Override
   public LanceExecutionResult explainPlan(LanceExecutionCommand command) {
-    return jsonCommand("explain_plan", command);
+    return jsonCommand("explain_plan", command, true);
   }
 
   @Override
   public LanceExecutionResult analyzePlan(LanceExecutionCommand command) {
-    return jsonCommand("analyze_plan", command);
+    return jsonCommand("analyze_plan", command, true);
   }
 
   @Override
@@ -87,15 +96,17 @@ public class WorkerHttpLanceExecutionBackend implements LanceExecutionBackend {
     return arrowCommand("create", command);
   }
 
-  private LanceExecutionResult jsonCommand(String operation, LanceExecutionCommand command) {
-    return post("/internal/lance/v1/commands/" + operation, command);
+  private LanceExecutionResult jsonCommand(
+      String operation, LanceExecutionCommand command, boolean retryableRead) {
+    return post("/internal/lance/v1/commands/" + operation, command, retryableRead);
   }
 
   private LanceExecutionResult arrowCommand(String operation, LanceExecutionCommand command) {
-    return post("/internal/lance/v1/arrow/" + operation, command);
+    return post("/internal/lance/v1/arrow/" + operation, command, false);
   }
 
-  private LanceExecutionResult post(String path, LanceExecutionCommand command) {
+  private LanceExecutionResult post(
+      String path, LanceExecutionCommand command, boolean retryableRead) {
     RequestHeaders headers =
         RequestHeaders.builder()
             .method(HttpMethod.POST)
@@ -105,17 +116,27 @@ public class WorkerHttpLanceExecutionBackend implements LanceExecutionBackend {
             .add("x-request-id", command.context().requestId())
             .build();
     RequestHeaders requestHeaders = headers(command, headers);
-    AggregatedHttpResponse response =
-        client
-            .execute(requestHeaders, HttpData.ofUtf8(writeJson(commandPayload(path, command))))
-            .aggregate()
-            .join();
-    if (!response.status().isSuccess()) {
+    String commandPayload = writeJson(commandPayload(path, command));
+    int retryCount = 0;
+    while (true) {
+      AggregatedHttpResponse response =
+          client.execute(requestHeaders, HttpData.ofUtf8(commandPayload)).aggregate().join();
+      if (response.status().isSuccess()) {
+        Map<String, Object> payload = readJson(response.contentUtf8());
+        payload.putIfAbsent("backendType", "worker-http");
+        payload.put("retryCount", retryCount);
+        payload.put("retryAttempted", retryCount > 0);
+        if (retryCount > 0) {
+          payload.put("retryReason", "worker_503");
+        }
+        return new LanceExecutionResult(payload);
+      }
+      if (shouldRetry(response, retryableRead, retryCount)) {
+        retryCount++;
+        continue;
+      }
       throw workerError(response);
     }
-    Map<String, Object> payload = readJson(response.contentUtf8());
-    payload.putIfAbsent("backendType", "worker-http");
-    return new LanceExecutionResult(payload);
   }
 
   private RequestHeaders headers(LanceExecutionCommand command, RequestHeaders baseHeaders) {
@@ -157,6 +178,14 @@ public class WorkerHttpLanceExecutionBackend implements LanceExecutionBackend {
         stringValue(error.getOrDefault("type", "worker_error")),
         stringValue(error.get("backend_request_id")),
         stringValue(error.getOrDefault("message", "Lance worker request failed.")));
+  }
+
+  private boolean shouldRetry(
+      AggregatedHttpResponse response, boolean retryableRead, int retryCount) {
+    return retryableRead
+        && readRetryEnabled
+        && retryCount == 0
+        && response.status().equals(HttpStatus.SERVICE_UNAVAILABLE);
   }
 
   private Map<String, Object> readJson(String content) {

@@ -220,6 +220,8 @@ public class ServerProperties {
         "lance.execution.query-timeout-ms", "60000", POSITIVE_INTEGER_VALIDATOR),
     LANCE_EXECUTION_WRITE_TIMEOUT_MS(
         "lance.execution.write-timeout-ms", "120000", POSITIVE_INTEGER_VALIDATOR),
+    LANCE_EXECUTION_RETRY_READS("lance.execution.retry.reads", "true", BOOLEAN_VALIDATOR),
+    LANCE_EXECUTION_RETRY_WRITES("lance.execution.retry.writes", "false", BOOLEAN_VALIDATOR),
     LANCE_EXECUTION_MAX_ARROW_REQUEST_BYTES(
         "lance.execution.max-arrow-request-bytes", "1073741824", POSITIVE_INTEGER_VALIDATOR),
     LANCE_EXECUTION_MAX_JSON_REQUEST_BYTES(
@@ -481,6 +483,14 @@ public class ServerProperties {
 
   public boolean isLanceExecutionLegacyReadEnabled() {
     return isTrueOrEnable(get(Property.LANCE_EXECUTION_LEGACY_READ_ENABLED));
+  }
+
+  public boolean isLanceExecutionRetryReadsEnabled() {
+    return isTrueOrEnable(get(Property.LANCE_EXECUTION_RETRY_READS));
+  }
+
+  public boolean isLanceExecutionRetryWritesEnabled() {
+    return isTrueOrEnable(get(Property.LANCE_EXECUTION_RETRY_WRITES));
   }
 
   public String getLanceExecutionWorkerBaseUrl() {
