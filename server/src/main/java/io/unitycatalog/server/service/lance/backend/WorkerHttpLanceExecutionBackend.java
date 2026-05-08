@@ -23,8 +23,11 @@ import java.util.Map;
 public class WorkerHttpLanceExecutionBackend implements LanceExecutionBackend {
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
   private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
+  private static final MediaType ARROW_FILE = MediaType.parse("application/vnd.apache.arrow.file");
   private static final MediaType ARROW_STREAM =
       MediaType.parse("application/vnd.apache.arrow.stream");
+  private static final String ARROW_ACCEPT =
+      ARROW_FILE + ", " + ARROW_STREAM + ", " + MediaType.JSON;
   private static final String UC_COMMAND_HEADER = "x-uc-lance-command";
   private static final String UC_CONTEXT_HEADER = "x-uc-lance-context";
   private static final String UC_TABLE_HEADER = "x-uc-lance-table";
@@ -61,17 +64,17 @@ public class WorkerHttpLanceExecutionBackend implements LanceExecutionBackend {
 
   @Override
   public LanceExecutionResult query(LanceExecutionCommand command) {
-    return jsonCommand("query", command, true);
+    return jsonCommand("query", command, true, true);
   }
 
   @Override
   public LanceExecutionResult countRows(LanceExecutionCommand command) {
-    return jsonCommand("count_rows", command, true);
+    return jsonCommand("count_rows", command, true, false);
   }
 
   @Override
   public LanceExecutionResult stats(LanceExecutionCommand command) {
-    return jsonCommand("stats", command, true);
+    return jsonCommand("stats", command, true, false);
   }
 
   @Override
@@ -86,22 +89,22 @@ public class WorkerHttpLanceExecutionBackend implements LanceExecutionBackend {
 
   @Override
   public LanceExecutionResult update(LanceExecutionCommand command) {
-    return jsonCommand("update", command, false);
+    return jsonCommand("update", command, false, false);
   }
 
   @Override
   public LanceExecutionResult delete(LanceExecutionCommand command) {
-    return jsonCommand("delete", command, false);
+    return jsonCommand("delete", command, false, false);
   }
 
   @Override
   public LanceExecutionResult explainPlan(LanceExecutionCommand command) {
-    return jsonCommand("explain_plan", command, true);
+    return jsonCommand("explain_plan", command, true, false);
   }
 
   @Override
   public LanceExecutionResult analyzePlan(LanceExecutionCommand command) {
-    return jsonCommand("analyze_plan", command, true);
+    return jsonCommand("analyze_plan", command, true, false);
   }
 
   @Override
@@ -143,8 +146,9 @@ public class WorkerHttpLanceExecutionBackend implements LanceExecutionBackend {
   }
 
   private LanceExecutionResult jsonCommand(
-      String operation, LanceExecutionCommand command, boolean retryableRead) {
-    return postJson("/internal/lance/v1/commands/" + operation, command, retryableRead);
+      String operation, LanceExecutionCommand command, boolean retryableRead, boolean acceptArrow) {
+    return postJson(
+        "/internal/lance/v1/commands/" + operation, command, retryableRead, acceptArrow);
   }
 
   private LanceExecutionResult arrowCommand(String operation, LanceExecutionCommand command) {
@@ -152,13 +156,13 @@ public class WorkerHttpLanceExecutionBackend implements LanceExecutionBackend {
   }
 
   private LanceExecutionResult postJson(
-      String path, LanceExecutionCommand command, boolean retryableRead) {
+      String path, LanceExecutionCommand command, boolean retryableRead, boolean acceptArrow) {
     RequestHeaders headers =
         RequestHeaders.builder()
             .method(HttpMethod.POST)
             .path(path)
             .contentType(MediaType.JSON)
-            .add(HttpHeaderNames.ACCEPT, MediaType.JSON.toString())
+            .add(HttpHeaderNames.ACCEPT, acceptArrow ? ARROW_ACCEPT : MediaType.JSON.toString())
             .add("x-request-id", command.context().requestId())
             .build();
     RequestHeaders requestHeaders = headers(command, headers);
@@ -191,6 +195,9 @@ public class WorkerHttpLanceExecutionBackend implements LanceExecutionBackend {
       AggregatedHttpResponse response =
           client.execute(requestHeaders, HttpData.wrap(body)).aggregate().join();
       if (response.status().isSuccess()) {
+        if (isArrowResponse(response)) {
+          return arrowResult(response, retryCount);
+        }
         Map<String, Object> payload = readJson(response.contentUtf8());
         payload.putIfAbsent("backendType", "worker-http");
         payload.put("retryCount", retryCount);
@@ -206,6 +213,16 @@ public class WorkerHttpLanceExecutionBackend implements LanceExecutionBackend {
       }
       throw workerError(response);
     }
+  }
+
+  private LanceExecutionResult arrowResult(AggregatedHttpResponse response, int retryCount) {
+    Map<String, Object> payload = new LinkedHashMap<>();
+    payload.put("backendType", "worker-http");
+    payload.put("arrowResponseBytes", response.content().length());
+    payload.put("retryCount", retryCount);
+    payload.put("retryAttempted", retryCount > 0);
+    return new LanceExecutionResult(
+        payload, response.content().array(), response.headers().get(HttpHeaderNames.CONTENT_TYPE));
   }
 
   private byte[] binaryBody(LanceExecutionCommand command) {
@@ -260,6 +277,11 @@ public class WorkerHttpLanceExecutionBackend implements LanceExecutionBackend {
         && readRetryEnabled
         && retryCount == 0
         && response.status().equals(HttpStatus.SERVICE_UNAVAILABLE);
+  }
+
+  private boolean isArrowResponse(AggregatedHttpResponse response) {
+    String contentType = response.headers().get(HttpHeaderNames.CONTENT_TYPE);
+    return contentType != null && contentType.contains("application/vnd.apache.arrow");
   }
 
   private Map<String, Object> readJson(String content) {

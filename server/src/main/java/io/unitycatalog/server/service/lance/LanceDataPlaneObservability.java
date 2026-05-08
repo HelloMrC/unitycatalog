@@ -90,7 +90,7 @@ public class LanceDataPlaneObservability {
             "status", audit.get("status"),
             "backend", audit.get("backendType"),
             "latencyMs", audit.get("latencyMs")));
-    return new LanceExecutionResult(payload);
+    return new LanceExecutionResult(payload, result.binaryBody(), result.binaryMediaType());
   }
 
   private Map<String, Object> audit(
@@ -194,6 +194,10 @@ public class LanceDataPlaneObservability {
   }
 
   private Long outputBytes(Map<String, Object> payload) {
+    Long arrowResponseBytes = longValue(payload.get("arrowResponseBytes"));
+    if (arrowResponseBytes != null) {
+      return arrowResponseBytes;
+    }
     if (payload.isEmpty()) {
       return 0L;
     }

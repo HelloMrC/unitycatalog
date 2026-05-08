@@ -6,9 +6,12 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linecorp.armeria.common.AggregatedHttpRequest;
+import com.linecorp.armeria.common.HttpData;
+import com.linecorp.armeria.common.HttpHeaderNames;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.common.RequestHeaders;
+import com.linecorp.armeria.common.ResponseHeaders;
 import com.linecorp.armeria.server.ServiceRequestContext;
 import com.linecorp.armeria.server.Server;
 import io.unitycatalog.server.utils.ServerProperties.Property;
@@ -28,6 +31,8 @@ import org.junit.jupiter.api.Test;
 class LancePhase2WorkerHttpBackendRestTest extends BaseLancePhase2RestTest {
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
   private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
+  private static final byte[] FAKE_WORKER_ARROW_BODY =
+      "fake-worker-arrow-body".getBytes(StandardCharsets.UTF_8);
 
   private Server fakeWorker;
   private String workerBaseUrl;
@@ -106,6 +111,25 @@ class LancePhase2WorkerHttpBackendRestTest extends BaseLancePhase2RestTest {
 
     assertThat(command.path("workerPath").asText())
         .isEqualTo("/internal/lance/v1/commands/stats");
+  }
+
+  @Test
+  @DisplayName("P2-ARROW-008 worker query Arrow body is returned unchanged")
+  void workerQueryArrowBodyIsReturnedUnchanged() throws Exception {
+    createActiveTableFixture();
+
+    var response =
+        postJsonWithHeaders(
+            "/v1/table/" + P2_ACTIVE_TABLE_ID + "/query",
+            "{}",
+            Map.of(
+                HttpHeaderNames.ACCEPT.toString(), ARROW_STREAM.toString(),
+                "x-lance-fake-worker-arrow-response", "true"));
+
+    assertSuccess(response);
+    assertThat(response.headers().get(HttpHeaderNames.CONTENT_TYPE))
+        .contains(ARROW_STREAM.toString());
+    assertThat(response.content().array()).isEqualTo(FAKE_WORKER_ARROW_BODY);
   }
 
   @Test
@@ -282,6 +306,11 @@ class LancePhase2WorkerHttpBackendRestTest extends BaseLancePhase2RestTest {
               "message", "fake worker timed out",
               "code", 504,
               "backend_request_id", "fake-worker-timeout"));
+    }
+    if ("true".equals(contextValue(command, "fakeWorkerArrowResponse"))) {
+      ResponseHeaders responseHeaders =
+          ResponseHeaders.builder(HttpStatus.OK).contentType(ARROW_STREAM).build();
+      return HttpResponse.of(responseHeaders, HttpData.wrap(FAKE_WORKER_ARROW_BODY));
     }
 
     Map<String, Object> response = responsePayload(command);
