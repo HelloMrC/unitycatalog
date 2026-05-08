@@ -77,7 +77,8 @@ public class LanceTestEchoExecutionBackend implements LanceExecutionBackend {
           HttpStatus.GATEWAY_TIMEOUT,
           "backend_timeout",
           "test-backend-timeout",
-          "Lance worker timed out.");
+          "Lance worker timed out.",
+          "test-echo");
     }
   }
 

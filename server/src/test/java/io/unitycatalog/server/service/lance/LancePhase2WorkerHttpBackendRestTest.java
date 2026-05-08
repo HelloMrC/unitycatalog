@@ -186,6 +186,9 @@ class LancePhase2WorkerHttpBackendRestTest extends BaseLancePhase2RestTest {
 
     assertLanceErrorShape(response, 500);
     assertThat(json(response).path("backend_request_id").asText()).isEqualTo("fake-worker-req");
+    assertThat(json(response).path("audit").path("backendType").asText())
+        .isEqualTo("worker-http");
+    assertThat(json(response).path("metrics").path("backend").asText()).isEqualTo("worker-http");
   }
 
   @Test

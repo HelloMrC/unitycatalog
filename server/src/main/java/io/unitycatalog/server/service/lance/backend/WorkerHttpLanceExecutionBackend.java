@@ -272,7 +272,8 @@ public class WorkerHttpLanceExecutionBackend implements LanceExecutionBackend {
         response.status(),
         stringValue(error.getOrDefault("type", "worker_error")),
         stringValue(error.get("backend_request_id")),
-        stringValue(error.getOrDefault("message", "Lance worker request failed.")));
+        stringValue(error.getOrDefault("message", "Lance worker request failed.")),
+        "worker-http");
   }
 
   private Map<String, Object> readWorkerError(AggregatedHttpResponse response) {
@@ -291,6 +292,7 @@ public class WorkerHttpLanceExecutionBackend implements LanceExecutionBackend {
         "worker_unavailable",
         null,
         "Lance worker request failed before a response was received.",
+        "worker-http",
         cause);
   }
 

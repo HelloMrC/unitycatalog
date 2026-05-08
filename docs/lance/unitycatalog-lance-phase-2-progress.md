@@ -270,6 +270,7 @@
 |------|--------|----------|------|
 | data audit payload | 本次小步 | Section 12.3 | data plane 成功响应包含 operation、principal、table、version、bytes、rows、status 等 audit 字段 |
 | backend failure audit | 本次小步 | Section 12.3 | backend timeout/error 响应包含 errorCode、backendRequestId、status 和 latency |
+| failure backend labels | Add Lance backend failure labels | Section 12.3 / 12.4 | backend failure audit/metrics 使用异常来源 backendType，避免 worker-http 失败被误标为 test-echo 或 unknown |
 | audit redaction guard | 本次小步 | Section 12.3 / 14.2 | audit 只记录 storage scheme，不记录 runtime credential/header secret 原文 |
 | Lance metrics endpoint | 本次小步 | Section 12.4 | 新增 `/metrics` 暴露 lance_data_* operation/status/backend label 计数和 latency/bytes 观测值 |
 | Observability REST coverage | 本次小步 | Section 9.10 | 新增 enabled REST tests 覆盖 P2-AUTH-011~014 audit/metrics |
@@ -380,7 +381,7 @@ Worker HTTP backend 协议层、health probe、retry/no-retry、非 JSON 错误 
 | W2-4: Arrow IPC | 15.5 | ✅ 高优先级完成 | 本次工作（media type/size limit + request reader + response writer 完成） |
 | W2-5: Worker HTTP backend | 15.6 | ⚠️ 部分 | Add Lance worker HTTP backend + Add Lance worker retry semantics + Add Lance worker health probe + Add Lance worker Arrow body handoff + Add Lance worker Arrow response handoff + Add Lance worker unavailable mapping + Add Lance worker error fallback（WorkerHttpLanceExecutionBackend + fake worker HTTP path/header/error/retry/health/Arrow request/response handoff/unavailable mapping/error fallback contract 完成；非聚合 streaming/real worker E2E 待续） |
 | W2-6: Metadata 状态推进 | 15.7 | ✅ 完成 | 本次工作（Repository methods + data plane success path + backend_committed marker + version 防倒退 + reconcile 完成） |
-| W2-7: 授权、审计、观测 | 15.8 | ✅ 完成 | 本次工作（授权 + audit/metrics + P2-AUTH-005-008、011-014 enabled 覆盖完成） |
+| W2-7: 授权、审计、观测 | 15.8 | ✅ 完成 | 本次工作 + Add Lance backend failure labels（授权 + audit/metrics + failure backend labels + P2-AUTH-005-008、011-014 enabled 覆盖完成） |
 | W2-8: Connector 回归 | 15.9 | ❌ 未开始 | - |
 
 ---
@@ -406,7 +407,7 @@ Worker HTTP backend 协议层、health probe、retry/no-retry、非 JSON 错误 
 | LancePhase2LegacyReadConfigRestTest | 1 | Enabled | server property enables legacy bridge read |
 | LancePhase2BackendCommittedFailureRestTest | 1 | Enabled | metadata update failure returns backend_committed marker |
 | LancePhase2ReconcileRestTest | 2 | Enabled | P2-META-009/010 reconcile dry-run/backfill |
-| LancePhase2ObservabilityRestTest | 4 | Enabled | P2-AUTH-011~014 audit success/failure/redaction + metrics |
+| LancePhase2ObservabilityRestTest | 4 | Enabled | P2-AUTH-011~014 audit success/failure/redaction + metrics，含失败 backend label 对齐断言 |
 | LancePhase2ScalarResponseRestTest | 3 | Enabled | P2-DATA-009、011、012 count/explain/analyze scalar response |
 | LancePhase2ErrorResponseContractRestTest | 3 | Enabled | P2-ERROR-015 requestId/backend_request_id 合同覆盖 |
 | LancePhase2StorageCredentialRestTest | 8 | Enabled | P2-STORAGE-001~007 + P2-META-008 runtime credential mock/contract 覆盖 |

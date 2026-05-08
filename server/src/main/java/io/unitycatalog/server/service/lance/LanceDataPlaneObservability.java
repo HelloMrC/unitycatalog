@@ -55,15 +55,24 @@ public class LanceDataPlaneObservability {
           e.status(), e.type(), e.getMessage(), audit, metrics, true, true, e);
     } catch (LanceBackendException e) {
       long latencyMs = latencyMs(startedNanos);
+      Map<String, Object> failurePayload = failurePayload(e.backendType());
       Map<String, Object> audit =
-          audit(command, table, Map.of(), "failure", e.type(), e.backendRequestId(), latencyMs);
+          audit(
+              command, table, failurePayload, "failure", e.type(), e.backendRequestId(), latencyMs);
+      String backend = backendType(failurePayload);
       Map<String, Object> metrics =
-          recordMetrics(command.operation(), "failure", "test-echo", latencyMs, audit);
-      increment(
-          BACKEND_ERRORS_TOTAL, metricKey(command.operation(), "failure", "test-echo"));
+          recordMetrics(command.operation(), "failure", backend, latencyMs, audit);
+      increment(BACKEND_ERRORS_TOTAL, metricKey(command.operation(), "failure", backend));
       throw new LanceObservedException(
           e.status(), e.type(), e.getMessage(), audit, metrics, false, false, e);
     }
+  }
+
+  private Map<String, Object> failurePayload(String backendType) {
+    if (backendType == null || backendType.isBlank()) {
+      return Map.of();
+    }
+    return Map.of("backendType", backendType);
   }
 
   public static String metricsText() {

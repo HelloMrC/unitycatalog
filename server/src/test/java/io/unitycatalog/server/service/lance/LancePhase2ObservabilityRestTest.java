@@ -56,6 +56,8 @@ class LancePhase2ObservabilityRestTest extends BaseLancePhase2RestTest {
     assertThat(audit.path("status").asText()).isEqualTo("failure");
     assertThat(audit.path("errorCode").asText()).isEqualTo("backend_timeout");
     assertThat(audit.path("backendRequestId").asText()).isEqualTo("test-backend-timeout");
+    assertThat(audit.path("backendType").asText()).isEqualTo("test-echo");
+    assertThat(json(response).path("metrics").path("backend").asText()).isEqualTo("test-echo");
   }
 
   @Test
