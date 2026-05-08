@@ -192,8 +192,12 @@ public class WorkerHttpLanceExecutionBackend implements LanceExecutionBackend {
       RequestHeaders requestHeaders, byte[] body, boolean retryableRead) {
     int retryCount = 0;
     while (true) {
-      AggregatedHttpResponse response =
-          client.execute(requestHeaders, HttpData.wrap(body)).aggregate().join();
+      AggregatedHttpResponse response;
+      try {
+        response = client.execute(requestHeaders, HttpData.wrap(body)).aggregate().join();
+      } catch (RuntimeException e) {
+        throw workerUnavailable(e);
+      }
       if (response.status().isSuccess()) {
         if (isArrowResponse(response)) {
           return arrowResult(response, retryCount);
@@ -269,6 +273,15 @@ public class WorkerHttpLanceExecutionBackend implements LanceExecutionBackend {
         stringValue(error.getOrDefault("type", "worker_error")),
         stringValue(error.get("backend_request_id")),
         stringValue(error.getOrDefault("message", "Lance worker request failed.")));
+  }
+
+  private LanceBackendException workerUnavailable(RuntimeException cause) {
+    return new LanceBackendException(
+        HttpStatus.SERVICE_UNAVAILABLE,
+        "worker_unavailable",
+        null,
+        "Lance worker request failed before a response was received.",
+        cause);
   }
 
   private boolean shouldRetry(

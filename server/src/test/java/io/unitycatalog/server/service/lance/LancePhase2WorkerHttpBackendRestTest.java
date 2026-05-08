@@ -202,6 +202,21 @@ class LancePhase2WorkerHttpBackendRestTest extends BaseLancePhase2RestTest {
   }
 
   @Test
+  @DisplayName("P2-WORKER-008B worker connection failure maps to stable 503")
+  void workerConnectionFailureMapsToServiceUnavailable() throws Exception {
+    createActiveTableFixture();
+    fakeWorker.stop().join();
+    fakeWorker = null;
+
+    var response = postJson("/v1/table/" + P2_ACTIVE_TABLE_ID + "/stats", "{}");
+
+    assertLanceErrorShape(response, 503);
+    assertThat(json(response).path("type").asText()).isEqualTo("worker_unavailable");
+    assertThat(json(response).path("audit").path("errorCode").asText())
+        .isEqualTo("worker_unavailable");
+  }
+
+  @Test
   @DisplayName("P2-WORKER-009 read retry is bounded and audited")
   void readRetryIsBoundedAndAudited() throws Exception {
     createActiveTableFixture();

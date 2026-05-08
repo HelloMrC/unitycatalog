@@ -9,7 +9,12 @@ public class LanceBackendException extends RuntimeException {
 
   public LanceBackendException(
       HttpStatus status, String type, String backendRequestId, String message) {
-    super(message);
+    this(status, type, backendRequestId, message, null);
+  }
+
+  public LanceBackendException(
+      HttpStatus status, String type, String backendRequestId, String message, Throwable cause) {
+    super(message, cause);
     this.status = status;
     this.type = type;
     this.backendRequestId = backendRequestId;
