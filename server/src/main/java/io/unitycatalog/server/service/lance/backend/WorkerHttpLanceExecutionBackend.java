@@ -15,12 +15,22 @@ import com.linecorp.armeria.common.RequestHeadersBuilder;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.utils.ServerProperties;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 public class WorkerHttpLanceExecutionBackend implements LanceExecutionBackend {
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
   private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
+  private static final MediaType ARROW_STREAM =
+      MediaType.parse("application/vnd.apache.arrow.stream");
+  private static final String UC_COMMAND_HEADER = "x-uc-lance-command";
+  private static final String UC_CONTEXT_HEADER = "x-uc-lance-context";
+  private static final String UC_TABLE_HEADER = "x-uc-lance-table";
+  private static final String UC_STORAGE_HEADER = "x-uc-lance-storage";
+  private static final String UC_ATTRIBUTES_HEADER = "x-uc-lance-attributes";
+  private static final String UC_REQUEST_ID_HEADER = "x-uc-request-id";
 
   private final String baseUrl;
   private final String healthPath;
@@ -134,14 +144,14 @@ public class WorkerHttpLanceExecutionBackend implements LanceExecutionBackend {
 
   private LanceExecutionResult jsonCommand(
       String operation, LanceExecutionCommand command, boolean retryableRead) {
-    return post("/internal/lance/v1/commands/" + operation, command, retryableRead);
+    return postJson("/internal/lance/v1/commands/" + operation, command, retryableRead);
   }
 
   private LanceExecutionResult arrowCommand(String operation, LanceExecutionCommand command) {
-    return post("/internal/lance/v1/arrow/" + operation, command, false);
+    return postArrow("/internal/lance/v1/arrow/" + operation, command);
   }
 
-  private LanceExecutionResult post(
+  private LanceExecutionResult postJson(
       String path, LanceExecutionCommand command, boolean retryableRead) {
     RequestHeaders headers =
         RequestHeaders.builder()
@@ -153,10 +163,33 @@ public class WorkerHttpLanceExecutionBackend implements LanceExecutionBackend {
             .build();
     RequestHeaders requestHeaders = headers(command, headers);
     String commandPayload = writeJson(commandPayload(path, command));
+    return execute(requestHeaders, commandPayload.getBytes(StandardCharsets.UTF_8), retryableRead);
+  }
+
+  private LanceExecutionResult postArrow(String path, LanceExecutionCommand command) {
+    RequestHeaders headers =
+        RequestHeaders.builder()
+            .method(HttpMethod.POST)
+            .path(path)
+            .contentType(ARROW_STREAM)
+            .add(HttpHeaderNames.ACCEPT, MediaType.JSON.toString())
+            .add("x-request-id", command.context().requestId())
+            .add(UC_COMMAND_HEADER, command.operation())
+            .add(UC_CONTEXT_HEADER, base64Json(command.context().lanceContext()))
+            .add(UC_TABLE_HEADER, base64Json(command.table()))
+            .add(UC_STORAGE_HEADER, base64Json(command.storage()))
+            .add(UC_ATTRIBUTES_HEADER, base64Json(command.attributes()))
+            .add(UC_REQUEST_ID_HEADER, command.context().requestId())
+            .build();
+    return execute(headers(command, headers), binaryBody(command), false);
+  }
+
+  private LanceExecutionResult execute(
+      RequestHeaders requestHeaders, byte[] body, boolean retryableRead) {
     int retryCount = 0;
     while (true) {
       AggregatedHttpResponse response =
-          client.execute(requestHeaders, HttpData.ofUtf8(commandPayload)).aggregate().join();
+          client.execute(requestHeaders, HttpData.wrap(body)).aggregate().join();
       if (response.status().isSuccess()) {
         Map<String, Object> payload = readJson(response.contentUtf8());
         payload.putIfAbsent("backendType", "worker-http");
@@ -173,6 +206,11 @@ public class WorkerHttpLanceExecutionBackend implements LanceExecutionBackend {
       }
       throw workerError(response);
     }
+  }
+
+  private byte[] binaryBody(LanceExecutionCommand command) {
+    byte[] body = command.binaryBody();
+    return body == null ? new byte[0] : body;
   }
 
   private RequestHeaders headers(LanceExecutionCommand command, RequestHeaders baseHeaders) {
@@ -240,6 +278,15 @@ public class WorkerHttpLanceExecutionBackend implements LanceExecutionBackend {
       return OBJECT_MAPPER.writeValueAsString(payload);
     } catch (JsonProcessingException e) {
       throw new BaseException(ErrorCode.INTERNAL, "Invalid Lance worker command payload.", e);
+    }
+  }
+
+  private String base64Json(Object value) {
+    try {
+      byte[] bytes = OBJECT_MAPPER.writeValueAsBytes(value);
+      return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+    } catch (JsonProcessingException e) {
+      throw new BaseException(ErrorCode.INTERNAL, "Invalid Lance worker header payload.", e);
     }
   }
 

@@ -204,14 +204,21 @@ class LanceDataPlaneService {
     LanceStorageBinding storage = storageOptionsService.bindStorage(table, context);
 
     Map<String, Object> commandAttributes = new LinkedHashMap<>(attributes);
+    byte[] binaryBody =
+        binaryBody(commandAttributes.remove(LanceArrowRequestReader.ARROW_BODY_ATTRIBUTE));
     commandAttributes.put("materializeDeclaredTable", table.tableRef().declaredOnly());
     commandAttributes.put("legacyBridge", table.tableRef().legacyBridge());
     commandAttributes.put("requiredPrivilege", authorizationDecision.requiredPrivilege());
     commandAttributes.put(
         "compatiblePrivileges", privilegeNames(authorizationDecision.compatiblePrivileges()));
     return new PreparedCommand(
-        new LanceExecutionCommand(operation, context, table.tableRef(), storage, commandAttributes),
+        new LanceExecutionCommand(
+            operation, context, table.tableRef(), storage, commandAttributes, binaryBody),
         table);
+  }
+
+  private byte[] binaryBody(Object value) {
+    return value instanceof byte[] bytes ? bytes : null;
   }
 
   private LanceDataPlaneAuthorizer.AuthorizationDecision authorize(

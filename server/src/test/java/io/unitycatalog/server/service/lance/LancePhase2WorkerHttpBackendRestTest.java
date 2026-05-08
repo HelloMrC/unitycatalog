@@ -12,6 +12,8 @@ import com.linecorp.armeria.common.RequestHeaders;
 import com.linecorp.armeria.server.ServiceRequestContext;
 import com.linecorp.armeria.server.Server;
 import io.unitycatalog.server.utils.ServerProperties.Property;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
@@ -117,6 +119,12 @@ class LancePhase2WorkerHttpBackendRestTest extends BaseLancePhase2RestTest {
 
     assertThat(command.path("workerPath").asText())
         .isEqualTo("/internal/lance/v1/arrow/insert");
+    assertThat(command.path("workerContentType").asText()).isEqualTo(ARROW_STREAM.toString());
+    assertThat(command.path("workerBodyBytes").asInt()).isEqualTo(arrowSmallStreamFixture().length);
+    assertThat(command.path("workerBodyPreview").asText())
+        .isEqualTo(new String(arrowSmallStreamFixture(), StandardCharsets.UTF_8));
+    assertThat(command.path("workerHeaders").toString())
+        .contains("x-uc-lance-command", "x-uc-lance-table", "insert");
   }
 
   @Test
@@ -234,7 +242,7 @@ class LancePhase2WorkerHttpBackendRestTest extends BaseLancePhase2RestTest {
 
   private HttpResponse fakeWorkerResponse(
       ServiceRequestContext ctx, RequestHeaders headers, AggregatedHttpRequest request) {
-    Map<String, Object> command = readJson(request.contentUtf8());
+    Map<String, Object> command = command(headers, request);
     String operation = String.valueOf(command.get("operation"));
     int attempt =
         workerAttempts.computeIfAbsent(operation, ignored -> new AtomicInteger()).incrementAndGet();
@@ -285,6 +293,31 @@ class LancePhase2WorkerHttpBackendRestTest extends BaseLancePhase2RestTest {
     return HttpResponse.ofJson(response);
   }
 
+  private Map<String, Object> command(RequestHeaders headers, AggregatedHttpRequest request) {
+    if (request.contentType() != null
+        && ARROW_STREAM.equals(request.contentType().withoutParameters())) {
+      Map<String, Object> command = readHeaderJson(headers, "x-uc-lance-attributes");
+      Map<String, Object> table = readHeaderJson(headers, "x-uc-lance-table");
+      command.put("operation", headers.get("x-uc-lance-command"));
+      command.put("context", readHeaderJson(headers, "x-uc-lance-context"));
+      command.put("table", table);
+      command.put("storage", readHeaderJson(headers, "x-uc-lance-storage"));
+      command.put("requestId", headers.get("x-uc-request-id"));
+      command.put("deadlineMs", headers.get("x-lance-deadline-ms"));
+      command.put("idempotencyKeyHash", headers.get("x-lance-idempotency-key-sha256"));
+      command.put("tableId", table.get("id"));
+      command.put("pathKey", table.get("pathKey"));
+      command.put("tableUri", table.get("tableUri"));
+      command.put("legacyBridge", table.get("legacyBridge"));
+      command.put("workerContentType", request.contentType().withoutParameters().toString());
+      command.put("workerBodyBytes", request.content().length());
+      command.put(
+          "workerBodyPreview", new String(request.content().array(), StandardCharsets.UTF_8));
+      return command;
+    }
+    return readJson(request.contentUtf8());
+  }
+
   private Map<String, Object> responsePayload(Map<String, Object> command) {
     String operation = String.valueOf(command.get("operation"));
     return switch (operation) {
@@ -312,6 +345,12 @@ class LancePhase2WorkerHttpBackendRestTest extends BaseLancePhase2RestTest {
     workerHeaders.put("x-lance-deadline-ms", headers.get("x-lance-deadline-ms"));
     workerHeaders.put(
         "x-lance-idempotency-key-sha256", headers.get("x-lance-idempotency-key-sha256"));
+    workerHeaders.put("x-uc-lance-command", headers.get("x-uc-lance-command"));
+    workerHeaders.put("x-uc-lance-context", headers.get("x-uc-lance-context"));
+    workerHeaders.put("x-uc-lance-table", headers.get("x-uc-lance-table"));
+    workerHeaders.put("x-uc-lance-storage", headers.get("x-uc-lance-storage"));
+    workerHeaders.put("x-uc-lance-attributes", headers.get("x-uc-lance-attributes"));
+    workerHeaders.put("x-uc-request-id", headers.get("x-uc-request-id"));
     return workerHeaders;
   }
 
@@ -331,6 +370,15 @@ class LancePhase2WorkerHttpBackendRestTest extends BaseLancePhase2RestTest {
     } catch (JsonProcessingException e) {
       throw new IllegalArgumentException(e);
     }
+  }
+
+  private Map<String, Object> readHeaderJson(RequestHeaders headers, String name) {
+    String value = headers.get(name);
+    if (value == null || value.isBlank()) {
+      return new LinkedHashMap<>();
+    }
+    byte[] json = Base64.getUrlDecoder().decode(value);
+    return readJson(new String(json, StandardCharsets.UTF_8));
   }
 
   private int attemptsFor(String operation) {
