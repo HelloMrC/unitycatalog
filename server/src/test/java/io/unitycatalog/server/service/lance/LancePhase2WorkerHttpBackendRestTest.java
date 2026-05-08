@@ -148,6 +148,13 @@ class LancePhase2WorkerHttpBackendRestTest extends BaseLancePhase2RestTest {
     assertThat(command.path("workerBodyBytes").asInt()).isEqualTo(arrowSmallStreamFixture().length);
     assertThat(command.path("workerBodyPreview").asText())
         .isEqualTo(new String(arrowSmallStreamFixture(), StandardCharsets.UTF_8));
+    assertThat(command.path("streamPassedThrough").asBoolean()).isFalse();
+    assertThat(command.path("ucRequestMode").asText()).isEqualTo("aggregated");
+    String workerAttributes =
+        command.path("workerHeaders").path("x-uc-lance-attributes").asText();
+    assertThat(workerAttributes).doesNotContain("__arrowBody");
+    assertThat(workerAttributes)
+        .doesNotContain(new String(arrowSmallStreamFixture(), StandardCharsets.UTF_8));
     assertThat(command.path("workerHeaders").toString())
         .contains("x-uc-lance-command", "x-uc-lance-table", "insert");
   }

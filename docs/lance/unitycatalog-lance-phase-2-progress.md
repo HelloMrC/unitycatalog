@@ -324,7 +324,7 @@
 | fake worker HTTP coverage | Add Lance worker HTTP backend | Section 9.11 | 新增 enabled REST tests 覆盖 P2-WORKER-001/002/004/005/006/007/008 |
 | worker retry semantics | Add Lance worker retry semantics | Section 8.4 | read 503 最多自动重试一次并写入 retry audit；write 503-after-body 不自动重试 |
 | worker health probe | Add Lance worker health probe | Section 8.3 / 8.4 | `/admin/worker/health` 按 server property 配置的 worker health path 探测 success/failure |
-| Arrow body handoff | Add Lance worker Arrow body handoff | Section 8.2 / 13.3 | Arrow command 使用 metadata headers + Arrow body 转发到 worker；当前仍基于 UC 入口聚合请求，非零拷贝 streaming 待续 |
+| Arrow body handoff | Add Lance worker Arrow body handoff | Section 8.2 / 13.3 | Arrow command 使用 metadata headers + Arrow body 转发到 worker；metadata 明确传递 ucRequestMode=aggregated 且不包含 Arrow body，当前仍基于 UC 入口聚合请求，非零拷贝 streaming 待续 |
 | Arrow response handoff | Add Lance worker Arrow response handoff | Section 4.1 / 13.3 | worker query 返回 Arrow IPC body 时，UC 保留 media type/body 并交给 `LanceArrowResponseWriter` 返回客户端 |
 | worker unavailable mapping | Add Lance worker unavailable mapping | Section 12.2 | worker 连接失败/无响应时收敛为稳定 `worker_unavailable` 503 Lance error shape，并写入 failure audit |
 
