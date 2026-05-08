@@ -3,11 +3,14 @@ package io.unitycatalog.server.service.lance.backend;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.linecorp.armeria.client.RequestOptions;
+import com.linecorp.armeria.client.ResponseTimeoutException;
 import com.linecorp.armeria.client.WebClient;
 import com.linecorp.armeria.common.AggregatedHttpResponse;
 import com.linecorp.armeria.common.HttpData;
 import com.linecorp.armeria.common.HttpHeaderNames;
 import com.linecorp.armeria.common.HttpMethod;
+import com.linecorp.armeria.common.HttpRequest;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.common.MediaType;
 import com.linecorp.armeria.common.RequestHeaders;
@@ -19,6 +22,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.CompletionException;
 
 public class WorkerHttpLanceExecutionBackend implements LanceExecutionBackend {
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
@@ -167,7 +171,11 @@ public class WorkerHttpLanceExecutionBackend implements LanceExecutionBackend {
             .build();
     RequestHeaders requestHeaders = headers(command, headers);
     String commandPayload = writeJson(commandPayload(path, command));
-    return execute(requestHeaders, commandPayload.getBytes(StandardCharsets.UTF_8), retryableRead);
+    return execute(
+        requestHeaders,
+        commandPayload.getBytes(StandardCharsets.UTF_8),
+        retryableRead,
+        command.context().deadlineMs());
   }
 
   private LanceExecutionResult postArrow(String path, LanceExecutionCommand command) {
@@ -185,17 +193,26 @@ public class WorkerHttpLanceExecutionBackend implements LanceExecutionBackend {
             .add(UC_ATTRIBUTES_HEADER, base64Json(command.attributes()))
             .add(UC_REQUEST_ID_HEADER, command.context().requestId())
             .build();
-    return execute(headers(command, headers), binaryBody(command), false);
+    return execute(
+        headers(command, headers), binaryBody(command), false, command.context().deadlineMs());
   }
 
   private LanceExecutionResult execute(
-      RequestHeaders requestHeaders, byte[] body, boolean retryableRead) {
+      RequestHeaders requestHeaders, byte[] body, boolean retryableRead, Long timeoutMs) {
     int retryCount = 0;
     while (true) {
       AggregatedHttpResponse response;
       try {
-        response = client.execute(requestHeaders, HttpData.wrap(body)).aggregate().join();
+        response =
+            client
+                .execute(
+                    HttpRequest.of(requestHeaders, HttpData.wrap(body)), requestOptions(timeoutMs))
+                .aggregate()
+                .join();
       } catch (RuntimeException e) {
+        if (isResponseTimeout(e)) {
+          throw workerTimeout(e);
+        }
         throw workerUnavailable(e);
       }
       if (response.status().isSuccess()) {
@@ -294,6 +311,41 @@ public class WorkerHttpLanceExecutionBackend implements LanceExecutionBackend {
         "Lance worker request failed before a response was received.",
         "worker-http",
         cause);
+  }
+
+  private LanceBackendException workerTimeout(RuntimeException cause) {
+    return new LanceBackendException(
+        HttpStatus.GATEWAY_TIMEOUT,
+        "backend_timeout",
+        null,
+        "Lance worker request timed out before a response was received.",
+        "worker-http",
+        cause);
+  }
+
+  private RequestOptions requestOptions(Long timeoutMs) {
+    if (timeoutMs == null) {
+      return RequestOptions.of();
+    }
+    return RequestOptions.builder()
+        .responseTimeoutMillis(timeoutMs)
+        .writeTimeoutMillis(timeoutMs)
+        .build();
+  }
+
+  private boolean isResponseTimeout(Throwable cause) {
+    Throwable current = cause;
+    while (current != null) {
+      if (current instanceof ResponseTimeoutException) {
+        return true;
+      }
+      if (current instanceof CompletionException && current.getCause() != null) {
+        current = current.getCause();
+      } else {
+        current = current.getCause();
+      }
+    }
+    return false;
   }
 
   private boolean shouldRetry(

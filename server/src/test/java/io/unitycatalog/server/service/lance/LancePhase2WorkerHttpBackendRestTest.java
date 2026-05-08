@@ -229,6 +229,25 @@ class LancePhase2WorkerHttpBackendRestTest extends BaseLancePhase2RestTest {
   }
 
   @Test
+  @DisplayName("P2-WORKER-008C worker client timeout uses request deadline")
+  void workerClientTimeoutUsesRequestDeadline() throws Exception {
+    createActiveTableFixture();
+
+    var response =
+        postJsonWithHeaders(
+            "/v1/table/" + P2_ACTIVE_TABLE_ID + "/stats",
+            "{}",
+            Map.of(
+                "x-lance-deadline-ms", "50",
+                "x-lance-fake-worker-error", "client-timeout"));
+
+    assertLanceErrorShape(response, 504);
+    assertThat(json(response).path("type").asText()).isEqualTo("backend_timeout");
+    assertThat(json(response).path("audit").path("backendType").asText())
+        .isEqualTo("worker-http");
+  }
+
+  @Test
   @DisplayName("P2-WORKER-008B worker connection failure maps to stable 503")
   void workerConnectionFailureMapsToServiceUnavailable() throws Exception {
     createActiveTableFixture();
@@ -349,6 +368,9 @@ class LancePhase2WorkerHttpBackendRestTest extends BaseLancePhase2RestTest {
               "code", 504,
               "backend_request_id", "fake-worker-timeout"));
     }
+    if ("client-timeout".equals(mode)) {
+      sleep(250);
+    }
     if ("non-json".equals(mode)) {
       ResponseHeaders responseHeaders =
           ResponseHeaders.builder(HttpStatus.BAD_GATEWAY)
@@ -369,6 +391,14 @@ class LancePhase2WorkerHttpBackendRestTest extends BaseLancePhase2RestTest {
     response.put("command", command);
     response.put("backendType", "worker-http");
     return HttpResponse.ofJson(response);
+  }
+
+  private void sleep(long millis) {
+    try {
+      Thread.sleep(millis);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+    }
   }
 
   private Map<String, Object> command(RequestHeaders headers, AggregatedHttpRequest request) {

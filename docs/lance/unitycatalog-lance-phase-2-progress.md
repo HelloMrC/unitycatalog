@@ -323,6 +323,7 @@
 | worker non-JSON error fallback | Add Lance worker error fallback | Section 12.2 | worker 返回非 JSON 错误体时保留 worker HTTP 状态，回退为稳定 `worker_error` Lance error shape |
 | fake worker HTTP coverage | Add Lance worker HTTP backend | Section 9.11 | 新增 enabled REST tests 覆盖 P2-WORKER-001/002/004/005/006/007/008 |
 | worker retry semantics | Add Lance worker retry semantics | Section 8.4 | read 503 最多自动重试一次并写入 retry audit；write 503-after-body 不自动重试 |
+| worker client timeout | Add Lance worker client timeout | Section 8.4 / 12.2 | worker HTTP 调用使用 command deadlineMs 作为 Armeria response/write timeout，客户端侧超时映射为 `backend_timeout` 504 |
 | worker health probe | Add Lance worker health probe | Section 8.3 / 8.4 | `/admin/worker/health` 按 server property 配置的 worker health path 探测 success/failure |
 | Arrow body handoff | Add Lance worker Arrow body handoff | Section 8.2 / 13.3 | Arrow command 使用 metadata headers + Arrow body 转发到 worker；metadata 明确传递 ucRequestMode=aggregated 且不包含 Arrow body，当前仍基于 UC 入口聚合请求，非零拷贝 streaming 待续 |
 | Arrow response handoff | Add Lance worker Arrow response handoff | Section 4.1 / 13.3 | worker query 返回 Arrow IPC body 时，UC 保留 media type/body 并交给 `LanceArrowResponseWriter` 返回客户端 |
@@ -350,7 +351,7 @@
 |------|----------|----------|------|
 | WorkerHttpLanceExecutionBackend | Section 8.1-8.2 | P2-WORKER-* | HTTP worker 实现 |
 | Worker 内部 API | Section 8.2 | - | JSON command path, Arrow command path + metadata headers/body handoff |
-| Timeout/Retry | Section 8.4 | P2-WORKER-008-010 | Read retry bounded, write no retry |
+| Timeout/Retry | Section 8.4 | P2-WORKER-008-010 | Worker HTTP client deadline timeout, read retry bounded, write no retry |
 | Worker error envelope | Section 12.2 | P2-WORKER-007 | 映射 worker error 到 Lance error shape |
 | Worker non-JSON error fallback | Section 12.2 | P2-WORKER-007B | worker 非 JSON 错误体保留 HTTP 状态并回退为 `worker_error` |
 | Worker unavailable | Section 12.2 | P2-WORKER-008B | worker 连接失败映射为稳定 503 Lance error shape |
@@ -379,7 +380,7 @@ Worker HTTP backend 协议层、health probe、retry/no-retry、非 JSON 错误 
 | W2-2: Resolver + Storage | 15.3 | ✅ 高/中优先级完成 | ec4cee3 + 本次小步（Resolver/TableRef tableUri + sanitized template + runtime credential mock/contract 完成） |
 | W2-3: Data endpoint service | 15.4 | ✅ 高优先级完成 | ec4cee3 + 本次工作（架构/Authorization/入口校验/metadata success path/legacy read 配置/Arrow response/JSON scalar response/error requestId 完成） |
 | W2-4: Arrow IPC | 15.5 | ✅ 高优先级完成 | 本次工作（media type/size limit + request reader + response writer 完成） |
-| W2-5: Worker HTTP backend | 15.6 | ⚠️ 部分 | Add Lance worker HTTP backend + Add Lance worker retry semantics + Add Lance worker health probe + Add Lance worker Arrow body handoff + Add Lance worker Arrow response handoff + Add Lance worker unavailable mapping + Add Lance worker error fallback（WorkerHttpLanceExecutionBackend + fake worker HTTP path/header/error/retry/health/Arrow request/response handoff/unavailable mapping/error fallback contract 完成；非聚合 streaming/real worker E2E 待续） |
+| W2-5: Worker HTTP backend | 15.6 | ⚠️ 部分 | Add Lance worker HTTP backend + Add Lance worker retry semantics + Add Lance worker client timeout + Add Lance worker health probe + Add Lance worker Arrow body handoff + Add Lance worker Arrow response handoff + Add Lance worker unavailable mapping + Add Lance worker error fallback（WorkerHttpLanceExecutionBackend + fake worker HTTP path/header/error/retry/client-timeout/health/Arrow request/response handoff/unavailable mapping/error fallback contract 完成；非聚合 streaming/real worker E2E 待续） |
 | W2-6: Metadata 状态推进 | 15.7 | ✅ 完成 | 本次工作（Repository methods + data plane success path + backend_committed marker + version 防倒退 + reconcile 完成） |
 | W2-7: 授权、审计、观测 | 15.8 | ✅ 完成 | 本次工作 + Add Lance backend failure labels（授权 + audit/metrics + failure backend labels + P2-AUTH-005-008、011-014 enabled 覆盖完成） |
 | W2-8: Connector 回归 | 15.9 | ❌ 未开始 | - |
@@ -411,7 +412,7 @@ Worker HTTP backend 协议层、health probe、retry/no-retry、非 JSON 错误 
 | LancePhase2ScalarResponseRestTest | 3 | Enabled | P2-DATA-009、011、012 count/explain/analyze scalar response |
 | LancePhase2ErrorResponseContractRestTest | 3 | Enabled | P2-ERROR-015 requestId/backend_request_id 合同覆盖 |
 | LancePhase2StorageCredentialRestTest | 8 | Enabled | P2-STORAGE-001~007 + P2-META-008 runtime credential mock/contract 覆盖 |
-| LancePhase2WorkerHttpBackendRestTest | 13 | Enabled | P2-WORKER-001~010 + P2-WORKER-007B/008B fake HTTP worker 合同覆盖，P2-WORKER-005/P2-ARROW-008 已验证 Arrow request/response handoff，P2-WORKER-007B/008B 已验证非 JSON 错误 fallback 与 worker 连接失败 503 |
+| LancePhase2WorkerHttpBackendRestTest | 14 | Enabled | P2-WORKER-001~010 + P2-WORKER-007B/008B/008C fake HTTP worker 合同覆盖，P2-WORKER-005/P2-ARROW-008 已验证 Arrow request/response handoff，P2-WORKER-007B/008B/008C 已验证非 JSON 错误 fallback、worker 连接失败 503 与客户端 deadline timeout 504 |
 | LancePhase2ErrorAndRegressionRestTest | ~28 | @Disabled | Error handling, regression |
 | LancePhase2WorkerAndResilienceRestTest | 16 | @Disabled | WorkerHttpLanceExecutionBackend |
 | LancePhase2EcosystemSmokeTest | ~40 | @Disabled | Real worker + connectors |
