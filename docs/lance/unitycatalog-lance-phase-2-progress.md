@@ -325,7 +325,7 @@
 | fake worker HTTP coverage | Add Lance worker HTTP backend | Section 9.11 | 新增 enabled REST tests 覆盖 P2-WORKER-001/002/004/005/006/007/008 |
 | worker retry semantics | Add Lance worker retry semantics | Section 8.4 | read 503 最多自动重试一次并写入 retry audit；write 503-after-body 不自动重试 |
 | worker client timeout | Add Lance worker client timeout | Section 8.4 / 12.2 | worker HTTP 调用使用 command deadlineMs 作为 Armeria response/write timeout，客户端侧超时映射为 `backend_timeout` 504 |
-| worker health probe | Add Lance worker health probe | Section 8.3 / 8.4 | `/admin/worker/health` 按 server property 配置的 worker health path 探测 success/failure |
+| worker health probe | Add Lance worker health probe + 本次小步 | Section 8.3 / 8.4 | `/admin/worker/health` 按 server property 配置的 worker health path 探测 success/failure，并覆盖自定义 health path |
 | worker command reserved field guard | 本次小步 | Section 8.2 / 13.2 | Worker JSON command payload 由 UC 生成字段最终覆盖用户 attributes，防止伪造 operation/table/requestId/workerBaseUrl |
 | Arrow body handoff | Add Lance worker Arrow body handoff | Section 8.2 / 13.3 | Arrow command 使用 metadata headers + Arrow body 转发到 worker；metadata 明确传递 ucRequestMode=aggregated 且不包含 Arrow body，当前仍基于 UC 入口聚合请求，非零拷贝 streaming 待续 |
 | Arrow response handoff | Add Lance worker Arrow response handoff | Section 4.1 / 13.3 | worker query 返回 Arrow IPC body 时，UC 保留 media type/body 并交给 `LanceArrowResponseWriter` 返回客户端 |
@@ -414,7 +414,7 @@ Worker HTTP backend 协议层、health probe、retry/no-retry、非 JSON 错误 
 | LancePhase2ScalarResponseRestTest | 3 | Enabled | P2-DATA-009、011、012 count/explain/analyze scalar response |
 | LancePhase2ErrorResponseContractRestTest | 3 | Enabled | P2-ERROR-015 requestId/backend_request_id 合同覆盖 |
 | LancePhase2StorageCredentialRestTest | 8 | Enabled | P2-STORAGE-001~007 + P2-META-008 runtime credential mock/contract 覆盖 |
-| LancePhase2WorkerHttpBackendRestTest | 14 | Enabled | P2-WORKER-001~010 + P2-WORKER-007B/008B/008C fake HTTP worker 合同覆盖，P2-WORKER-002 已验证 worker command 保留字段不可由请求伪造，P2-WORKER-005/P2-ARROW-008 已验证 Arrow request/response handoff，P2-WORKER-007B/008B/008C 已验证非 JSON 错误 fallback、worker 连接失败 503 与客户端 deadline timeout 504 |
+| LancePhase2WorkerHttpBackendRestTest | 14 | Enabled | P2-WORKER-001~010 + P2-WORKER-007B/008B/008C fake HTTP worker 合同覆盖，P2-WORKER-003 已验证自定义 health path，P2-WORKER-002 已验证 worker command 保留字段不可由请求伪造，P2-WORKER-005/P2-ARROW-008 已验证 Arrow request/response handoff，P2-WORKER-007B/008B/008C 已验证非 JSON 错误 fallback、worker 连接失败 503 与客户端 deadline timeout 504 |
 | LancePhase2ErrorAndRegressionRestTest | ~28 | @Disabled | Error handling, regression |
 | LancePhase2WorkerAndResilienceRestTest | 16 | @Disabled | WorkerHttpLanceExecutionBackend |
 | LancePhase2EcosystemSmokeTest | ~40 | @Disabled | Real worker + connectors |

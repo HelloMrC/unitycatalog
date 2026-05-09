@@ -34,6 +34,7 @@ class LancePhase2WorkerHttpBackendRestTest extends BaseLancePhase2RestTest {
   private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
   private static final byte[] FAKE_WORKER_ARROW_BODY =
       "fake-worker-arrow-body".getBytes(StandardCharsets.UTF_8);
+  private static final String FAKE_WORKER_HEALTH_PATH = "/internal/lance/v1/custom-health";
 
   private Server fakeWorker;
   private String workerBaseUrl;
@@ -46,6 +47,8 @@ class LancePhase2WorkerHttpBackendRestTest extends BaseLancePhase2RestTest {
     startFakeWorker();
     serverProperties.setProperty(Property.LANCE_EXECUTION_BACKEND_TYPE.getKey(), "worker-http");
     serverProperties.setProperty(Property.LANCE_EXECUTION_WORKER_BASE_URL.getKey(), workerBaseUrl);
+    serverProperties.setProperty(
+        Property.LANCE_EXECUTION_WORKER_HEALTH_PATH.getKey(), FAKE_WORKER_HEALTH_PATH);
   }
 
   @AfterEach
@@ -104,6 +107,8 @@ class LancePhase2WorkerHttpBackendRestTest extends BaseLancePhase2RestTest {
 
     assertThat(healthy.status().code()).isEqualTo(200);
     assertThat(json(healthy).path("worker").asText()).isEqualTo("healthy");
+    assertThat(json(healthy).path("workerHealthPath").asText())
+        .isEqualTo(FAKE_WORKER_HEALTH_PATH);
     assertThat(json(healthy).path("details").path("worker").asText()).isEqualTo("fake-worker");
 
     workerHealthStatus = HttpStatus.INTERNAL_SERVER_ERROR;
@@ -311,7 +316,7 @@ class LancePhase2WorkerHttpBackendRestTest extends BaseLancePhase2RestTest {
     fakeWorker =
         Server.builder()
             .http(0)
-            .service("/internal/lance/v1/health", this::fakeWorkerHealth)
+            .service(FAKE_WORKER_HEALTH_PATH, this::fakeWorkerHealth)
             .serviceUnder("/internal/lance/v1/commands", this::fakeWorkerResponse)
             .serviceUnder("/internal/lance/v1/arrow", this::fakeWorkerResponse)
             .build();
