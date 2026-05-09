@@ -123,33 +123,102 @@ class Handler(BaseHTTPRequestHandler):
             self.json(200, self.envelope({"count": int(table.count_rows())}))
         elif operation == "stats":
             self.json(200, self.envelope(self.state.stats(table)))
+        elif operation == "update":
+            self.update(table, command)
+        elif operation == "delete":
+            self.delete(table, command)
         else:
             self.json(400, {"type": "unsupported_operation", "message": operation})
 
     def arrow(self, operation, command, body):
-        if operation != "insert":
+        if operation not in ("create", "insert", "merge_insert"):
             self.json(400, {"type": "unsupported_operation", "message": operation})
             return
         name = self.state.name(command)
         data = read_arrow_table(body)
+        if operation == "create":
+            table = self.state.db.create_table(name, data=data, mode="overwrite")
+            self.write_response("create", name, table, attr(table, "version"))
+            return
         if self.state.exists(name):
             table = self.state.db.open_table(name)
-            table.add(data)
+            if operation == "merge_insert":
+                self.merge_insert(name, table, command, data)
+                return
+            result = table.add(data)
         else:
             table = self.state.db.create_table(name, data=data)
-        version = int(attr(table, "version"))
+            result = table
+        self.write_response(operation, name, table, attr(result, "version"))
+
+    def merge_insert(self, name, table, command, data):
+        keys = command.get("on") or ["id"]
+        if isinstance(keys, str):
+            keys = [keys]
+        builder = table.merge_insert(keys[0] if len(keys) == 1 else keys)
+        if command.get("whenMatchedUpdateAll", True):
+            builder.when_matched_update_all(where=command.get("whenMatchedUpdateAllFilt"))
+        if command.get("whenNotMatchedInsertAll", True):
+            builder.when_not_matched_insert_all()
+        if command.get("whenNotMatchedBySourceDelete", False):
+            builder.when_not_matched_by_source_delete(
+                command.get("whenNotMatchedBySourceDeleteFilt")
+            )
+        if "useIndex" in command:
+            builder.use_index(bool(command["useIndex"]))
+        result = builder.execute(data)
+        self.write_response(
+            "merge_insert",
+            name,
+            table,
+            result.version,
+            {
+                "updatedRows": result.num_updated_rows,
+                "insertedRows": result.num_inserted_rows,
+                "deletedRows": result.num_deleted_rows,
+            },
+        )
+
+    def update(self, table, command):
+        values = command.get("values") or command.get("updates") or {}
+        values_sql = command.get("valuesSql") or command.get("values_sql")
+        result = table.update(
+            where=command.get("predicate") or command.get("where"),
+            values=values if values else None,
+            values_sql=values_sql,
+        )
+        self.write_response(
+            "update",
+            self.state.name(command),
+            table,
+            result.version,
+            {"updatedRows": result.rows_updated},
+        )
+
+    def delete(self, table, command):
+        result = table.delete(command.get("predicate") or command.get("where") or "true")
+        self.write_response(
+            "delete",
+            self.state.name(command),
+            table,
+            result.version,
+            {"deletedRows": result.num_deleted_rows},
+        )
+
+    def write_response(self, operation, name, table, version, extra=None):
+        payload = {
+            "transactionId": f"real-lancedb-{operation}-{version}",
+            "version": int(version),
+            "arrowSchemaJson": schema_json(attr(table, "schema")),
+            "stats": self.state.stats(table),
+            "storageLocation": self.state.uri(name),
+            "tableUri": self.state.uri(name),
+        }
+        if extra:
+            payload.update(extra)
         self.json(
             200,
-            self.envelope(
-                {
-                    "transactionId": f"real-lancedb-{version}",
-                    "version": version,
-                    "arrowSchemaJson": schema_json(attr(table, "schema")),
-                    "stats": self.state.stats(table),
-                    "storageLocation": self.state.uri(name),
-                    "tableUri": self.state.uri(name),
-                }
-            ),
+            self.envelope(payload),
         )
 
     def envelope(self, payload):
