@@ -98,6 +98,52 @@ class LancePhase2RealWorkerE2ERestTest extends BaseLancePhase2RestTest {
     assertThat(json(stats).path("numRows").asLong()).isEqualTo(1L);
   }
 
+  @Test
+  @DisplayName("P2-WORKER-E2E-002 worker-http write endpoints update active table metadata")
+  void workerHttpWriteEndpointsUpdateActiveTableMetadata() throws Exception {
+    createActiveTableFixture();
+
+    AggregatedHttpResponse insert =
+        postArrow(
+            "/v1/table/" + P2_ACTIVE_TABLE_ID + "/insert",
+            "active-insert-row".getBytes(StandardCharsets.UTF_8));
+    assertSuccess(insert);
+    assertThat(json(insert).path("version").asLong()).isEqualTo(1L);
+    assertThat(json(insert).path("stats").path("numRows").asLong()).isEqualTo(1L);
+    assertExecutionMetadata(P2_ACTIVE_TABLE_ID, 1L, 1L);
+
+    AggregatedHttpResponse mergeInsert =
+        postArrow(
+            "/v1/table/" + P2_ACTIVE_TABLE_ID + "/merge_insert",
+            "active-merge-row".getBytes(StandardCharsets.UTF_8));
+    assertSuccess(mergeInsert);
+    assertThat(json(mergeInsert).path("version").asLong()).isEqualTo(2L);
+    assertThat(json(mergeInsert).path("insertedRows").asLong()).isEqualTo(1L);
+    assertThat(json(mergeInsert).path("stats").path("numRows").asLong()).isEqualTo(2L);
+    assertExecutionMetadata(P2_ACTIVE_TABLE_ID, 2L, 2L);
+
+    AggregatedHttpResponse update =
+        postJson("/v1/table/" + P2_ACTIVE_TABLE_ID + "/update", "{\"predicate\":\"id = 1\"}");
+    assertSuccess(update);
+    assertThat(json(update).path("version").asLong()).isEqualTo(3L);
+    assertThat(json(update).path("updatedRows").asLong()).isEqualTo(1L);
+    assertThat(json(update).path("stats").path("numRows").asLong()).isEqualTo(2L);
+    assertExecutionMetadata(P2_ACTIVE_TABLE_ID, 3L, 2L);
+
+    AggregatedHttpResponse delete =
+        postJson("/v1/table/" + P2_ACTIVE_TABLE_ID + "/delete", "{\"predicate\":\"id >= 0\"}");
+    assertSuccess(delete);
+    assertThat(json(delete).path("version").asLong()).isEqualTo(4L);
+    assertThat(json(delete).path("deletedRows").asLong()).isEqualTo(2L);
+    assertThat(json(delete).path("stats").path("numRows").asLong()).isEqualTo(0L);
+    assertExecutionMetadata(P2_ACTIVE_TABLE_ID, 4L, 0L);
+
+    AggregatedHttpResponse count =
+        postJson("/v1/table/" + P2_ACTIVE_TABLE_ID + "/count_rows", "{}");
+    assertSuccess(count);
+    assertThat(json(count).asLong()).isEqualTo(0L);
+  }
+
   private void assertMaterializedMetadata(String identifier) {
     LanceAssetDAO asset = asset(identifier);
     LanceTableDAO table = tableRepository.findTableByAssetId(asset.getId()).orElseThrow();
@@ -106,6 +152,15 @@ class LancePhase2RealWorkerE2ERestTest extends BaseLancePhase2RestTest {
     assertThat(table.getCurrentVersion()).isEqualTo(1L);
     assertThat(table.getArrowSchemaJson()).isEqualTo("{\"fields\":[]}");
     assertThat(table.getStatsJson()).contains("\"numRows\":1");
+  }
+
+  private void assertExecutionMetadata(String identifier, long expectedVersion, long expectedRows) {
+    LanceAssetDAO asset = asset(identifier);
+    LanceTableDAO table = tableRepository.findTableByAssetId(asset.getId()).orElseThrow();
+    assertThat(asset.getState()).isEqualTo("ACTIVE");
+    assertThat(table.getIsOnlyDeclared()).isFalse();
+    assertThat(table.getCurrentVersion()).isEqualTo(expectedVersion);
+    assertThat(table.getStatsJson()).contains("\"numRows\":" + expectedRows);
   }
 
   private LanceAssetDAO asset(String identifier) {

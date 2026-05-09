@@ -77,8 +77,8 @@ class LanceMinimalRealWorkerFixture implements AutoCloseable {
     }
     Map<String, Object> response;
     switch (operation) {
-      case "insert", "create", "merge_insert" ->
-          response = write(command, request.content().length());
+      case "insert", "create" -> response = write(command, request.content().length());
+      case "merge_insert" -> response = mergeInsert(command, request.content().length());
       case "count_rows" -> response = countRows(command);
       case "stats" -> response = stats(command);
       case "explain_plan" -> response = Map.of("plan", "minimal worker explain plan");
@@ -139,6 +139,26 @@ class LanceMinimalRealWorkerFixture implements AutoCloseable {
     WorkerTable table = table(command);
     long version = table.version.incrementAndGet();
     return Map.of("updatedRows", 1, "version", version, "stats", statsPayload(table));
+  }
+
+  private Map<String, Object> mergeInsert(Map<String, Object> command, int bytes) {
+    WorkerTable table = table(command);
+    long version = table.version.incrementAndGet();
+    table.rows.incrementAndGet();
+    table.bytes.addAndGet(bytes);
+    return Map.of(
+        "transactionId",
+        "minimal-worker-merge-" + version,
+        "version",
+        version,
+        "updatedRows",
+        1,
+        "insertedRows",
+        1,
+        "deletedRows",
+        0,
+        "stats",
+        statsPayload(table));
   }
 
   private Map<String, Object> delete(Map<String, Object> command) {
