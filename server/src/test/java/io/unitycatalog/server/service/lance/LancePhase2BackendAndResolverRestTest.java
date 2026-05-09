@@ -285,20 +285,22 @@ class LancePhase2BackendAndResolverRestTest extends BaseLancePhase2RestTest {
   }
 
   @Test
-  @DisplayName("P2-RESOLVE-008 legacy read can be explicitly enabled")
-  void legacyReadCanBeExplicitlyEnabled() throws Exception {
+  @DisplayName("P2-RESOLVE-008 legacy read cannot be enabled by request header bypass")
+  void legacyReadCannotBeEnabledByRequestHeaderBypass() throws Exception {
     createUcCatalogAndSchema();
     createLegacyLanceTable();
 
-    JsonNode command =
-        assertCommandEcho(
-            postJsonWithHeaders(
-                "/v1/table/" + P2_LEGACY_TABLE_ID + "/query",
-                "{}",
-                Map.of("x-lance-legacy-read-enabled", "true")));
+    // Header bypass has been removed per design Section 6.3/8.3.
+    // Legacy reads must be enabled via server property lance.execution.legacy-read-enabled.
+    AggregatedHttpResponse response =
+        postJsonWithHeaders(
+            "/v1/table/" + P2_LEGACY_TABLE_ID + "/query",
+            "{}",
+            Map.of("x-lance-legacy-read-enabled", "true"));
 
-    assertThat(command.path("legacyBridge").asBoolean()).isTrue();
-    assertThat(command.path("operation").asText()).isEqualTo("query");
+    assertLanceErrorShape(response, 501);
+    assertThat(json(response).path("message").asText()).containsIgnoringCase("disabled");
+    assertThat(response.contentUtf8()).doesNotContain("command");
   }
 
   @Test
