@@ -16,22 +16,6 @@ import org.junit.jupiter.api.Test;
 class LancePhase2EcosystemSmokeTest extends BaseLancePhase2RestTest {
 
   @Test
-  @DisplayName("P2-CLIENT-002 Python client connect query count and insert smoke")
-  void pythonClientConnectQueryCountAndInsertSmoke() throws Exception {
-    AggregatedHttpResponse response =
-        postJson(
-            "/admin/smoke/python",
-            "{\"scenario\":\"connect-query-count-insert\",\"table_id\":\""
-                + P2_ACTIVE_TABLE_ID
-                + "\"}");
-
-    assertSuccess(response);
-    assertThat(json(response).path("officialConfigUsed").asBoolean()).isTrue();
-    assertThat(json(response).path("queryOk").asBoolean()).isTrue();
-    assertThat(json(response).path("insertOk").asBoolean()).isTrue();
-  }
-
-  @Test
   @DisplayName("P2-CLIENT-003 Python vector query filter and withRowId smoke")
   void pythonVectorQueryFilterAndWithRowIdSmoke() throws Exception {
     AggregatedHttpResponse response =

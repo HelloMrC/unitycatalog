@@ -122,14 +122,14 @@ class LanceRealLanceDbWorkerProcessFixture implements AutoCloseable {
     }
   }
 
-  private static void applyPythonPath(ProcessBuilder builder) {
+  static void applyPythonPath(ProcessBuilder builder) {
     String pythonPath = System.getenv("LANCE_REAL_WORKER_PYTHONPATH");
     if (pythonPath != null && !pythonPath.isBlank()) {
       builder.environment().put("PYTHONPATH", pythonPath);
     }
   }
 
-  private static String pythonCommand() {
+  static String pythonCommand() {
     String property = System.getProperty("lance.real.worker.python");
     if (property != null && !property.isBlank()) {
       return property;
@@ -139,10 +139,14 @@ class LanceRealLanceDbWorkerProcessFixture implements AutoCloseable {
   }
 
   private static Path scriptPath() {
+    return scriptPath(SCRIPT_RESOURCE);
+  }
+
+  static Path scriptPath(String resourceName) {
     URL resource =
-        LanceRealLanceDbWorkerProcessFixture.class.getClassLoader().getResource(SCRIPT_RESOURCE);
+        LanceRealLanceDbWorkerProcessFixture.class.getClassLoader().getResource(resourceName);
     if (resource == null) {
-      throw new IllegalStateException("Missing test resource " + SCRIPT_RESOURCE + ".");
+      throw new IllegalStateException("Missing test resource " + resourceName + ".");
     }
     try {
       return Path.of(resource.toURI());
