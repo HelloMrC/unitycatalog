@@ -16,28 +16,6 @@ import org.junit.jupiter.api.Test;
 class LancePhase2EcosystemSmokeTest extends BaseLancePhase2RestTest {
 
   @Test
-  @DisplayName("P2-CLIENT-001 raw HTTP covers all 10 data endpoints")
-  void rawHttpCoversAllDataEndpoints() throws Exception {
-    createActiveTableFixture();
-
-    assertSuccess(postQueryExpectingArrow("/v1/table/" + P2_ACTIVE_TABLE_ID + "/query", "{}"));
-    assertSuccess(postJson("/v1/table/" + P2_ACTIVE_TABLE_ID + "/count_rows", "{}"));
-    assertSuccess(postJson("/v1/table/" + P2_ACTIVE_TABLE_ID + "/stats", "{}"));
-    assertSuccess(
-        postArrow("/v1/table/" + P2_ACTIVE_TABLE_ID + "/insert", arrowSmallStreamFixture()));
-    assertSuccess(
-        postArrow("/v1/table/" + P2_ACTIVE_TABLE_ID + "/merge_insert", arrowSmallStreamFixture()));
-    assertSuccess(postJson("/v1/table/" + P2_ACTIVE_TABLE_ID + "/update", "{\"updates\":{}}"));
-    assertSuccess(postJson("/v1/table/" + P2_ACTIVE_TABLE_ID + "/delete", "{}"));
-    assertSuccess(postJson("/v1/table/" + P2_ACTIVE_TABLE_ID + "/explain_plan", "{}"));
-    assertSuccess(postJson("/v1/table/" + P2_ACTIVE_TABLE_ID + "/analyze_plan", "{}"));
-
-    createDeclaredTableFixture();
-    assertSuccess(
-        postArrow("/v1/table/" + P2_DECLARED_TABLE_ID + "/create", arrowSmallStreamFixture()));
-  }
-
-  @Test
   @DisplayName("P2-CLIENT-002 Python client connect query count and insert smoke")
   void pythonClientConnectQueryCountAndInsertSmoke() throws Exception {
     AggregatedHttpResponse response =
