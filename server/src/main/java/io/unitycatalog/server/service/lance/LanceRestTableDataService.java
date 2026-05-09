@@ -33,6 +33,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicLong;
 
 @ExceptionHandler(LanceExceptionHandler.class)
 public class LanceRestTableDataService {
@@ -291,11 +292,30 @@ public class LanceRestTableDataService {
 
   private void validateBodySize(String bodyType, long actualBytes, int maxBytes) {
     if (actualBytes > maxBytes) {
-      throw new LanceProtocolException(
-          HttpStatus.REQUEST_ENTITY_TOO_LARGE,
-          "request_entity_too_large",
-          bodyType + " request body exceeds " + maxBytes + " bytes.");
+      throw requestEntityTooLarge(bodyType, maxBytes);
     }
+  }
+
+  private HttpRequest limitArrowRequestBody(HttpRequest request) {
+    int maxBytes = serverProperties.getLanceExecutionMaxArrowRequestBytes();
+    AtomicLong bytesSeen = new AtomicLong();
+    return request.mapData(
+        data -> {
+          long totalBytes = bytesSeen.addAndGet(data.length());
+          if (totalBytes > maxBytes) {
+            LanceProtocolException exception = requestEntityTooLarge("Arrow", maxBytes);
+            request.abort(exception);
+            throw exception;
+          }
+          return data;
+        });
+  }
+
+  private LanceProtocolException requestEntityTooLarge(String bodyType, int maxBytes) {
+    return new LanceProtocolException(
+        HttpStatus.REQUEST_ENTITY_TOO_LARGE,
+        "request_entity_too_large",
+        bodyType + " request body exceeds " + maxBytes + " bytes.");
   }
 
   private LanceProtocolException unsupportedMediaType(String expected, MediaType actual) {
@@ -404,13 +424,14 @@ public class LanceRestTableDataService {
       LanceExecutionContext context =
           executionContext(headers, serverProperties.getLanceExecutionWriteTimeoutMs());
       Map<String, Object> attributes = arrowStreamingAttributes(headers, optionsHeader);
+      HttpRequest limitedRequest = limitArrowRequestBody(request);
       ServiceRequestContext serviceContext = ServiceRequestContext.current();
       CompletableFuture<HttpResponse> response =
           CompletableFuture.supplyAsync(
                   () ->
                       json(
                           arrowWriteResult(
-                              operation, id, delimiter, context, attributes, request),
+                              operation, id, delimiter, context, attributes, limitedRequest),
                           context),
                   serviceContext.blockingTaskExecutor())
               .exceptionally(

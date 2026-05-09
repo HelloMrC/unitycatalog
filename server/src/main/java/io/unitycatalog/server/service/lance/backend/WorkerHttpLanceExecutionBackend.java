@@ -17,6 +17,7 @@ import com.linecorp.armeria.common.RequestHeaders;
 import com.linecorp.armeria.common.RequestHeadersBuilder;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.service.lance.LanceProtocolException;
 import io.unitycatalog.server.utils.ServerProperties;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
@@ -225,10 +226,15 @@ public class WorkerHttpLanceExecutionBackend implements LanceExecutionBackend {
     int retryCount = 0;
     while (true) {
       AggregatedHttpResponse response;
+      HttpRequest request = requestFactory.get();
       try {
-        response =
-            client.execute(requestFactory.get(), requestOptions(timeoutMs)).aggregate().join();
+        response = client.execute(request, requestOptions(timeoutMs)).aggregate().join();
       } catch (RuntimeException e) {
+        abortRequest(request, e);
+        LanceProtocolException protocolException = findCause(e, LanceProtocolException.class);
+        if (protocolException != null) {
+          throw protocolException;
+        }
         if (isResponseTimeout(e)) {
           throw workerTimeout(e);
         }
@@ -248,10 +254,23 @@ public class WorkerHttpLanceExecutionBackend implements LanceExecutionBackend {
         return new LanceExecutionResult(payload);
       }
       if (shouldRetry(response, retryableRead, retryCount)) {
+        abortRequest(request, null);
         retryCount++;
         continue;
       }
+      abortRequest(request, null);
       throw workerError(response);
+    }
+  }
+
+  private void abortRequest(HttpRequest request, Throwable cause) {
+    if (request == null || !request.isOpen()) {
+      return;
+    }
+    if (cause == null) {
+      request.abort();
+    } else {
+      request.abort(cause);
     }
   }
 
@@ -364,6 +383,17 @@ public class WorkerHttpLanceExecutionBackend implements LanceExecutionBackend {
       }
     }
     return false;
+  }
+
+  private <T extends Throwable> T findCause(Throwable cause, Class<T> type) {
+    Throwable current = cause;
+    while (current != null) {
+      if (type.isInstance(current)) {
+        return type.cast(current);
+      }
+      current = current.getCause();
+    }
+    return null;
   }
 
   private boolean shouldRetry(

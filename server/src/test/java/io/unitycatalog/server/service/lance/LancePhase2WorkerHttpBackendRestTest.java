@@ -22,6 +22,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
@@ -49,6 +50,7 @@ class LancePhase2WorkerHttpBackendRestTest extends BaseLancePhase2RestTest {
     serverProperties.setProperty(Property.LANCE_EXECUTION_WORKER_BASE_URL.getKey(), workerBaseUrl);
     serverProperties.setProperty(
         Property.LANCE_EXECUTION_WORKER_HEALTH_PATH.getKey(), FAKE_WORKER_HEALTH_PATH);
+    serverProperties.setProperty(Property.LANCE_EXECUTION_MAX_ARROW_REQUEST_BYTES.getKey(), "1024");
   }
 
   @AfterEach
@@ -311,6 +313,32 @@ class LancePhase2WorkerHttpBackendRestTest extends BaseLancePhase2RestTest {
     assertLanceErrorShape(response, 503);
     assertThat(json(response).path("audit").path("operation").asText()).isEqualTo("insert");
     assertThat(attemptsFor("insert")).isEqualTo(1);
+  }
+
+  @Test
+  @DisplayName("P2-ARROW-012 unknown-length Arrow stream is stopped at runtime limit")
+  void unknownLengthArrowStreamIsStoppedAtRuntimeLimit() throws Exception {
+    createActiveTableFixture();
+    byte[] chunk = "x".repeat(600).getBytes(StandardCharsets.UTF_8);
+    StreamingLanceRequest streaming =
+        startPostArrowStreaming(
+            "/v1/table/" + P2_ACTIVE_TABLE_ID + "/insert",
+            Map.of("x-request-id", "phase2-chunk-limit"));
+
+    try {
+      assertThat(streaming.request().headers().get(HttpHeaderNames.CONTENT_LENGTH)).isNull();
+      assertThat(streaming.request().tryWrite(HttpData.wrap(chunk))).isTrue();
+      assertThat(streaming.request().tryWrite(HttpData.wrap(chunk))).isTrue();
+
+      var response = streaming.response().get(5, TimeUnit.SECONDS);
+
+      assertLanceErrorShape(response, 413);
+      assertThat(json(response).path("type").asText()).isEqualTo("request_entity_too_large");
+      assertThat(attemptsFor("insert")).isEqualTo(0);
+      assertThat(streaming.request().tryWrite(HttpData.wrap(chunk))).isFalse();
+    } finally {
+      streaming.request().close();
+    }
   }
 
   private void startFakeWorker() {

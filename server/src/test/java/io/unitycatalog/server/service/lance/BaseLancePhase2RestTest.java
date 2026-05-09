@@ -8,6 +8,8 @@ import com.linecorp.armeria.common.AggregatedHttpResponse;
 import com.linecorp.armeria.common.HttpData;
 import com.linecorp.armeria.common.HttpHeaderNames;
 import com.linecorp.armeria.common.HttpMethod;
+import com.linecorp.armeria.common.HttpRequest;
+import com.linecorp.armeria.common.HttpRequestWriter;
 import com.linecorp.armeria.common.MediaType;
 import com.linecorp.armeria.common.RequestHeaders;
 import com.linecorp.armeria.common.RequestHeadersBuilder;
@@ -15,6 +17,7 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import org.junit.jupiter.api.BeforeEach;
 
 abstract class BaseLancePhase2RestTest extends BaseLancePhase1RestTest {
@@ -80,6 +83,18 @@ abstract class BaseLancePhase2RestTest extends BaseLancePhase1RestTest {
   protected AggregatedHttpResponse postArrowExpectingStream(String path, byte[] body) {
     return postArrow(
         path, body, Map.of(HttpHeaderNames.ACCEPT.toString(), ARROW_STREAM.toString()));
+  }
+
+  protected StreamingLanceRequest startPostArrowStreaming(
+      String path, Map<String, String> headers) {
+    RequestHeadersBuilder builder =
+        RequestHeaders.builder()
+            .method(HttpMethod.POST)
+            .path(LANCE_API_PREFIX + path)
+            .contentType(ARROW_STREAM);
+    headers.forEach(builder::add);
+    HttpRequestWriter request = HttpRequest.streaming(builder.build());
+    return new StreamingLanceRequest(request, phase2Client.execute(request).aggregate());
   }
 
   protected AggregatedHttpResponse postQueryExpectingArrow(String path, String body) {
@@ -174,4 +189,7 @@ abstract class BaseLancePhase2RestTest extends BaseLancePhase1RestTest {
       assertThat(json(response).has("message")).as(response.contentUtf8()).isTrue();
     }
   }
+
+  protected record StreamingLanceRequest(
+      HttpRequestWriter request, CompletableFuture<AggregatedHttpResponse> response) {}
 }
