@@ -4,10 +4,15 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linecorp.armeria.common.AggregatedHttpRequest;
+import com.linecorp.armeria.common.HttpHeaderNames;
+import com.linecorp.armeria.common.HttpRequest;
 import com.linecorp.armeria.common.HttpResponse;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.common.MediaType;
+import com.linecorp.armeria.common.RequestHeaders;
 import com.linecorp.armeria.common.ResponseHeaders;
+import com.linecorp.armeria.server.ServiceRequestContext;
+import com.linecorp.armeria.server.annotation.Blocking;
 import com.linecorp.armeria.server.annotation.ExceptionHandler;
 import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Post;
@@ -27,6 +32,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
 
 @ExceptionHandler(LanceExceptionHandler.class)
 public class LanceRestTableDataService {
@@ -138,30 +144,22 @@ public class LanceRestTableDataService {
   }
 
   @Post("/v1/table/{id}/insert")
+  @Blocking
   public HttpResponse insert(
       @Param("id") String id,
       @Param("delimiter") Optional<String> delimiter,
-      AggregatedHttpRequest request) {
-    validateArrowRequest(request);
-    LanceExecutionContext context =
-        executionContext(request, serverProperties.getLanceExecutionWriteTimeoutMs());
-    return json(
-        dataPlaneService.insert(id, delimiter, context, arrowAttributes(request, Optional.empty())),
-        context);
+      HttpRequest request) {
+    return arrowWrite("insert", id, delimiter, request, Optional.empty());
   }
 
   @Post("/v1/table/{id}/merge_insert")
+  @Blocking
   public HttpResponse mergeInsert(
       @Param("id") String id,
       @Param("delimiter") Optional<String> delimiter,
-      AggregatedHttpRequest request) {
-    validateArrowRequest(request);
-    LanceExecutionContext context =
-        executionContext(request, serverProperties.getLanceExecutionWriteTimeoutMs());
-    return json(
-        dataPlaneService.mergeInsert(
-            id, delimiter, context, arrowAttributes(request, Optional.of("x-lance-merge-options"))),
-        context);
+      HttpRequest request) {
+    return arrowWrite(
+        "merge_insert", id, delimiter, request, Optional.of("x-lance-merge-options"));
   }
 
   @Post("/v1/table/{id}/update")
@@ -219,20 +217,12 @@ public class LanceRestTableDataService {
   }
 
   @Post("/v1/table/{id}/create")
+  @Blocking
   public HttpResponse create(
       @Param("id") String id,
       @Param("delimiter") Optional<String> delimiter,
-      AggregatedHttpRequest request) {
-    validateArrowRequest(request);
-    LanceExecutionContext context =
-        executionContext(request, serverProperties.getLanceExecutionWriteTimeoutMs());
-    return json(
-        dataPlaneService.create(
-            id,
-            delimiter,
-            context,
-            arrowAttributes(request, Optional.of("x-lance-create-options"))),
-        context);
+      HttpRequest request) {
+    return arrowWrite("create", id, delimiter, request, Optional.of("x-lance-create-options"));
   }
 
   private HttpResponse json(LanceExecutionResult result, LanceExecutionContext context) {
@@ -281,7 +271,25 @@ public class LanceRestTableDataService {
         serverProperties.getLanceExecutionMaxArrowRequestBytes());
   }
 
+  private void validateArrowRequest(RequestHeaders headers) {
+    MediaType contentType = contentType(headers);
+    if (contentType == null || !ARROW_STREAM.equals(contentType.withoutParameters())) {
+      throw unsupportedMediaType(ARROW_STREAM.toString(), contentType);
+    }
+    Long contentLength = headers.getLong(HttpHeaderNames.CONTENT_LENGTH);
+    if (contentLength != null) {
+      validateBodySize(
+          "Arrow",
+          contentLength,
+          serverProperties.getLanceExecutionMaxArrowRequestBytes());
+    }
+  }
+
   private void validateBodySize(String bodyType, int actualBytes, int maxBytes) {
+    validateBodySize(bodyType, (long) actualBytes, maxBytes);
+  }
+
+  private void validateBodySize(String bodyType, long actualBytes, int maxBytes) {
     if (actualBytes > maxBytes) {
       throw new LanceProtocolException(
           HttpStatus.REQUEST_ENTITY_TOO_LARGE,
@@ -300,18 +308,26 @@ public class LanceRestTableDataService {
 
   private LanceExecutionContext executionContext(
       AggregatedHttpRequest request, long defaultDeadlineMs) {
-    String idempotencyKey = request.headers().get(IDEMPOTENCY_KEY_HEADER);
+    return executionContext(request.headers(), defaultDeadlineMs);
+  }
+
+  private LanceExecutionContext executionContext(RequestHeaders headers, long defaultDeadlineMs) {
+    String idempotencyKey = headers.get(IDEMPOTENCY_KEY_HEADER);
     return new LanceExecutionContext(
-        requestId(request),
+        requestId(headers),
         LanceRequestContext.currentPrincipal(),
-        authType(request),
-        deadlineMs(request, defaultDeadlineMs),
+        authType(headers),
+        deadlineMs(headers, defaultDeadlineMs),
         context(LanceRequestContext.currentContextHeaders()),
         idempotencyKey == null || idempotencyKey.isBlank() ? null : sha256(idempotencyKey));
   }
 
   private long deadlineMs(AggregatedHttpRequest request, long defaultDeadlineMs) {
-    String deadline = request.headers().get(DEADLINE_MS_HEADER);
+    return deadlineMs(request.headers(), defaultDeadlineMs);
+  }
+
+  private long deadlineMs(RequestHeaders headers, long defaultDeadlineMs) {
+    String deadline = headers.get(DEADLINE_MS_HEADER);
     if (deadline == null || deadline.isBlank()) {
       return defaultDeadlineMs;
     }
@@ -366,6 +382,82 @@ public class LanceRestTableDataService {
     return attributes;
   }
 
+  private Map<String, Object> arrowStreamingAttributes(
+      RequestHeaders headers, Optional<String> optionsHeader) {
+    Map<String, Object> attributes = arrowRequestReader.readStreaming(headers);
+    optionsHeader
+        .map(headers::get)
+        .filter(value -> !value.isBlank())
+        .ifPresent(value -> attributes.putAll(safeBody(parseJsonHeader(value))));
+    return attributes;
+  }
+
+  private HttpResponse arrowWrite(
+      String operation,
+      String id,
+      Optional<String> delimiter,
+      HttpRequest request,
+      Optional<String> optionsHeader) {
+    if (backend instanceof WorkerHttpLanceExecutionBackend) {
+      RequestHeaders headers = request.headers();
+      validateArrowRequest(headers);
+      LanceExecutionContext context =
+          executionContext(headers, serverProperties.getLanceExecutionWriteTimeoutMs());
+      Map<String, Object> attributes = arrowStreamingAttributes(headers, optionsHeader);
+      ServiceRequestContext serviceContext = ServiceRequestContext.current();
+      CompletableFuture<HttpResponse> response =
+          CompletableFuture.supplyAsync(
+                  () ->
+                      json(
+                          arrowWriteResult(
+                              operation, id, delimiter, context, attributes, request),
+                          context),
+                  serviceContext.blockingTaskExecutor())
+              .exceptionally(
+                  cause ->
+                      new LanceExceptionHandler()
+                          .handleException(serviceContext, request, cause));
+      return HttpResponse.of(response);
+    }
+    validateArrowRequest(request.headers());
+    return HttpResponse.of(
+        request
+            .aggregate()
+            .thenApply(
+                aggregated ->
+                    arrowWriteAggregated(operation, id, delimiter, aggregated, optionsHeader)));
+  }
+
+  private HttpResponse arrowWriteAggregated(
+      String operation,
+      String id,
+      Optional<String> delimiter,
+      AggregatedHttpRequest request,
+      Optional<String> optionsHeader) {
+    validateArrowRequest(request);
+    LanceExecutionContext context =
+        executionContext(request, serverProperties.getLanceExecutionWriteTimeoutMs());
+    return json(
+        arrowWriteResult(
+            operation, id, delimiter, context, arrowAttributes(request, optionsHeader), null),
+        context);
+  }
+
+  private LanceExecutionResult arrowWriteResult(
+      String operation,
+      String id,
+      Optional<String> delimiter,
+      LanceExecutionContext context,
+      Map<String, Object> attributes,
+      HttpRequest body) {
+    return switch (operation) {
+      case "insert" -> dataPlaneService.insert(id, delimiter, context, attributes, body);
+      case "merge_insert" -> dataPlaneService.mergeInsert(id, delimiter, context, attributes, body);
+      case "create" -> dataPlaneService.create(id, delimiter, context, attributes, body);
+      default -> throw new BaseException(ErrorCode.INTERNAL, "Unknown Lance Arrow operation.");
+    };
+  }
+
   private Map<String, Object> parseJsonHeader(String value) {
     try {
       return OBJECT_MAPPER.readValue(value, MAP_TYPE);
@@ -386,7 +478,11 @@ public class LanceRestTableDataService {
   }
 
   private String requestId(AggregatedHttpRequest request) {
-    String requestId = request.headers().get(REQUEST_ID_HEADER);
+    return requestId(request.headers());
+  }
+
+  private String requestId(RequestHeaders headers) {
+    String requestId = headers.get(REQUEST_ID_HEADER);
     String resolved =
         requestId == null || requestId.isBlank() ? UUID.randomUUID().toString() : requestId;
     LanceRequestContext.setCurrentRequestId(resolved);
@@ -394,12 +490,21 @@ public class LanceRestTableDataService {
   }
 
   private String authType(AggregatedHttpRequest request) {
-    String authorization = request.headers().get("authorization");
+    return authType(request.headers());
+  }
+
+  private String authType(RequestHeaders headers) {
+    String authorization = headers.get("authorization");
     if (authorization != null && authorization.startsWith("Bearer ")) {
       return "bearer";
     }
-    String apiKey = request.headers().get("x-api-key");
+    String apiKey = headers.get("x-api-key");
     return apiKey == null || apiKey.isBlank() ? "anonymous" : "api_key";
+  }
+
+  private MediaType contentType(RequestHeaders headers) {
+    String value = headers.get(HttpHeaderNames.CONTENT_TYPE);
+    return value == null ? null : MediaType.parse(value);
   }
 
   private Map<String, String> context(Map<String, String> contextHeaders) {

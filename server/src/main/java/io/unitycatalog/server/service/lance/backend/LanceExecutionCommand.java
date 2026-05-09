@@ -1,5 +1,6 @@
 package io.unitycatalog.server.service.lance.backend;
 
+import com.linecorp.armeria.common.HttpRequest;
 import java.util.Map;
 
 public record LanceExecutionCommand(
@@ -8,14 +9,25 @@ public record LanceExecutionCommand(
     LanceTableRef table,
     LanceStorageBinding storage,
     Map<String, Object> attributes,
-    byte[] binaryBody) {
+    byte[] binaryBody,
+    HttpRequest binaryRequest) {
+  public LanceExecutionCommand(
+      String operation,
+      LanceExecutionContext context,
+      LanceTableRef table,
+      LanceStorageBinding storage,
+      Map<String, Object> attributes,
+      byte[] binaryBody) {
+    this(operation, context, table, storage, attributes, binaryBody, null);
+  }
+
   public LanceExecutionCommand(
       String operation,
       LanceExecutionContext context,
       LanceTableRef table,
       LanceStorageBinding storage,
       Map<String, Object> attributes) {
-    this(operation, context, table, storage, attributes, null);
+    this(operation, context, table, storage, attributes, null, null);
   }
 
   public LanceExecutionCommand {

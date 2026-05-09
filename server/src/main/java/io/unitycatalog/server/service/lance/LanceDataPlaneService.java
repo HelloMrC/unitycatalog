@@ -1,5 +1,6 @@
 package io.unitycatalog.server.service.lance;
 
+import com.linecorp.armeria.common.HttpRequest;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.model.Privileges;
@@ -81,8 +82,25 @@ class LanceDataPlaneService {
       Optional<String> delimiter,
       LanceExecutionContext context,
       Map<String, Object> attributes) {
+    return insert(id, delimiter, context, attributes, null);
+  }
+
+  LanceExecutionResult insert(
+      String id,
+      Optional<String> delimiter,
+      LanceExecutionContext context,
+      Map<String, Object> attributes,
+      HttpRequest binaryRequest) {
     PreparedCommand prepared =
-        command("insert", id, delimiter, context, attributes, true, AuthorizationScope.DATA_WRITE);
+        command(
+            "insert",
+            id,
+            delimiter,
+            context,
+            attributes,
+            true,
+            AuthorizationScope.DATA_WRITE,
+            binaryRequest);
     return observability.observe(
         prepared.command(),
         prepared.table(),
@@ -95,6 +113,15 @@ class LanceDataPlaneService {
       Optional<String> delimiter,
       LanceExecutionContext context,
       Map<String, Object> attributes) {
+    return mergeInsert(id, delimiter, context, attributes, null);
+  }
+
+  LanceExecutionResult mergeInsert(
+      String id,
+      Optional<String> delimiter,
+      LanceExecutionContext context,
+      Map<String, Object> attributes,
+      HttpRequest binaryRequest) {
     PreparedCommand prepared =
         command(
             "merge_insert",
@@ -103,7 +130,8 @@ class LanceDataPlaneService {
             context,
             attributes,
             true,
-            AuthorizationScope.DATA_WRITE);
+            AuthorizationScope.DATA_WRITE,
+            binaryRequest);
     return observability.observe(
         prepared.command(),
         prepared.table(),
@@ -180,8 +208,25 @@ class LanceDataPlaneService {
       Optional<String> delimiter,
       LanceExecutionContext context,
       Map<String, Object> attributes) {
+    return create(id, delimiter, context, attributes, null);
+  }
+
+  LanceExecutionResult create(
+      String id,
+      Optional<String> delimiter,
+      LanceExecutionContext context,
+      Map<String, Object> attributes,
+      HttpRequest binaryRequest) {
     PreparedCommand prepared =
-        command("create", id, delimiter, context, attributes, true, AuthorizationScope.DATA_WRITE);
+        command(
+            "create",
+            id,
+            delimiter,
+            context,
+            attributes,
+            true,
+            AuthorizationScope.DATA_WRITE,
+            binaryRequest);
     return observability.observe(
         prepared.command(),
         prepared.table(),
@@ -197,6 +242,19 @@ class LanceDataPlaneService {
       Map<String, Object> attributes,
       boolean writeOperation,
       AuthorizationScope authorizationScope) {
+    return command(
+        operation, id, delimiter, context, attributes, writeOperation, authorizationScope, null);
+  }
+
+  private PreparedCommand command(
+      String operation,
+      String id,
+      Optional<String> delimiter,
+      LanceExecutionContext context,
+      Map<String, Object> attributes,
+      boolean writeOperation,
+      AuthorizationScope authorizationScope,
+      HttpRequest binaryRequest) {
     ResolvedLanceTable table = tableResolver.resolve(id, delimiter.orElse(null));
     LanceDataPlaneAuthorizer.AuthorizationDecision authorizationDecision =
         authorize(authorizationScope, table);
@@ -205,7 +263,12 @@ class LanceDataPlaneService {
 
     Map<String, Object> commandAttributes = new LinkedHashMap<>(attributes);
     byte[] binaryBody =
-        binaryBody(commandAttributes.remove(LanceArrowRequestReader.ARROW_BODY_ATTRIBUTE));
+        binaryRequest == null
+            ? binaryBody(commandAttributes.remove(LanceArrowRequestReader.ARROW_BODY_ATTRIBUTE))
+            : null;
+    if (binaryRequest != null) {
+      commandAttributes.remove(LanceArrowRequestReader.ARROW_BODY_ATTRIBUTE);
+    }
     commandAttributes.put("materializeDeclaredTable", table.tableRef().declaredOnly());
     commandAttributes.put("legacyBridge", table.tableRef().legacyBridge());
     commandAttributes.put("requiredPrivilege", authorizationDecision.requiredPrivilege());
@@ -213,7 +276,13 @@ class LanceDataPlaneService {
         "compatiblePrivileges", privilegeNames(authorizationDecision.compatiblePrivileges()));
     return new PreparedCommand(
         new LanceExecutionCommand(
-            operation, context, table.tableRef(), storage, commandAttributes, binaryBody),
+            operation,
+            context,
+            table.tableRef(),
+            storage,
+            commandAttributes,
+            binaryBody,
+            binaryRequest),
         table);
   }
 

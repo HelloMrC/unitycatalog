@@ -91,6 +91,10 @@ class LanceMinimalRealWorkerFixture implements AutoCloseable {
     payload.put("backendType", "worker-http");
     payload.put("workerPath", path);
     payload.put("minimalRealWorker", true);
+    copyIfPresent(payload, command, "requestBufferedBytes");
+    copyIfPresent(payload, command, "requestContentLength");
+    copyIfPresent(payload, command, "streamPassedThrough");
+    copyIfPresent(payload, command, "ucRequestMode");
     return HttpResponse.ofJson(payload);
   }
 
@@ -150,6 +154,12 @@ class LanceMinimalRealWorkerFixture implements AutoCloseable {
         "numRows", table.rows.get(),
         "numIndices", 0,
         "fragmentStats", Map.of());
+  }
+
+  private void copyIfPresent(Map<String, Object> target, Map<String, Object> source, String key) {
+    if (source.containsKey(key)) {
+      target.put(key, source.get(key));
+    }
   }
 
   private WorkerTable table(Map<String, Object> command) {

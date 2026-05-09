@@ -73,6 +73,9 @@ class LancePhase2RealWorkerE2ERestTest extends BaseLancePhase2RestTest {
     assertThat(json(insert).path("minimalRealWorker").asBoolean()).isTrue();
     assertThat(json(insert).path("version").asLong()).isEqualTo(1L);
     assertThat(json(insert).path("stats").path("numRows").asLong()).isEqualTo(1L);
+    assertThat(json(insert).path("streamPassedThrough").asBoolean()).isTrue();
+    assertThat(json(insert).path("ucRequestMode").asText()).isEqualTo("streaming");
+    assertThat(json(insert).path("requestBufferedBytes").asLong()).isEqualTo(0L);
     assertMaterializedMetadata(P2_DECLARED_TABLE_ID);
 
     AggregatedHttpResponse query =

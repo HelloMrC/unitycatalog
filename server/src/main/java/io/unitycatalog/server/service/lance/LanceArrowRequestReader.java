@@ -1,6 +1,9 @@
 package io.unitycatalog.server.service.lance;
 
 import com.linecorp.armeria.common.AggregatedHttpRequest;
+import com.linecorp.armeria.common.HttpHeaderNames;
+import com.linecorp.armeria.common.MediaType;
+import com.linecorp.armeria.common.RequestHeaders;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -23,5 +26,26 @@ class LanceArrowRequestReader {
     attributes.put("schemaSource", schemaPeeked ? "arrow-peek" : "worker");
     attributes.put(ARROW_BODY_ATTRIBUTE, arrowBody);
     return attributes;
+  }
+
+  Map<String, Object> readStreaming(RequestHeaders headers) {
+    Map<String, Object> attributes = new LinkedHashMap<>();
+    Long contentLength = headers.getLong(HttpHeaderNames.CONTENT_LENGTH);
+    attributes.put("inputData", "arrow-stream");
+    attributes.put("inputBytes", contentLength == null ? 0L : contentLength);
+    attributes.put("inputMediaType", contentType(headers).withoutParameters().toString());
+    attributes.put("requestBufferedBytes", 0L);
+    attributes.put("requestContentLength", contentLength == null ? -1L : contentLength);
+    attributes.put("streamPassedThrough", true);
+    attributes.put("ucRequestMode", "streaming");
+    attributes.put("schemaPeeked", false);
+    attributes.put("recordBatchesParsedByUc", 0);
+    attributes.put("schemaSource", "worker");
+    return attributes;
+  }
+
+  private MediaType contentType(RequestHeaders headers) {
+    String value = headers.get(HttpHeaderNames.CONTENT_TYPE);
+    return value == null ? MediaType.OCTET_STREAM : MediaType.parse(value);
   }
 }

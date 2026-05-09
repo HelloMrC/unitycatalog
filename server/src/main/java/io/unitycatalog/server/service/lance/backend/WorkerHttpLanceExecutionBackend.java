@@ -23,6 +23,7 @@ import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.CompletionException;
+import java.util.function.Supplier;
 
 public class WorkerHttpLanceExecutionBackend implements LanceExecutionBackend {
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
@@ -194,21 +195,39 @@ public class WorkerHttpLanceExecutionBackend implements LanceExecutionBackend {
             .add(UC_REQUEST_ID_HEADER, command.context().requestId())
             .build();
     return execute(
-        headers(command, headers), binaryBody(command), false, command.context().deadlineMs());
+        headers(command, headers),
+        binaryBody(command),
+        command.binaryRequest(),
+        false,
+        command.context().deadlineMs());
   }
 
   private LanceExecutionResult execute(
       RequestHeaders requestHeaders, byte[] body, boolean retryableRead, Long timeoutMs) {
+    return execute(
+        () -> HttpRequest.of(requestHeaders, HttpData.wrap(body)), retryableRead, timeoutMs);
+  }
+
+  private LanceExecutionResult execute(
+      RequestHeaders requestHeaders,
+      byte[] body,
+      HttpRequest stream,
+      boolean retryableRead,
+      Long timeoutMs) {
+    if (stream == null) {
+      return execute(requestHeaders, body, retryableRead, timeoutMs);
+    }
+    return execute(() -> HttpRequest.of(requestHeaders, stream), retryableRead, timeoutMs);
+  }
+
+  private LanceExecutionResult execute(
+      Supplier<HttpRequest> requestFactory, boolean retryableRead, Long timeoutMs) {
     int retryCount = 0;
     while (true) {
       AggregatedHttpResponse response;
       try {
         response =
-            client
-                .execute(
-                    HttpRequest.of(requestHeaders, HttpData.wrap(body)), requestOptions(timeoutMs))
-                .aggregate()
-                .join();
+            client.execute(requestFactory.get(), requestOptions(timeoutMs)).aggregate().join();
       } catch (RuntimeException e) {
         if (isResponseTimeout(e)) {
           throw workerTimeout(e);
