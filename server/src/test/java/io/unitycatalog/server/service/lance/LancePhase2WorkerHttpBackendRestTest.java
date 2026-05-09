@@ -79,11 +79,22 @@ class LancePhase2WorkerHttpBackendRestTest extends BaseLancePhase2RestTest {
         assertCommandEcho(
             postJsonWithHeaders(
                 "/v1/table/" + P2_ACTIVE_TABLE_ID + "/stats",
-                "{}",
+                "{"
+                    + "\"workerBaseUrl\":\"http://evil.example.com\","
+                    + "\"operation\":\"delete\","
+                    + "\"tableId\":\"evil-table\","
+                    + "\"pathKey\":\"evil-path\","
+                    + "\"requestId\":\"evil-request\""
+                    + "}",
                 Map.of("x-lance-worker-url", "http://evil.example.com")));
 
+    assertThat(command.path("operation").asText()).isEqualTo("stats");
     assertThat(command.path("workerBaseUrl").asText()).isEqualTo(workerBaseUrl);
-    assertThat(command.toString()).doesNotContain("evil.example.com");
+    assertThat(command.path("tableId").asText()).isEqualTo(P2_ACTIVE_TABLE_ID);
+    assertThat(command.path("pathKey").asText()).isEqualTo("prod/team_a/embeddings");
+    assertThat(command.path("requestId").asText()).isNotEqualTo("evil-request");
+    assertThat(command.toString())
+        .doesNotContain("evil.example.com", "evil-table", "evil-path");
   }
 
   @Test

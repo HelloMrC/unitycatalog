@@ -40,13 +40,20 @@ class LancePhase2RequestMappingRestTest extends BaseLancePhase1RestTest {
             "/v1/table/" + TABLE_ID + "/stats",
             "{"
                 + "\"id\":\"prod$team_a$spoofed\","
+                + "\"operation\":\"delete\","
+                + "\"tableId\":\"evil-table\","
+                + "\"pathKey\":\"evil-path\","
+                + "\"requestId\":\"evil-request\","
                 + "\"predicate\":\"id > 0\","
                 + "\"version\":2,"
                 + "\"identity\":{\"principal\":\"evil@example.com\"}"
                 + "}");
 
     JsonNode command = command(response);
+    assertThat(command.path("operation").asText()).isEqualTo("stats");
     assertThat(command.path("tableId").asText()).isEqualTo(TABLE_ID);
+    assertThat(command.path("pathKey").asText()).isEqualTo("prod/team_a/embeddings");
+    assertThat(command.path("requestId").asText()).isNotEqualTo("evil-request");
     assertThat(command.path("tableUri").asText()).isEqualTo(TABLE_LOCATION);
     assertThat(command.path("table").path("tableUri").asText()).isEqualTo(TABLE_LOCATION);
     assertThat(command.path("storage").path("uri").asText()).isEqualTo(TABLE_LOCATION);
@@ -56,7 +63,8 @@ class LancePhase2RequestMappingRestTest extends BaseLancePhase1RestTest {
     assertThat(command.path("storage").path("expiresAtMillis").asLong()).isEqualTo(0L);
     assertThat(command.path("predicate").asText()).isEqualTo("id > 0");
     assertThat(command.path("version").asInt()).isEqualTo(2);
-    assertThat(command.toString()).doesNotContain("spoofed", "evil@example.com");
+    assertThat(command.toString())
+        .doesNotContain("spoofed", "evil@example.com", "evil-table", "evil-path");
   }
 
   @Test

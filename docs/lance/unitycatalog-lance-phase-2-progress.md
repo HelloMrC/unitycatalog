@@ -1,6 +1,6 @@
 # Unity Catalog Lance REST API Phase 2 开发进度
 
-更新日期：2026-05-08
+更新日期：2026-05-09
 
 ## 1. 文档目标
 
@@ -39,6 +39,7 @@
 | JSON body 解析 | 1fbc0ba | Section 5.3 | Jackson ObjectMapper 解析 |
 | Path id 优先 | 1fbc0ba, ec4cee3 | Section 5.3 | path id 覆盖 body 中的 id |
 | Spoofed identity 移除 | 1fbc0ba | Section 5.3 | 移除 id, identity, principal, authType, requestId, context |
+| Command reserved field 防伪造 | 本次小步 | Section 5.3 / 8.2 | 用户 JSON/attributes 不能覆盖 UC 生成的 operation、requestId、tableId、pathKey、workerBaseUrl 等 command 保留字段 |
 | Request id 生成和透传 | 1fbc0ba, ec4cee3 | Section 5.3 | UUID 生成或 header 传递 |
 | Principal 透传 | ec4cee3 | Section 5.3 | LanceRequestContext.currentPrincipal() |
 | AuthType 识别 | 1fbc0ba | Section 5.3 | Bearer / api_key / anonymous |
@@ -325,6 +326,7 @@
 | worker retry semantics | Add Lance worker retry semantics | Section 8.4 | read 503 最多自动重试一次并写入 retry audit；write 503-after-body 不自动重试 |
 | worker client timeout | Add Lance worker client timeout | Section 8.4 / 12.2 | worker HTTP 调用使用 command deadlineMs 作为 Armeria response/write timeout，客户端侧超时映射为 `backend_timeout` 504 |
 | worker health probe | Add Lance worker health probe | Section 8.3 / 8.4 | `/admin/worker/health` 按 server property 配置的 worker health path 探测 success/failure |
+| worker command reserved field guard | 本次小步 | Section 8.2 / 13.2 | Worker JSON command payload 由 UC 生成字段最终覆盖用户 attributes，防止伪造 operation/table/requestId/workerBaseUrl |
 | Arrow body handoff | Add Lance worker Arrow body handoff | Section 8.2 / 13.3 | Arrow command 使用 metadata headers + Arrow body 转发到 worker；metadata 明确传递 ucRequestMode=aggregated 且不包含 Arrow body，当前仍基于 UC 入口聚合请求，非零拷贝 streaming 待续 |
 | Arrow response handoff | Add Lance worker Arrow response handoff | Section 4.1 / 13.3 | worker query 返回 Arrow IPC body 时，UC 保留 media type/body 并交给 `LanceArrowResponseWriter` 返回客户端 |
 | worker unavailable mapping | Add Lance worker unavailable mapping | Section 12.2 | worker 连接失败/无响应时收敛为稳定 `worker_unavailable` 503 Lance error shape，并写入 failure audit |
@@ -398,7 +400,7 @@ Worker HTTP backend 协议层、health probe、retry/no-retry、非 JSON 错误 
 | LancePhase2DataWriteRestTest | 11 | @Disabled | LanceTableRepository methods |
 | LancePhase2MetadataAndStorageRestTest | 18 | @Disabled | Repository methods, credential vending |
 | LancePhase2AuthGovernanceRestTest | 17 | @Disabled | Audit/Metrics，完整 grant 路径拆分后可部分启用 |
-| LancePhase2RequestMappingRestTest | 7 | Enabled | request mapping + storage/deadline contract + header spoofing guard |
+| LancePhase2RequestMappingRestTest | 7 | Enabled | request mapping + storage/deadline contract + header/body reserved field spoofing guard |
 | LancePhase2DataPlaneAuthorizationRestTest | 4 | Enabled | P2-AUTH-005-008 read/write allow-deny 覆盖 |
 | LanceDataPlaneAuthorizerTest | 3 | Enabled | READ_DATA/WRITE_DATA 兼容权限映射 |
 | LancePhase2RequestValidationRestTest | 4 | Enabled | Content-Type 415 + JSON/Arrow size 413 |
@@ -412,7 +414,7 @@ Worker HTTP backend 协议层、health probe、retry/no-retry、非 JSON 错误 
 | LancePhase2ScalarResponseRestTest | 3 | Enabled | P2-DATA-009、011、012 count/explain/analyze scalar response |
 | LancePhase2ErrorResponseContractRestTest | 3 | Enabled | P2-ERROR-015 requestId/backend_request_id 合同覆盖 |
 | LancePhase2StorageCredentialRestTest | 8 | Enabled | P2-STORAGE-001~007 + P2-META-008 runtime credential mock/contract 覆盖 |
-| LancePhase2WorkerHttpBackendRestTest | 14 | Enabled | P2-WORKER-001~010 + P2-WORKER-007B/008B/008C fake HTTP worker 合同覆盖，P2-WORKER-005/P2-ARROW-008 已验证 Arrow request/response handoff，P2-WORKER-007B/008B/008C 已验证非 JSON 错误 fallback、worker 连接失败 503 与客户端 deadline timeout 504 |
+| LancePhase2WorkerHttpBackendRestTest | 14 | Enabled | P2-WORKER-001~010 + P2-WORKER-007B/008B/008C fake HTTP worker 合同覆盖，P2-WORKER-002 已验证 worker command 保留字段不可由请求伪造，P2-WORKER-005/P2-ARROW-008 已验证 Arrow request/response handoff，P2-WORKER-007B/008B/008C 已验证非 JSON 错误 fallback、worker 连接失败 503 与客户端 deadline timeout 504 |
 | LancePhase2ErrorAndRegressionRestTest | ~28 | @Disabled | Error handling, regression |
 | LancePhase2WorkerAndResilienceRestTest | 16 | @Disabled | WorkerHttpLanceExecutionBackend |
 | LancePhase2EcosystemSmokeTest | ~40 | @Disabled | Real worker + connectors |

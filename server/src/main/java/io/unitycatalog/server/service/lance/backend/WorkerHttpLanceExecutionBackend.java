@@ -263,7 +263,7 @@ public class WorkerHttpLanceExecutionBackend implements LanceExecutionBackend {
   }
 
   private Map<String, Object> commandPayload(String path, LanceExecutionCommand command) {
-    Map<String, Object> payload = new LinkedHashMap<>();
+    Map<String, Object> payload = new LinkedHashMap<>(command.attributes());
     payload.put("operation", command.operation());
     payload.put("workerPath", path);
     payload.put("workerBaseUrl", baseUrl);
@@ -279,7 +279,6 @@ public class WorkerHttpLanceExecutionBackend implements LanceExecutionBackend {
     payload.put("pathKey", command.table().pathKey());
     payload.put("tableUri", command.table().tableUri());
     payload.put("legacyBridge", command.table().legacyBridge());
-    payload.putAll(command.attributes());
     return payload;
   }
 
