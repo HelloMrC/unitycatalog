@@ -8,7 +8,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linecorp.armeria.common.AggregatedHttpRequest;
 import com.linecorp.armeria.common.HttpData;
 import com.linecorp.armeria.common.HttpHeaderNames;
+import com.linecorp.armeria.common.HttpObject;
 import com.linecorp.armeria.common.HttpResponse;
+import com.linecorp.armeria.common.HttpRequestWriter;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.common.MediaType;
 import com.linecorp.armeria.common.RequestHeaders;
@@ -20,14 +22,19 @@ import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
+import org.reactivestreams.Subscriber;
+import org.reactivestreams.Subscription;
 
 @Tag("lance-phase2")
 class LancePhase2WorkerHttpBackendRestTest extends BaseLancePhase2RestTest {
@@ -341,6 +348,65 @@ class LancePhase2WorkerHttpBackendRestTest extends BaseLancePhase2RestTest {
     }
   }
 
+  @Test
+  @DisplayName("P2-WORKER-011 streaming write 503 closes upstream body without retry")
+  void streamingWrite503ClosesUpstreamBodyWithoutRetry() throws Exception {
+    assertStreamingWorkerFailureClosesUpstream(
+        "streaming-503", 503, "worker_unavailable", Map.of());
+  }
+
+  @Test
+  @DisplayName("P2-WORKER-012 streaming worker disconnect closes upstream body without retry")
+  void streamingWorkerDisconnectClosesUpstreamBodyWithoutRetry() throws Exception {
+    assertStreamingWorkerFailureClosesUpstream(
+        "streaming-disconnect", 500, "worker_error", Map.of());
+  }
+
+  @Test
+  @DisplayName("P2-WORKER-013 streaming worker timeout closes upstream body without retry")
+  void streamingWorkerTimeoutClosesUpstreamBodyWithoutRetry() throws Exception {
+    assertStreamingWorkerFailureClosesUpstream(
+        "streaming-timeout", 504, "backend_timeout", Map.of("x-lance-deadline-ms", "50"));
+  }
+
+  private void assertStreamingWorkerFailureClosesUpstream(
+      String mode, int expectedStatus, String expectedType, Map<String, String> extraHeaders)
+      throws Exception {
+    createActiveTableFixture();
+    byte[] chunk = "worker-failure-stream-chunk".getBytes(StandardCharsets.UTF_8);
+    Map<String, String> headers = new LinkedHashMap<>(extraHeaders);
+    headers.put("x-lance-fake-worker-error", mode);
+    StreamingLanceRequest streaming =
+        startPostArrowStreaming("/v1/table/" + P2_ACTIVE_TABLE_ID + "/insert", headers);
+
+    try {
+      assertThat(streaming.request().tryWrite(HttpData.wrap(chunk))).isTrue();
+
+      var response = streaming.response().get(5, TimeUnit.SECONDS);
+
+      assertLanceErrorShape(response, expectedStatus);
+      assertThat(json(response).path("type").asText()).isEqualTo(expectedType);
+      assertThat(json(response).path("audit").path("operation").asText()).isEqualTo("insert");
+      assertThat(json(response).path("audit").path("backendType").asText())
+          .isEqualTo("worker-http");
+      assertThat(json(response).path("metrics").path("backend").asText())
+          .isEqualTo("worker-http");
+      assertThat(attemptsFor("insert")).isEqualTo(1);
+      awaitClosed(streaming.request());
+    } finally {
+      streaming.request().close();
+    }
+  }
+
+  private void awaitClosed(HttpRequestWriter request) throws Exception {
+    try {
+      request.whenComplete().get(5, TimeUnit.SECONDS);
+    } catch (ExecutionException ignored) {
+      // Cancellation is the expected close path when UC aborts a streaming upload.
+    }
+    assertThat(request.isOpen()).isFalse();
+  }
+
   private void startFakeWorker() {
     fakeWorker =
         Server.builder()
@@ -366,8 +432,71 @@ class LancePhase2WorkerHttpBackendRestTest extends BaseLancePhase2RestTest {
 
   private HttpResponse fakeWorkerResponse(
       ServiceRequestContext ctx, com.linecorp.armeria.common.HttpRequest req) {
+    String mode = contextValue(req.headers(), "fakeWorkerError");
+    if (mode != null && mode.startsWith("streaming-")) {
+      return fakeStreamingWorkerFailure(ctx, req.headers(), req, mode);
+    }
     return HttpResponse.of(
         req.aggregate().thenApply(request -> fakeWorkerResponse(ctx, req.headers(), request)));
+  }
+
+  private HttpResponse fakeStreamingWorkerFailure(
+      ServiceRequestContext ctx,
+      RequestHeaders headers,
+      com.linecorp.armeria.common.HttpRequest req,
+      String mode) {
+    String operation = headers.get("x-uc-lance-command");
+    workerAttempts.computeIfAbsent(operation, ignored -> new AtomicInteger()).incrementAndGet();
+    CompletableFuture<HttpResponse> response = new CompletableFuture<>();
+    AtomicBoolean completed = new AtomicBoolean();
+    req.subscribe(new FirstChunkFailureSubscriber(ctx, mode, response, completed));
+    return HttpResponse.of(response);
+  }
+
+  private void completeStreamingFailure(
+      ServiceRequestContext ctx,
+      String mode,
+      CompletableFuture<HttpResponse> response,
+      AtomicBoolean completed) {
+    if (!completed.compareAndSet(false, true)) {
+      return;
+    }
+    if ("streaming-disconnect".equals(mode)) {
+      RuntimeException closed = new IllegalStateException("fake worker closed");
+      ctx.cancel(closed);
+      response.completeExceptionally(closed);
+      return;
+    }
+    if ("streaming-timeout".equals(mode)) {
+      response.complete(
+          HttpResponse.ofJson(
+              HttpStatus.GATEWAY_TIMEOUT,
+              Map.of(
+                  "type",
+                  "backend_timeout",
+                  "message",
+                  "fake worker timed out while receiving streaming body",
+                  "code",
+                  504,
+                  "backend_request_id",
+                  "fake-worker-streaming-timeout")));
+      return;
+    }
+    response.complete(streamingWorker503());
+  }
+
+  private HttpResponse streamingWorker503() {
+    return HttpResponse.ofJson(
+        HttpStatus.SERVICE_UNAVAILABLE,
+        Map.of(
+            "type",
+            "worker_unavailable",
+            "message",
+            "fake worker failed while receiving streaming body",
+            "code",
+            503,
+            "backend_request_id",
+            "fake-worker-streaming-failure"));
   }
 
   private HttpResponse fakeWorkerResponse(
@@ -515,6 +644,56 @@ class LancePhase2WorkerHttpBackendRestTest extends BaseLancePhase2RestTest {
       return value == null ? null : String.valueOf(value);
     }
     return null;
+  }
+
+  private String contextValue(RequestHeaders headers, String key) {
+    Object value = readHeaderJson(headers, "x-uc-lance-context").get(key);
+    return value == null ? null : String.valueOf(value);
+  }
+
+  private final class FirstChunkFailureSubscriber implements Subscriber<HttpObject> {
+    private final ServiceRequestContext ctx;
+    private final String mode;
+    private final CompletableFuture<HttpResponse> response;
+    private final AtomicBoolean completed;
+    private Subscription subscription;
+
+    private FirstChunkFailureSubscriber(
+        ServiceRequestContext ctx,
+        String mode,
+        CompletableFuture<HttpResponse> response,
+        AtomicBoolean completed) {
+      this.ctx = ctx;
+      this.mode = mode;
+      this.response = response;
+      this.completed = completed;
+    }
+
+    @Override
+    public void onSubscribe(Subscription subscription) {
+      this.subscription = subscription;
+      subscription.request(1);
+    }
+
+    @Override
+    public void onNext(HttpObject object) {
+      if (object instanceof HttpData data && data.length() > 0) {
+        completeStreamingFailure(ctx, mode, response, completed);
+        subscription.cancel();
+        return;
+      }
+      subscription.request(1);
+    }
+
+    @Override
+    public void onError(Throwable throwable) {
+      response.completeExceptionally(throwable);
+    }
+
+    @Override
+    public void onComplete() {
+      completeStreamingFailure(ctx, mode, response, completed);
+    }
   }
 
   private Map<String, Object> readJson(String content) {

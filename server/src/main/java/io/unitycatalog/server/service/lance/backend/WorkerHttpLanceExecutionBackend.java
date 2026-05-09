@@ -4,7 +4,6 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.linecorp.armeria.client.RequestOptions;
-import com.linecorp.armeria.client.ResponseTimeoutException;
 import com.linecorp.armeria.client.WebClient;
 import com.linecorp.armeria.common.AggregatedHttpResponse;
 import com.linecorp.armeria.common.HttpData;
@@ -15,6 +14,7 @@ import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.common.MediaType;
 import com.linecorp.armeria.common.RequestHeaders;
 import com.linecorp.armeria.common.RequestHeadersBuilder;
+import com.linecorp.armeria.common.TimeoutException;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.service.lance.LanceProtocolException;
@@ -373,7 +373,7 @@ public class WorkerHttpLanceExecutionBackend implements LanceExecutionBackend {
   private boolean isResponseTimeout(Throwable cause) {
     Throwable current = cause;
     while (current != null) {
-      if (current instanceof ResponseTimeoutException) {
+      if (current instanceof TimeoutException) {
         return true;
       }
       if (current instanceof CompletionException && current.getCause() != null) {
