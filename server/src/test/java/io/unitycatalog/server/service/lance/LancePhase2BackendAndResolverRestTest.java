@@ -137,24 +137,23 @@ class LancePhase2BackendAndResolverRestTest extends BaseLancePhase2RestTest {
   }
 
   @Test
-  @DisplayName("P2-BACKEND-007 explain and analyze commands preserve querySpec")
-  void explainAndAnalyzeCommandsPreserveQuerySpec() throws Exception {
+  @DisplayName("P2-BACKEND-007 explain and analyze return 501 (LanceDB lacks native API)")
+  void explainAndAnalyzeReturnNotImplemented() throws Exception {
     createActiveTableFixture();
 
-    JsonNode explain =
-        assertCommandEcho(
-            postJson(
-                "/v1/table/" + P2_ACTIVE_TABLE_ID + "/explain_plan",
-                "{\"query\":{\"filter\":\"id > 1\"},\"verbose\":true}"));
-    JsonNode analyze =
-        assertCommandEcho(
-            postJson(
-                "/v1/table/" + P2_ACTIVE_TABLE_ID + "/analyze_plan",
-                "{\"query\":{\"filter\":\"id > 1\"}}"));
+    AggregatedHttpResponse explain =
+        postJson(
+            "/v1/table/" + P2_ACTIVE_TABLE_ID + "/explain_plan",
+            "{\"query\":{\"filter\":\"id > 1\"},\"verbose\":true}");
+    AggregatedHttpResponse analyze =
+        postJson(
+            "/v1/table/" + P2_ACTIVE_TABLE_ID + "/analyze_plan",
+            "{\"query\":{\"filter\":\"id > 1\"}}");
 
-    assertThat(explain.path("querySpec").toString()).contains("id > 1");
-    assertThat(explain.path("verbose").asBoolean()).isTrue();
-    assertThat(analyze.path("querySpec").toString()).contains("id > 1");
+    assertLanceErrorShape(explain, 501);
+    assertThat(json(explain).path("type").asText()).containsIgnoringCase("unimplemented");
+    assertLanceErrorShape(analyze, 501);
+    assertThat(json(analyze).path("type").asText()).containsIgnoringCase("unimplemented");
   }
 
   @Test

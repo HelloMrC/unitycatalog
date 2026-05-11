@@ -632,14 +632,18 @@ class LancePhase2WorkerHttpBackendRestTest extends BaseLancePhase2RestTest {
 
   private Map<String, Object> responsePayload(Map<String, Object> command) {
     String operation = String.valueOf(command.get("operation"));
+    // explain_plan and analyze_plan are not supported by LanceDB Python SDK.
+    // WorkerHttpLanceExecutionBackend throws UNIMPLEMENTED before reaching worker.
+    if ("explain_plan".equals(operation) || "analyze_plan".equals(operation)) {
+      throw new UnsupportedOperationException(
+          operation + " is not supported: LanceDB Python SDK lacks native API");
+    }
     return switch (operation) {
       case "query" -> new LinkedHashMap<>(Map.of("arrow", "fake-worker-arrow"));
       case "count_rows" -> new LinkedHashMap<>(Map.of("count", 0));
       case "stats" ->
           new LinkedHashMap<>(
               Map.of("totalBytes", 0, "numRows", 0, "numIndices", 0, "fragmentStats", Map.of()));
-      case "explain_plan" -> new LinkedHashMap<>(Map.of("plan", "fake worker explain plan"));
-      case "analyze_plan" -> new LinkedHashMap<>(Map.of("plan", "fake worker analyze plan"));
       case "insert", "create" ->
           new LinkedHashMap<>(
               Map.of("transactionId", "fake-" + operation, "version", 1, "stats", Map.of()));

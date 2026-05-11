@@ -105,12 +105,20 @@ public class WorkerHttpLanceExecutionBackend implements LanceExecutionBackend {
 
   @Override
   public LanceExecutionResult explainPlan(LanceExecutionCommand command) {
-    return jsonCommand("explain_plan", command, true, false);
+    // LanceDB Python SDK has no native explain_plan API.
+    // Return UNIMPLEMENTED per Phase 2 design decision.
+    throw new BaseException(
+        ErrorCode.UNIMPLEMENTED,
+        "explain_plan is not supported: LanceDB Python SDK lacks native explain_plan API");
   }
 
   @Override
   public LanceExecutionResult analyzePlan(LanceExecutionCommand command) {
-    return jsonCommand("analyze_plan", command, true, false);
+    // LanceDB Python SDK has no native analyze_plan API.
+    // Return UNIMPLEMENTED per Phase 2 design decision.
+    throw new BaseException(
+        ErrorCode.UNIMPLEMENTED,
+        "analyze_plan is not supported: LanceDB Python SDK lacks native analyze_plan API");
   }
 
   @Override

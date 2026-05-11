@@ -210,32 +210,22 @@ class Handler(BaseHTTPRequestHandler):
         )
 
     def explain_plan(self, table, command):
-        # LanceDB does not have a native explain_plan API.
-        # Return a mock plan for protocol compatibility testing.
-        query_spec = command.get("querySpec") or command.get("query") or {}
-        columns = query_spec.get("columns") or ["*"]
-        filter_sql = query_spec.get("filter") or query_spec.get("predicate") or ""
-        verbose = query_spec.get("verbose", False)
-        plan_lines = [
-            "LanceScan: table=" + self.state.name(command),
-            "  Columns: " + ", ".join(columns),
-            "  Filter: " + (filter_sql if filter_sql else "none"),
-        ]
-        if verbose:
-            plan_lines.append("  Stats: numRows=" + str(table.count_rows()))
-        # Return scalar string response per Phase 2 design Section 5.4
-        self.bytes(200, "application/json", json.dumps({"plan": "\n".join(plan_lines)}).encode())
+        # LanceDB Python SDK has no native explain_plan API.
+        # Return 501 Not Implemented per Phase 2 design decision.
+        self.json(501, {
+            "type": "unsupported_operation",
+            "message": "explain_plan is not supported: LanceDB Python SDK lacks native API",
+            "code": 501,
+        })
 
     def analyze_plan(self, table, command):
-        # LanceDB does not have a native analyze_plan API.
-        # Return mock analysis for protocol compatibility testing.
-        query_spec = command.get("querySpec") or command.get("query") or {}
-        analysis = {
-            "plan": "LanceScan executed successfully",
-            "estimatedRows": int(table.count_rows()),
-            "actualRows": int(table.count_rows()),
-        }
-        self.bytes(200, "application/json", json.dumps({"analysis": json.dumps(analysis)}).encode())
+        # LanceDB Python SDK has no native analyze_plan API.
+        # Return 501 Not Implemented per Phase 2 design decision.
+        self.json(501, {
+            "type": "unsupported_operation",
+            "message": "analyze_plan is not supported: LanceDB Python SDK lacks native API",
+            "code": 501,
+        })
 
     def write_response(self, operation, name, table, version, extra=None):
         payload = {

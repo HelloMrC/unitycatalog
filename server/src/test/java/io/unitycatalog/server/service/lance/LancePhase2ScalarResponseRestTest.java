@@ -38,30 +38,26 @@ class LancePhase2ScalarResponseRestTest extends BaseLancePhase2RestTest {
   }
 
   @Test
-  @DisplayName("P2-DATA-011 explain_plan returns a JSON string body")
-  void explainPlanReturnsJsonStringBody() throws Exception {
+  @DisplayName("P2-DATA-011 explain_plan returns 501 (LanceDB lacks native API)")
+  void explainPlanReturnsNotImplemented() throws Exception {
     createActiveTableFixture();
 
     AggregatedHttpResponse response =
         postJson("/v1/table/" + P2_ACTIVE_TABLE_ID + "/explain_plan", "{\"verbose\":true}");
 
-    assertSuccess(response);
-    JsonNode body = json(response);
-    assertThat(body.isTextual()).as(response.contentUtf8()).isTrue();
-    assertThat(body.asText()).isEqualTo("test explain plan");
+    assertLanceErrorShape(response, 501);
+    assertThat(json(response).path("type").asText()).containsIgnoringCase("unimplemented");
   }
 
   @Test
-  @DisplayName("P2-DATA-012 analyze_plan returns a JSON string body")
-  void analyzePlanReturnsJsonStringBody() throws Exception {
+  @DisplayName("P2-DATA-012 analyze_plan returns 501 (LanceDB lacks native API)")
+  void analyzePlanReturnsNotImplemented() throws Exception {
     createActiveTableFixture();
 
     AggregatedHttpResponse response =
         postJson("/v1/table/" + P2_ACTIVE_TABLE_ID + "/analyze_plan", "{}");
 
-    assertSuccess(response);
-    JsonNode body = json(response);
-    assertThat(body.isTextual()).as(response.contentUtf8()).isTrue();
-    assertThat(body.asText()).isEqualTo("test analyze plan");
+    assertLanceErrorShape(response, 501);
+    assertThat(json(response).path("type").asText()).containsIgnoringCase("unimplemented");
   }
 }

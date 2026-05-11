@@ -159,8 +159,8 @@ class LancePhase2RealLanceDbWorkerProcessRestTest extends BaseLancePhase2RestTes
   }
 
   @Test
-  @DisplayName("P2-WORKER-E2E-006 real LanceDB worker explain_plan returns mock plan")
-  void realLanceDbWorkerExplainPlanReturnsMockPlan() throws Exception {
+  @DisplayName("P2-WORKER-E2E-006 explain_plan returns 501 (LanceDB lacks native API)")
+  void explainPlanReturnsNotImplemented() throws Exception {
     createActiveTableFixture();
 
     AggregatedHttpResponse insert =
@@ -173,13 +173,13 @@ class LancePhase2RealLanceDbWorkerProcessRestTest extends BaseLancePhase2RestTes
         postJson(
             "/v1/table/" + P2_ACTIVE_TABLE_ID + "/explain_plan",
             "{\"query\":{\"columns\":[\"id\",\"text\"],\"filter\":\"id > 0\"},\"verbose\":true}");
-    assertSuccess(explain);
-    assertThat(explain.contentUtf8()).contains("LanceScan", "Columns", "Filter");
+    assertLanceErrorShape(explain, 501);
+    assertThat(json(explain).path("type").asText()).containsIgnoringCase("unimplemented");
   }
 
   @Test
-  @DisplayName("P2-WORKER-E2E-007 real LanceDB worker analyze_plan returns mock analysis")
-  void realLanceDbWorkerAnalyzePlanReturnsMockAnalysis() throws Exception {
+  @DisplayName("P2-WORKER-E2E-007 analyze_plan returns 501 (LanceDB lacks native API)")
+  void analyzePlanReturnsNotImplemented() throws Exception {
     createActiveTableFixture();
 
     AggregatedHttpResponse insert =
@@ -190,8 +190,8 @@ class LancePhase2RealLanceDbWorkerProcessRestTest extends BaseLancePhase2RestTes
 
     AggregatedHttpResponse analyze =
         postJson("/v1/table/" + P2_ACTIVE_TABLE_ID + "/analyze_plan", "{\"query\":{}}");
-    assertSuccess(analyze);
-    assertThat(analyze.contentUtf8()).contains("analysis", "estimatedRows", "actualRows");
+    assertLanceErrorShape(analyze, 501);
+    assertThat(json(analyze).path("type").asText()).containsIgnoringCase("unimplemented");
   }
 
   private String mergeInsertOptions() {

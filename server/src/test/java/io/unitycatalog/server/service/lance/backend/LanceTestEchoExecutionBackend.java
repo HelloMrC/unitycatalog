@@ -1,6 +1,8 @@
 package io.unitycatalog.server.service.lance.backend;
 
 import com.linecorp.armeria.common.HttpStatus;
+import io.unitycatalog.server.exception.BaseException;
+import io.unitycatalog.server.exception.ErrorCode;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
@@ -44,12 +46,20 @@ public class LanceTestEchoExecutionBackend implements LanceExecutionBackend {
 
   @Override
   public LanceExecutionResult explainPlan(LanceExecutionCommand command) {
-    return result(command, Map.of("plan", "test explain plan"));
+    // LanceDB Python SDK lacks native explain_plan API.
+    // Throw UNIMPLEMENTED consistent with WorkerHttpLanceExecutionBackend.
+    throw new BaseException(
+        ErrorCode.UNIMPLEMENTED,
+        "explain_plan is not supported: LanceDB Python SDK lacks native explain_plan API");
   }
 
   @Override
   public LanceExecutionResult analyzePlan(LanceExecutionCommand command) {
-    return result(command, Map.of("plan", "test analyze plan"));
+    // LanceDB Python SDK lacks native analyze_plan API.
+    // Throw UNIMPLEMENTED consistent with WorkerHttpLanceExecutionBackend.
+    throw new BaseException(
+        ErrorCode.UNIMPLEMENTED,
+        "analyze_plan is not supported: LanceDB Python SDK lacks native analyze_plan API");
   }
 
   @Override

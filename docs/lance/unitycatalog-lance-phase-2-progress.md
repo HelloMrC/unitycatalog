@@ -351,7 +351,7 @@
 | 任务 | 对应设计/测试 | 当前状态 | 剩余工作 | 完成标准 |
 |------|---------------|----------|----------|----------|
 | 真实 LanceDB worker sidecar 化 | Section 8.1-8.4；P2-WORKER-E2E | 测试资源中已有 `real_lancedb_worker.py`，可通过 `LanceRealLanceDbWorkerProcessFixture` 启动真实 `lancedb` 进程 | 把当前 test-only Python 进程沉淀为可重复 nightly fixture/sidecar：依赖安装、启动参数、health path、临时目录清理、日志输出和 skip 条件都要文档化 | CI/nightly 能在无人工准备的环境中启动 worker，稳定跑过真实 worker E2E |
-| real worker explain/analyze 决策 | P2-DATA-08/09；P2-CLIENT-001 | ✅ 已完成 mock 实现：真实 LanceDB worker fixture 添加 explain_plan/analyze_plan mock 响应，测试覆盖 P2-WORKER-E2E-006/007 | LanceDB 无原生 explain/analyze API，返回 mock plan 用于协议兼容性测试 | 10 个 data endpoint 在真实 worker 下均有明确语义（mock 或真实） |
+| real worker explain/analyze 决策 | P2-DATA-08/09；P2-CLIENT-001 | ✅ 已完成设计决策：明确返回 501 UNIMPLEMENTED，因为 LanceDB Python SDK 无原生 explain_plan/analyze_plan API | WorkerHttpLanceExecutionBackend 在 UC 层直接抛出 UNIMPLEMENTED，不再转发到 worker | 10 个 data endpoint 在 UC 和 worker 层均有明确语义，explain/analyze 明确不支持 |
 | 真实 worker resilience/backpressure | P2-ARROW-012；P2-WORKER-011~013；P2-CONC-005 | fake worker 已覆盖 unknown-length chunked 超限、503/断连/超时期间关闭 upstream body、不重试写请求 | 将同类压力路径补到真实 worker/sidecar 或 nightly fault worker，覆盖大 Arrow stream、慢消费者、worker 中途失败和 audit/metrics 证据 | 真实 worker/nightly 层证明 UC 不聚合大 body、不泄漏 upstream、失败语义稳定 |
 | 并发与幂等完整回归 | P2-CONC-001~006；P2-META-007 | `6b54eae` 已新增 PR 级本地 enabled tests 覆盖 P2-CONC-001~004；P2-CONC-005 的 request streaming/backpressure 主体已由 fake worker streaming 测试覆盖；`0572e56` 已覆盖 P2-CONC-006 query response stream 中断不重试 | 如需更强证据，再补真实 sidecar/nightly 压力用例 | 并发测试可在 PR 或 nightly 稳定运行，UC metadata version 不倒退，重复/竞争写有明确语义 |
 | 发布前数据库/环境矩阵 | Section 10.5 | H2 + local FS 为主；PostgreSQL/S3 兼容路径尚未形成可重复证据 | 增加 PostgreSQL metadata DB、local FS + 至少一个 S3-compatible object store、credential expiry/denied 的发布前执行记录 | 发布前报告含 DB/storage/backend 组合矩阵与失败排查日志 |
@@ -437,7 +437,7 @@
 | LancePhase2StorageCredentialRestTest | 8 | Enabled | P2-STORAGE-001~007 + P2-META-008 runtime credential mock/contract 覆盖 |
 | LancePhase2WorkerHttpBackendRestTest | 19 | Enabled | P2-WORKER-001~013 + P2-ARROW-012 + P2-CONC-006 fake HTTP worker 合同覆盖，含 health、headers、retry/no-retry、timeout、unavailable、non-JSON fallback、streaming limit、upstream close 与 query response stream 中断 |
 | LancePhase2RealWorkerE2ERestTest | 2 | Enabled | 有状态 HTTP worker fixture E2E：declared insert 物理化、active write metadata、Arrow query、count/stats 一致 |
-| LancePhase2RealLanceDbWorkerProcessRestTest | 5 | Enabled | 真实 `lancedb` worker process 覆盖 query/count/stats/insert/create/merge_insert/update/delete/explain_plan/analyze_plan 与 metadata 回写 |
+| LancePhase2RealLanceDbWorkerProcessRestTest | 7 | Enabled | 真实 `lancedb` worker process 覆盖 query/count/stats/insert/create/merge_insert/update/delete，explain_plan/analyze_plan 返回 501（LanceDB Python SDK 缺原生 API） |
 | LancePhase2RawHttpClientSmokeRestTest | 1 | Enabled | P2-CLIENT-001 raw HTTP 覆盖 10 个 data endpoint |
 | LancePhase2PythonClientSmokeRestTest | 1 | Enabled | P2-CLIENT-002 最小 Python 协议客户端；依赖 `lancedb`/`pyarrow`，不是官方 SDK |
 | LancePhase2JavaRustClientSmokeRestTest | 2 | Enabled | P2-CLIENT-004/005 最小 Java JDK HTTP 与 Rust std HTTP 协议客户端；不是官方 SDK |
@@ -524,7 +524,7 @@
 
 | 标准 | 状态 |
 |------|------|
-| 所有 Phase 2 必做 endpoint 可用 | ⚠️ raw HTTP + 最小 worker fixture 已覆盖 10 个 endpoint；真实 LanceDB worker process 覆盖 query/count/stats/insert/create/merge_insert/update/delete，explain/analyze 真实 worker 语义未完成 |
+| 所有 Phase 2 必做 endpoint 可用 | ⚠️ raw HTTP + 最小 worker fixture 已覆盖 10 个 endpoint；真实 LanceDB worker process 覆盖 query/count/stats/insert/create/merge_insert/update/delete；explain_plan/analyze_plan 明确返回 501 UNIMPLEMENTED（LanceDB Python SDK 无原生 API） |
 | query 返回 Arrow IPC 且可被客户端消费 | ✅ fake worker、真实 LanceDB worker process、Python/Java/Rust 最小协议客户端均已覆盖 Arrow 消费 |
 | insert/merge/update/delete 通过真实 worker 执行 | ✅ 真实 LanceDB worker process 已覆盖 insert/create/merge_insert/update/delete 并验证 metadata version/stats 回写 |
 | declared-only table 可首次物理化 | ✅ fake backend、最小 worker fixture、真实 LanceDB worker process 均已有覆盖 |
