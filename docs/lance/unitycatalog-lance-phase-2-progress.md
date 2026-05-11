@@ -351,7 +351,7 @@
 | 任务 | 对应设计/测试 | 当前状态 | 剩余工作 | 完成标准 |
 |------|---------------|----------|----------|----------|
 | 真实 LanceDB worker sidecar 化 | Section 8.1-8.4；P2-WORKER-E2E | 测试资源中已有 `real_lancedb_worker.py`，可通过 `LanceRealLanceDbWorkerProcessFixture` 启动真实 `lancedb` 进程 | 把当前 test-only Python 进程沉淀为可重复 nightly fixture/sidecar：依赖安装、启动参数、health path、临时目录清理、日志输出和 skip 条件都要文档化 | CI/nightly 能在无人工准备的环境中启动 worker，稳定跑过真实 worker E2E |
-| real worker explain/analyze 决策 | P2-DATA-08/09；P2-CLIENT-001 | raw HTTP smoke 已通过最小有状态 worker 覆盖 10 个 endpoint；真实 LanceDB worker process 目前覆盖 query/count/stats/insert/create/merge_insert/update/delete | 明确 explain_plan/analyze_plan 在真实 LanceDB worker 的 Phase 2 行为：实现真实响应、代理为 worker 支持能力，或返回稳定 `UNIMPLEMENTED` 并补对应测试 | 10 个 data endpoint 在真实 worker/sidecar 下均有明确、可回归的成功或受控不支持语义 |
+| real worker explain/analyze 决策 | P2-DATA-08/09；P2-CLIENT-001 | ✅ 已完成 mock 实现：真实 LanceDB worker fixture 添加 explain_plan/analyze_plan mock 响应，测试覆盖 P2-WORKER-E2E-006/007 | LanceDB 无原生 explain/analyze API，返回 mock plan 用于协议兼容性测试 | 10 个 data endpoint 在真实 worker 下均有明确语义（mock 或真实） |
 | 真实 worker resilience/backpressure | P2-ARROW-012；P2-WORKER-011~013；P2-CONC-005 | fake worker 已覆盖 unknown-length chunked 超限、503/断连/超时期间关闭 upstream body、不重试写请求 | 将同类压力路径补到真实 worker/sidecar 或 nightly fault worker，覆盖大 Arrow stream、慢消费者、worker 中途失败和 audit/metrics 证据 | 真实 worker/nightly 层证明 UC 不聚合大 body、不泄漏 upstream、失败语义稳定 |
 | 并发与幂等完整回归 | P2-CONC-001~006；P2-META-007 | `6b54eae` 已新增 PR 级本地 enabled tests 覆盖 P2-CONC-001~004；P2-CONC-005 的 request streaming/backpressure 主体已由 fake worker streaming 测试覆盖；`0572e56` 已覆盖 P2-CONC-006 query response stream 中断不重试 | 如需更强证据，再补真实 sidecar/nightly 压力用例 | 并发测试可在 PR 或 nightly 稳定运行，UC metadata version 不倒退，重复/竞争写有明确语义 |
 | 发布前数据库/环境矩阵 | Section 10.5 | H2 + local FS 为主；PostgreSQL/S3 兼容路径尚未形成可重复证据 | 增加 PostgreSQL metadata DB、local FS + 至少一个 S3-compatible object store、credential expiry/denied 的发布前执行记录 | 发布前报告含 DB/storage/backend 组合矩阵与失败排查日志 |
@@ -365,7 +365,7 @@
 | Java 官方客户端或 UC generated client | P2-CLIENT-004 | 已有 JDK `HttpClient` 最小协议 smoke，可 query/count/stats；不是官方 LanceDB Java SDK，也不是 UC generated client data API | 决定 Java 面向对象：补 UC OpenAPI/generated client 的 Lance data endpoint，或接入官方 LanceDB Java remote/namespace client 的兼容配置 | Java 官方/目标客户端能通过 UC Lance REST 完成 query/count/stats，auth/header/table id 方式稳定 |
 | Rust 官方客户端或 UC wrapper | P2-CLIENT-005 | 已有 std `TcpStream` 最小协议 smoke，可验证 Arrow query；不是官方 Rust SDK | 调研 LanceDB Rust remote client 对 UC endpoint 的支持；必要时实现 adapter/wrapper，并保留 `rustc`/crate 依赖的 skip 语义 | Rust 官方/目标客户端 query smoke 通过，错误响应能映射为预期异常结构 |
 | 客户端错误识别 | P2-CLIENT-006 | 服务端错误 shape/requestId/backend_request_id 已覆盖；官方客户端消费层仍禁用 | 用 Python/Java/Rust 目标客户端覆盖 backend disabled、permission denied、worker timeout/conflict/internal error | 客户端侧能稳定识别 401/403/409/413/415/500/501/503/504，不误判 backend committed 失败 |
-| UC Client/OpenAPI 暴露策略 | P2-CONTRACT + P2-CLIENT | raw HTTP entrypoint 已可用；当前客户端 smoke 主要绕过 generated UC client | 确认 Lance data endpoint 是否进入 UC OpenAPI/Java/Python generated clients；若进入，补生成、编译和最小调用测试 | 协议入口、生成客户端和文档示例一致，不再只有 test-only raw HTTP 客户端 |
+| UC Client/OpenAPI 暴露策略 | P2-CONTRACT + P2-CLIENT | ✅ 已完成策略文档：确认 Lance endpoints 不纳入 UC generated clients（experimental 功能），推荐使用官方 LanceDB client + UC adapter 或 raw HTTP 最小协议客户端 | Phase 3+ 待 Lance 协议稳定后再评估纳入 UC spec | 协议入口、暴露策略和客户端形态明确文档化 |
 
 ### 3.3 Ecosystem Smoke（Nightly / Release Gate）
 
@@ -437,7 +437,7 @@
 | LancePhase2StorageCredentialRestTest | 8 | Enabled | P2-STORAGE-001~007 + P2-META-008 runtime credential mock/contract 覆盖 |
 | LancePhase2WorkerHttpBackendRestTest | 19 | Enabled | P2-WORKER-001~013 + P2-ARROW-012 + P2-CONC-006 fake HTTP worker 合同覆盖，含 health、headers、retry/no-retry、timeout、unavailable、non-JSON fallback、streaming limit、upstream close 与 query response stream 中断 |
 | LancePhase2RealWorkerE2ERestTest | 2 | Enabled | 有状态 HTTP worker fixture E2E：declared insert 物理化、active write metadata、Arrow query、count/stats 一致 |
-| LancePhase2RealLanceDbWorkerProcessRestTest | 3 | Enabled | 真实 `lancedb` worker process 覆盖 query/count/stats/insert/create/merge_insert/update/delete 与 metadata 回写 |
+| LancePhase2RealLanceDbWorkerProcessRestTest | 5 | Enabled | 真实 `lancedb` worker process 覆盖 query/count/stats/insert/create/merge_insert/update/delete/explain_plan/analyze_plan 与 metadata 回写 |
 | LancePhase2RawHttpClientSmokeRestTest | 1 | Enabled | P2-CLIENT-001 raw HTTP 覆盖 10 个 data endpoint |
 | LancePhase2PythonClientSmokeRestTest | 1 | Enabled | P2-CLIENT-002 最小 Python 协议客户端；依赖 `lancedb`/`pyarrow`，不是官方 SDK |
 | LancePhase2JavaRustClientSmokeRestTest | 2 | Enabled | P2-CLIENT-004/005 最小 Java JDK HTTP 与 Rust std HTTP 协议客户端；不是官方 SDK |
@@ -451,6 +451,8 @@
 
 | Commit | 日期 | 描述 |
 |--------|------|------|
+| (pending) | 2026-05-11 | Add real worker explain/analyze mock and Lance OpenAPI strategy |
+| 7699b71 | 2026-05-11 | Annotate Lance Phase 2 disabled skeleton tests with coverage info |
 | 746e58a | 2026-05-11 | Add Lance Phase 2 PR test command |
 | 498b318 | 2026-05-11 | Document Lance Phase 2 test command tiers |
 | 0572e56 | 2026-05-11 | Cover Lance query stream worker failure |
@@ -494,6 +496,7 @@
 | Phase 1 测试设计 | `docs/lance/unitycatalog-lancedb-phase-1-metadata-test-design.md` | Phase 1 测试基线 |
 | REST API 技术设计 | `docs/lance/unitycatalog-lancedb-rest-api-technical-design.md` | 协议总体设计 |
 | 需求文档 | `docs/lance/unitycatalog-lancedb-rest-api-requirements.md` | Lance REST 需求 |
+| Lance OpenAPI 暴露策略 | `docs/lance/unitycatalog-lance-openapi-strategy.md` | Lance endpoints 与 UC generated clients 关系 |
 
 ---
 

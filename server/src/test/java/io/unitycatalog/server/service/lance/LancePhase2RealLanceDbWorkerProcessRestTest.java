@@ -158,6 +158,42 @@ class LancePhase2RealLanceDbWorkerProcessRestTest extends BaseLancePhase2RestTes
     assertThat(json(count).asLong()).isEqualTo(1L);
   }
 
+  @Test
+  @DisplayName("P2-WORKER-E2E-006 real LanceDB worker explain_plan returns mock plan")
+  void realLanceDbWorkerExplainPlanReturnsMockPlan() throws Exception {
+    createActiveTableFixture();
+
+    AggregatedHttpResponse insert =
+        postArrow(
+            "/v1/table/" + P2_ACTIVE_TABLE_ID + "/insert",
+            LanceRealLanceDbWorkerProcessFixture.sampleArrowStream());
+    assertSuccess(insert);
+
+    AggregatedHttpResponse explain =
+        postJson(
+            "/v1/table/" + P2_ACTIVE_TABLE_ID + "/explain_plan",
+            "{\"query\":{\"columns\":[\"id\",\"text\"],\"filter\":\"id > 0\"},\"verbose\":true}");
+    assertSuccess(explain);
+    assertThat(explain.contentUtf8()).contains("LanceScan", "Columns", "Filter");
+  }
+
+  @Test
+  @DisplayName("P2-WORKER-E2E-007 real LanceDB worker analyze_plan returns mock analysis")
+  void realLanceDbWorkerAnalyzePlanReturnsMockAnalysis() throws Exception {
+    createActiveTableFixture();
+
+    AggregatedHttpResponse insert =
+        postArrow(
+            "/v1/table/" + P2_ACTIVE_TABLE_ID + "/insert",
+            LanceRealLanceDbWorkerProcessFixture.sampleArrowStream());
+    assertSuccess(insert);
+
+    AggregatedHttpResponse analyze =
+        postJson("/v1/table/" + P2_ACTIVE_TABLE_ID + "/analyze_plan", "{\"query\":{}}");
+    assertSuccess(analyze);
+    assertThat(analyze.contentUtf8()).contains("analysis", "estimatedRows", "actualRows");
+  }
+
   private String mergeInsertOptions() {
     return "{\"on\":[\"id\"],\"whenMatchedUpdateAll\":true,\"whenNotMatchedInsertAll\":true}";
   }
