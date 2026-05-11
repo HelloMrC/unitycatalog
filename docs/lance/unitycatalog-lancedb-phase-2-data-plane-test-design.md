@@ -593,32 +593,53 @@ Nightly 层至少通过：
 
 ## 12. 建议自动化命令
 
-PR 层建议：
+PR 层建议只跑不需要真实 LanceDB、外部对象存储或生态客户端 runtime 的测试：
 
 ```bash
-build/sbt "server/testOnly *LancePhase2*"
-build/sbt "server/testOnly *Lance*Backend*"
-build/sbt server/test
-build/sbt javafmtCheck
+build/sbt "server/testOnly \
+  io.unitycatalog.server.service.lance.LancePhase2RequestMappingRestTest \
+  io.unitycatalog.server.service.lance.LancePhase2RequestValidationRestTest \
+  io.unitycatalog.server.service.lance.LancePhase2ConfigurableBackendRestTest \
+  io.unitycatalog.server.service.lance.LancePhase2DisabledBackendRestTest \
+  io.unitycatalog.server.service.lance.LancePhase2DataPlaneAuthorizationRestTest \
+  io.unitycatalog.server.service.lance.LanceDataPlaneAuthorizerTest \
+  io.unitycatalog.server.service.lance.LancePhase2ArrowRequestReaderRestTest \
+  io.unitycatalog.server.service.lance.LancePhase2ArrowResponseWriterRestTest \
+  io.unitycatalog.server.service.lance.LancePhase2DataPlaneMetadataUpdateRestTest \
+  io.unitycatalog.server.service.lance.LancePhase2BackendCommittedFailureRestTest \
+  io.unitycatalog.server.service.lance.LancePhase2ReconcileRestTest \
+  io.unitycatalog.server.service.lance.LancePhase2ObservabilityRestTest \
+  io.unitycatalog.server.service.lance.LancePhase2ScalarResponseRestTest \
+  io.unitycatalog.server.service.lance.LancePhase2ErrorResponseContractRestTest \
+  io.unitycatalog.server.service.lance.LancePhase2StorageCredentialRestTest \
+  io.unitycatalog.server.service.lance.LancePhase2ConcurrencyRestTest \
+  io.unitycatalog.server.service.lance.LancePhase2LocalUnsupportedRestTest \
+  io.unitycatalog.server.service.lance.LancePhase2WorkerHttpBackendRestTest"
+build/sbt javafmtCheck server/testJavastyle
 ```
 
-Nightly 层建议：
+Nightly 层建议跑真实 worker、最小协议客户端和需要本地 toolchain 的 smoke。缺少 Python `lancedb`/`pyarrow`、`rustc` 或 Java toolchain 时，测试必须显式 skip 并输出原因：
 
 ```bash
-build/sbt "server/testOnly *LancePhase2Worker*"
-build/sbt integrationTests/test
+build/sbt "server/testOnly \
+  io.unitycatalog.server.service.lance.LancePhase2RealWorkerE2ERestTest \
+  io.unitycatalog.server.service.lance.LancePhase2RealLanceDbWorkerProcessRestTest \
+  io.unitycatalog.server.service.lance.LancePhase2RawHttpClientSmokeRestTest \
+  io.unitycatalog.server.service.lance.LancePhase2PythonClientSmokeRestTest \
+  io.unitycatalog.server.service.lance.LancePhase2JavaRustClientSmokeRestTest"
 ./clients/python/run-tests.sh
 ```
 
-发布前层建议：
+发布前层建议增加外部环境矩阵、生态 connector 和全量回归：
 
 ```bash
 build/sbt -J-Xmx2G +jacoco
 build/sbt -J-Xmx2G integrationTests/test
+build/sbt "server/testOnly io.unitycatalog.server.service.lance.LancePhase2EcosystemSmokeTest"
 build/sbt licenseCheck
 ```
 
-具体命令应在 Phase 2 测试类和 integration profile 落地后再收敛。
+发布前报告需要记录 PostgreSQL/H2、local FS/S3-compatible storage、worker backend、客户端或 connector 版本，以及所有 skip 的依赖缺失原因。
 
 ## 13. 风险与补充验证
 
