@@ -39,7 +39,7 @@
 | JSON body 解析 | 1fbc0ba | Section 5.3 | Jackson ObjectMapper 解析 |
 | Path id 优先 | 1fbc0ba, ec4cee3 | Section 5.3 | path id 覆盖 body 中的 id |
 | Spoofed identity 移除 | 1fbc0ba | Section 5.3 | 移除 id, identity, principal, authType, requestId, context |
-| Command reserved field 防伪造 | 本次小步 | Section 5.3 / 8.2 | 用户 JSON/attributes 不能覆盖 UC 生成的 operation、requestId、tableId、pathKey、workerBaseUrl 等 command 保留字段 |
+| Command reserved field 防伪造 | c263465 | Section 5.3 / 8.2 | 用户 JSON/attributes 不能覆盖 UC 生成的 operation、requestId、tableId、pathKey、workerBaseUrl 等 command 保留字段 |
 | Request id 生成和透传 | 1fbc0ba, ec4cee3 | Section 5.3 | UUID 生成或 header 传递 |
 | Principal 透传 | ec4cee3 | Section 5.3 | LanceRequestContext.currentPrincipal() |
 | AuthType 识别 | 1fbc0ba | Section 5.3 | Bearer / api_key / anonymous |
@@ -66,8 +66,8 @@
 | 功能 | Commit | 设计章节 | 说明 |
 |------|--------|----------|------|
 | LanceExecutionContext | ec4cee3 | Section 7.3 | requestId, principal, authType, deadlineMs, lanceContext, idempotencyKeyHash |
-| LanceTableRef | ec4cee3 + 本次小步 | Section 7.3 | id, namespacePath, tableName, pathKey, storageLocation, tableUri, currentVersion, declaredOnly, legacyBridge |
-| LanceStorageBinding | ec4cee3 + 本次小步 | Section 7.3 / 6.5 | uri/storageLocation, tableUri, storageOptions, storageOptionsTemplate, vendCredentials, expiresAtMillis |
+| LanceTableRef | ec4cee3, 47f9e8a | Section 7.3 | id, namespacePath, tableName, pathKey, storageLocation, tableUri, currentVersion, declaredOnly, legacyBridge |
+| LanceStorageBinding | ec4cee3, 6d425ea | Section 7.3 / 6.5 | uri/storageLocation, tableUri, storageOptions, storageOptionsTemplate, vendCredentials, expiresAtMillis |
 | LanceExecutionCommand 重构 | ec4cee3 | Section 7.4 | operation, context, table, storage, attributes |
 
 **参考来源：** 设计文档 Section 7.3, Section 7.4
@@ -79,7 +79,7 @@
 | LanceStorageOptionsService | ec4cee3 | Section 6.5 | 模板加载服务 |
 | Template 解析 | ec4cee3 | Section 6.5 | 从 storage_options_template_json 解析 |
 | 敏感字段过滤 | ec4cee3 | Section 6.5 | 过滤 token, session, secret, expires, access_key |
-| Command storage binding 字段 | 本次小步 | Section 6.5 | 将清理后的模板同时填充到 storageOptions 和 storageOptionsTemplate，并暴露 tableUri/vendCredentials/expiresAtMillis |
+| Command storage binding 字段 | 6d425ea | Section 6.5 | 将清理后的模板同时填充到 storageOptions 和 storageOptionsTemplate，并暴露 tableUri/vendCredentials/expiresAtMillis |
 
 **参考来源：** 设计文档 Section 6.5
 
@@ -90,7 +90,7 @@
 | LanceDataPlaneService | ec4cee3 | Section 6.3 | 编排 resolver → storage → backend |
 | LanceRestTableDataService 重构 | ec4cee3 | Section 6.2 | 使用 data plane service |
 | 状态验证集成 | ec4cee3 | Section 4.3-4.6 | DECLARED 读写验证、legacy 验证 |
-| Legacy read enable flag | ec4cee3 | Section 2.4 | x-lance-legacy-read-enabled header |
+| Legacy read enable flag | ec4cee3, d6fbe85, 9251f6f | Section 2.4 / 6.3 / 8.3 | 早期 header 方案已移除；当前通过 server property `lance.execution.legacy-read-enabled` 开启 |
 
 **参考来源：** 设计文档 Section 6.3
 
@@ -125,10 +125,10 @@
 
 | 功能 | Commit | 设计章节 | 说明 |
 |------|--------|----------|------|
-| LanceDataPlaneAuthorizer | 本次工作 | Section 11.2-11.3 | 在 data plane service 内检查 READ_DATA/WRITE_DATA 边界 |
-| 兼容权限映射 | 本次工作 | Section 11.2 | READ_DATA → SELECT/READ_METADATA，WRITE_DATA → MODIFY |
-| ServerProperties 注入 | 本次工作 | Section 6.2 | LanceRestTableDataService 接收 authorizer 和 serverProperties |
-| 授权测试 | 本次工作 | Section 9.10 | 新增 authorizer unit test + REST owner allow/deny 集成测试 |
+| LanceDataPlaneAuthorizer | 9a27fe6 | Section 11.2-11.3 | 在 data plane service 内检查 READ_DATA/WRITE_DATA 边界 |
+| 兼容权限映射 | 9a27fe6 | Section 11.2 | READ_DATA → SELECT/READ_METADATA，WRITE_DATA → MODIFY |
+| ServerProperties 注入 | 9a27fe6 | Section 6.2 | LanceRestTableDataService 接收 authorizer 和 serverProperties |
+| 授权测试 | b67cbfc, bb58088 | Section 9.10 | 新增 authorizer unit test + REST owner allow/deny 集成测试 |
 
 **参考来源：** 设计文档 Section 11.2-11.3，测试设计文档 Section 9.10
 
@@ -136,10 +136,10 @@
 
 | 功能 | Commit | 设计章节 | 说明 |
 |------|--------|----------|------|
-| Content-Type validation | 本次工作 | Section 5.2-5.3 | JSON endpoint 仅接受 JSON，Arrow write endpoint 仅接受 Arrow stream |
-| Request size limits | 本次工作 | Section 8.3, 12.1 | `lance.execution.max-json-request-bytes` 和 `max-arrow-request-bytes` 超限返回 413 |
-| Lance protocol error shape | 本次工作 | Section 12.1 | 为 413/415 返回稳定 Lance error shape，避免扩散到全局 UC ErrorCode |
-| 入口校验测试 | 本次工作 | Section 9.2, 9.5 | 新增 enabled REST tests 覆盖 415/413 且 backend 不被调用 |
+| Content-Type validation | 0387513 | Section 5.2-5.3 | JSON endpoint 仅接受 JSON，Arrow write endpoint 仅接受 Arrow stream |
+| Request size limits | 0387513 | Section 8.3, 12.1 | `lance.execution.max-json-request-bytes` 和 `max-arrow-request-bytes` 超限返回 413 |
+| Lance protocol error shape | 0387513 | Section 12.1 | 为 413/415 返回稳定 Lance error shape，避免扩散到全局 UC ErrorCode |
+| 入口校验测试 | 0387513 | Section 9.2, 9.5 | 新增 enabled REST tests 覆盖 415/413 且 backend 不被调用 |
 
 **参考来源：** 设计文档 Section 5.2-5.3, 8.3, 12.1，测试设计文档 Section 9.2, 9.5
 
@@ -147,12 +147,12 @@
 
 | 功能 | Commit | 设计章节 | 说明 |
 |------|--------|----------|------|
-| markTableMaterialized | 本次工作 | Section 10.3 | 同事务推进 asset ACTIVE 和 table `is_only_declared=false`，并回填 version/schema/stats |
-| updateTableExecutionMetadata | 本次工作 | Section 10.3 | 写成功后更新 current_version/schema/stats，null schema 不覆盖既有 schema |
-| updateTableStats | 本次工作 | Section 10.3 | stats endpoint 成功后刷新 stats cache |
-| Repository tests | 本次工作 | Section 9.8 | 新增 repository 单测覆盖 P2-META-002/003/004/005 的核心持久化规则 |
-| Data plane metadata updater | 本次工作 | Section 10.2-10.4 | backend write/stats 成功后调用 repository 更新 metadata cache |
-| REST metadata update tests | 本次工作 | Section 9.8 | 新增 enabled REST tests 验证 declared materialization、write metadata、stats cache |
+| markTableMaterialized | 46055de | Section 10.3 | 同事务推进 asset ACTIVE 和 table `is_only_declared=false`，并回填 version/schema/stats |
+| updateTableExecutionMetadata | 46055de | Section 10.3 | 写成功后更新 current_version/schema/stats，null schema 不覆盖既有 schema |
+| updateTableStats | 46055de | Section 10.3 | stats endpoint 成功后刷新 stats cache |
+| Repository tests | 46055de | Section 9.8 | 新增 repository 单测覆盖 P2-META-002/003/004/005 的核心持久化规则 |
+| Data plane metadata updater | d2778b1 | Section 10.2-10.4 | backend write/stats 成功后调用 repository 更新 metadata cache |
+| REST metadata update tests | d2778b1 | Section 9.8 | 新增 enabled REST tests 验证 declared materialization、write metadata、stats cache |
 
 **参考来源：** 设计文档 Section 10.2-10.4，测试设计文档 Section 9.8
 
@@ -160,9 +160,9 @@
 
 | 功能 | Commit | 设计章节 | 说明 |
 |------|--------|----------|------|
-| server property 开关 | 本次小步 | Section 8.3 | 新增 `lance.execution.legacy-read-enabled`，默认 `false` |
-| header 绕过移除 | 本次小步 | Section 6.3, 8.3 | legacy bridge read 不再通过 `x-lance-legacy-read-enabled` 请求头临时开启 |
-| Legacy read REST tests | 本次小步 | Section 9.4 | 新增 enabled REST tests 覆盖默认拒绝和配置开启后 backend 可达 |
+| server property 开关 | d6fbe85 | Section 8.3 | 新增 `lance.execution.legacy-read-enabled`，默认 `false` |
+| header 绕过移除 | 9251f6f | Section 6.3, 8.3 | legacy bridge read 不再通过 `x-lance-legacy-read-enabled` 请求头临时开启 |
+| Legacy read REST tests | d6fbe85, 9251f6f | Section 9.4 | 新增 enabled REST tests 覆盖默认拒绝和配置开启后 backend 可达 |
 
 **参考来源：** 设计文档 Section 6.3, 8.3，测试设计文档 Section 9.4
 
@@ -170,9 +170,9 @@
 
 | 功能 | Commit | 设计章节 | 说明 |
 |------|--------|----------|------|
-| Native tableUri 透传 | 本次小步 | Section 7.3 | `LanceTableResolver` 从 `LanceTableDAO.tableUri` 填充 `LanceTableRef.tableUri` |
-| Legacy tableUri 兼容 | 本次小步 | Section 7.3 | legacy bridge 使用 UC table storage location 作为兼容 tableUri |
-| Command echo coverage | 本次小步 | Section 9.3-9.4 | enabled REST tests 验证 command table 中包含 tableUri |
+| Native tableUri 透传 | 47f9e8a | Section 7.3 | `LanceTableResolver` 从 `LanceTableDAO.tableUri` 填充 `LanceTableRef.tableUri` |
+| Legacy tableUri 兼容 | 47f9e8a | Section 7.3 | legacy bridge 使用 UC table storage location 作为兼容 tableUri |
+| Command echo coverage | 47f9e8a | Section 9.3-9.4 | enabled REST tests 验证 command table 中包含 tableUri |
 
 **参考来源：** 设计文档 Section 7.3，测试设计文档 Section 9.3-9.4
 
@@ -180,10 +180,10 @@
 
 | 功能 | Commit | 设计章节 | 说明 |
 |------|--------|----------|------|
-| storageLocation/tableUri 透传 | 本次小步 | Section 6.5 / 7.3 | 后端 command storage binding 同时保留兼容 `uri` 和设计字段 `storageLocation`、`tableUri` |
-| 模板字段双写 | 本次小步 | Section 6.5 | 当前未接入 runtime credential vending 前，使用清理后的 template 填充 `storageOptions` 与 `storageOptionsTemplate` |
-| 凭证占位字段 | 本次小步 | Section 6.5 | 显式暴露 `vendCredentials=false`、`expiresAtMillis=0`，为后续 Runtime Credential Vending 接入预留稳定 contract |
-| Command echo coverage | 本次小步 | Section 9.3 / 9.9 | enabled REST tests 验证 storage binding 字段和敏感模板过滤 |
+| storageLocation/tableUri 透传 | 6d425ea | Section 6.5 / 7.3 | 后端 command storage binding 同时保留兼容 `uri` 和设计字段 `storageLocation`、`tableUri` |
+| 模板字段双写 | 6d425ea | Section 6.5 | 无 runtime credential 时，使用清理后的 template 填充 `storageOptions` 与 `storageOptionsTemplate`；runtime credential mock 见 036d510 |
+| 凭证占位字段 | 6d425ea | Section 6.5 | 显式暴露 `vendCredentials=false`、`expiresAtMillis=0`；真实 Runtime Credential Vendor 未完成，mock 合并见 036d510 |
+| Command echo coverage | 6d425ea | Section 9.3 / 9.9 | enabled REST tests 验证 storage binding 字段和敏感模板过滤 |
 
 **参考来源：** 设计文档 Section 6.5, Section 7.3，测试设计文档 Section 9.3, Section 9.9
 
@@ -191,10 +191,10 @@
 
 | 功能 | Commit | 设计章节 | 说明 |
 |------|--------|----------|------|
-| timeout server properties | 本次小步 | Section 8.3 | 新增 `lance.execution.request-timeout-ms`、`query-timeout-ms`、`write-timeout-ms`，均为正整数 |
-| deadline header override | 本次小步 | Section 8.3 | `x-lance-deadline-ms` 优先填充 `LanceExecutionContext.deadlineMs`，非法值返回 Lance error shape |
-| operation 默认 deadline | 本次小步 | Section 8.3 | query/count/plan 使用 query timeout，stats 使用 request timeout，write/create 使用 write timeout |
-| Worker header echo coverage | 本次小步 | Section 9.3 / 9.11 | enabled REST tests 验证 requestId/deadline/idempotency hash contract，不透传明文 idempotency key |
+| timeout server properties | 317c154 | Section 8.3 | 新增 `lance.execution.request-timeout-ms`、`query-timeout-ms`、`write-timeout-ms`，均为正整数 |
+| deadline header override | 317c154 | Section 8.3 | `x-lance-deadline-ms` 优先填充 `LanceExecutionContext.deadlineMs`，非法值返回 Lance error shape |
+| operation 默认 deadline | 317c154 | Section 8.3 | query/count/plan 使用 query timeout，stats 使用 request timeout，write/create 使用 write timeout |
+| Worker header echo coverage | 317c154 | Section 9.3 / 9.11 | enabled REST tests 验证 requestId/deadline/idempotency hash contract，不透传明文 idempotency key |
 
 **参考来源：** 设计文档 Section 8.3，测试设计文档 Section 9.3, Section 9.11
 
@@ -202,10 +202,10 @@
 
 | 功能 | Commit | 设计章节 | 说明 |
 |------|--------|----------|------|
-| metadata update failure wrapper | 本次小步 | Section 10.4 | backend write 成功后，UC metadata 更新失败时返回稳定 Lance error |
-| backend_committed marker | 本次小步 | Section 10.4 | 错误响应包含 `backend_committed=true` 和 `reconcileRequired=true`，避免误导客户端重试为纯 backend 失败 |
-| 写路径限定 | 本次小步 | Section 10.4 | 仅包裹 write/create/merge/update/delete 的 metadata success path，stats cache 更新不标记 backend committed |
-| Failure REST coverage | 本次小步 | Section 9.8 / 9.11 | 新增 enabled REST test 使用 test backend 触发 metadata 更新失败，验证错误语义和 UC version 未推进 |
+| metadata update failure wrapper | 5d21f2a | Section 10.4 | backend write 成功后，UC metadata 更新失败时返回稳定 Lance error |
+| backend_committed marker | 5d21f2a | Section 10.4 | 错误响应包含 `backend_committed=true` 和 `reconcileRequired=true`，避免误导客户端重试为纯 backend 失败 |
+| 写路径限定 | 5d21f2a | Section 10.4 | 仅包裹 write/create/merge/update/delete 的 metadata success path，stats cache 更新不标记 backend committed |
+| Failure REST coverage | 5d21f2a | Section 9.8 / 9.11 | 新增 enabled REST test 使用 test backend 触发 metadata 更新失败，验证错误语义和 UC version 未推进 |
 
 **参考来源：** 设计文档 Section 10.4，测试设计文档 Section 9.8, Section 9.11
 
@@ -213,10 +213,10 @@
 
 | 功能 | Commit | 设计章节 | 说明 |
 |------|--------|----------|------|
-| current_version guard | 本次小步 | Section 13.1 | backend 返回 version 小于当前 `current_version` 时，不覆盖 UC metadata |
-| warning response | 本次小步 | Section 13.1 | response 标记 `metadataVersionUpdated=false` 并返回 version warning |
-| stale metadata 保护 | 本次小步 | Section 13.1 | 防倒退触发时 schema/stats 也不使用旧 version 的结果回写 |
-| Regression coverage | 本次小步 | Section 9.7 / 9.13 | enabled REST test 验证 current_version/schema/stats 不倒退 |
+| current_version guard | d44eb40 | Section 13.1 | backend 返回 version 小于当前 `current_version` 时，不覆盖 UC metadata |
+| warning response | d44eb40 | Section 13.1 | response 标记 `metadataVersionUpdated=false` 并返回 version warning |
+| stale metadata 保护 | d44eb40 | Section 13.1 | 防倒退触发时 schema/stats 也不使用旧 version 的结果回写 |
+| Regression coverage | d44eb40 | Section 9.7 / 9.13 | enabled REST test 验证 current_version/schema/stats 不倒退 |
 
 **参考来源：** 设计文档 Section 13.1，测试设计文档 Section 9.7, Section 9.13
 
@@ -224,10 +224,10 @@
 
 | 功能 | Commit | 设计章节 | 说明 |
 |------|--------|----------|------|
-| P2-AUTH-005 read allow | 本次小步 | Section 11.2-11.3 | enabled REST test 验证 READ_DATA 读路径允许 |
-| P2-AUTH-006 read deny | 本次小步 | Section 11.2-11.3 | enabled REST test 验证非授权 principal 读路径 403 且 backend 不执行 |
-| P2-AUTH-007 write allow | 本次小步 | Section 11.2-11.3 | enabled REST test 验证 WRITE_DATA 写路径允许 |
-| P2-AUTH-008 write deny | 本次小步 | Section 11.2-11.3 | enabled REST test 验证 READ_DATA/非 owner principal 不能执行写路径 |
+| P2-AUTH-005 read allow | bb58088 | Section 11.2-11.3 | enabled REST test 验证 READ_DATA 读路径允许 |
+| P2-AUTH-006 read deny | bb58088 | Section 11.2-11.3 | enabled REST test 验证非授权 principal 读路径 403 且 backend 不执行 |
+| P2-AUTH-007 write allow | bb58088 | Section 11.2-11.3 | enabled REST test 验证 WRITE_DATA 写路径允许 |
+| P2-AUTH-008 write deny | bb58088 | Section 11.2-11.3 | enabled REST test 验证 READ_DATA/非 owner principal 不能执行写路径 |
 
 **参考来源：** 设计文档 Section 11.2-11.3，测试设计文档 Section 9.10
 
@@ -235,11 +235,11 @@
 
 | 功能 | Commit | 设计章节 | 说明 |
 |------|--------|----------|------|
-| LanceArrowRequestReader | 本次小步 | Section 9.5 | 将 Arrow write 请求解析为稳定 command metadata，而不是散落在 REST service 中 |
-| buffered boundary metadata | Add Lance Arrow buffered boundary metadata | Section 9.5 / 13.3 | 当前 UC 入口仍为聚合请求，command 明确暴露 requestBufferedBytes、streamPassedThrough=false、ucRequestMode=aggregated，避免误判为真实 streaming |
-| worker-http streaming pass-through | 本次小步 | Section 9.5 / 13.3 | worker-http Arrow 写入路径使用 Armeria `HttpRequest` publisher 透传 body，metadata 暴露 requestBufferedBytes=0、streamPassedThrough=true、ucRequestMode=streaming；非 worker 兼容路径仍保留聚合模式 |
-| schema peek contract | 本次小步 | Section 9.5 | 默认不 peek；启用时标记 schemaPeeked=true 且 recordBatchesParsedByUc=0 |
-| P2-ARROW request coverage | 本次小步 | Section 9.5 | 新增 enabled REST tests 覆盖 P2-ARROW-001~006、010~011 |
+| LanceArrowRequestReader | 575e015 | Section 9.5 | 将 Arrow write 请求解析为稳定 command metadata，而不是散落在 REST service 中 |
+| buffered boundary metadata | 9c4c931 | Section 9.5 / 13.3 | 当前 UC 入口仍为聚合请求，command 明确暴露 requestBufferedBytes、streamPassedThrough=false、ucRequestMode=aggregated，避免误判为真实 streaming |
+| worker-http streaming pass-through | d07e86a, 80822a1 | Section 9.5 / 13.3 | worker-http Arrow 写入路径使用 Armeria `HttpRequest` publisher 透传 body，metadata 暴露 requestBufferedBytes=0、streamPassedThrough=true、ucRequestMode=streaming；非 worker 兼容路径仍保留聚合模式 |
+| schema peek contract | 575e015 | Section 9.5 | 默认不 peek；启用时标记 schemaPeeked=true 且 recordBatchesParsedByUc=0 |
+| P2-ARROW request coverage | 575e015 | Section 9.5 | 新增 enabled REST tests 覆盖 P2-ARROW-001~006、010~011 |
 
 **参考来源：** 设计文档 Section 9.5，测试设计文档 Section 9.5
 
@@ -247,11 +247,11 @@
 
 | 功能 | Commit | 设计章节 | 说明 |
 |------|--------|----------|------|
-| LanceArrowResponseWriter | 本次小步 | Section 4.1 / 9.5 | query endpoint 可根据 Accept 写出 Arrow file/stream 响应 |
-| Arrow file negotiation | 本次小步 | Section 9.5 | `Accept=application/vnd.apache.arrow.file` 返回 Arrow file content type |
-| Arrow stream negotiation | 本次小步 | Section 9.5 | `Accept=application/vnd.apache.arrow.stream` 返回 Arrow stream content type |
-| JSON fallback | 本次小步 | Section 9.2 / 9.3 | 显式 `Accept=application/json` 时保留 JSON command echo，便于 request mapping 覆盖 |
-| Response coverage | 本次小步 | Section 9.5 / 9.6 | 新增 enabled REST tests 覆盖 P2-DATA-001、P2-ARROW-007~009 |
+| LanceArrowResponseWriter | db40af7 | Section 4.1 / 9.5 | query endpoint 可根据 Accept 写出 Arrow file/stream 响应 |
+| Arrow file negotiation | db40af7 | Section 9.5 | `Accept=application/vnd.apache.arrow.file` 返回 Arrow file content type |
+| Arrow stream negotiation | db40af7 | Section 9.5 | `Accept=application/vnd.apache.arrow.stream` 返回 Arrow stream content type |
+| JSON fallback | db40af7 | Section 9.2 / 9.3 | 显式 `Accept=application/json` 时保留 JSON command echo，便于 request mapping 覆盖 |
+| Response coverage | db40af7 | Section 9.5 / 9.6 | 新增 enabled REST tests 覆盖 P2-DATA-001、P2-ARROW-007~009 |
 
 **参考来源：** 设计文档 Section 4.1, Section 9.5，测试设计文档 Section 9.5, Section 9.6
 
@@ -259,10 +259,10 @@
 
 | 功能 | Commit | 设计章节 | 说明 |
 |------|--------|----------|------|
-| Admin reconcile endpoint | 本次小步 | Section 10.4 | 新增 `/admin/reconcile`，用于 backend committed 后的 metadata 修复计划和受控回填 |
-| dry-run plan | 本次小步 | Section 10.4 | `dry_run=true` 返回 current_version、arrow_schema_json、stats_json 回填计划，不修改 UC metadata |
-| controlled backfill | 本次小步 | Section 10.4 | `dry_run=false` 使用请求中的 version/schema/stats 受控更新 UC metadata |
-| Reconcile REST coverage | 本次小步 | Section 9.8 | 新增 enabled REST tests 覆盖 P2-META-009/010 dry-run 与 backfill |
+| Admin reconcile endpoint | 7e0e448 | Section 10.4 | 新增 `/admin/reconcile`，用于 backend committed 后的 metadata 修复计划和受控回填 |
+| dry-run plan | 7e0e448 | Section 10.4 | `dry_run=true` 返回 current_version、arrow_schema_json、stats_json 回填计划，不修改 UC metadata |
+| controlled backfill | 7e0e448 | Section 10.4 | `dry_run=false` 使用请求中的 version/schema/stats 受控更新 UC metadata |
+| Reconcile REST coverage | 7e0e448 | Section 9.8 | 新增 enabled REST tests 覆盖 P2-META-009/010 dry-run 与 backfill |
 
 **参考来源：** 设计文档 Section 10.4，测试设计文档 Section 9.8
 
@@ -270,12 +270,12 @@
 
 | 功能 | Commit | 设计章节 | 说明 |
 |------|--------|----------|------|
-| data audit payload | 本次小步 | Section 12.3 | data plane 成功响应包含 operation、principal、table、version、bytes、rows、status 等 audit 字段 |
-| backend failure audit | 本次小步 | Section 12.3 | backend timeout/error 响应包含 errorCode、backendRequestId、status 和 latency |
-| failure backend labels | Add Lance backend failure labels | Section 12.3 / 12.4 | backend failure audit/metrics 使用异常来源 backendType，避免 worker-http 失败被误标为 test-echo 或 unknown |
-| audit redaction guard | 本次小步 | Section 12.3 / 14.2 | audit 只记录 storage scheme，不记录 runtime credential/header secret 原文 |
-| Lance metrics endpoint | 本次小步 | Section 12.4 | 新增 `/metrics` 暴露 lance_data_* operation/status/backend label 计数和 latency/bytes 观测值 |
-| Observability REST coverage | 本次小步 | Section 9.10 | 新增 enabled REST tests 覆盖 P2-AUTH-011~014 audit/metrics |
+| data audit payload | 6c92ca4 | Section 12.3 | data plane 成功响应包含 operation、principal、table、version、bytes、rows、status 等 audit 字段 |
+| backend failure audit | 6c92ca4 | Section 12.3 | backend timeout/error 响应包含 errorCode、backendRequestId、status 和 latency |
+| failure backend labels | 0407702 | Section 12.3 / 12.4 | backend failure audit/metrics 使用异常来源 backendType，避免 worker-http 失败被误标为 test-echo 或 unknown |
+| audit redaction guard | 4a41e92 | Section 12.3 / 14.2 | audit 只记录 storage scheme，不记录 runtime credential/header secret 原文 |
+| Lance metrics endpoint | 6c92ca4 | Section 12.4 | 新增 `/metrics` 暴露 lance_data_* operation/status/backend label 计数和 latency/bytes 观测值 |
+| Observability REST coverage | 4a41e92 | Section 9.10 | 新增 enabled REST tests 覆盖 P2-AUTH-011~014 audit/metrics |
 
 **参考来源：** 设计文档 Section 12.3, Section 12.4，测试设计文档 Section 9.10
 
@@ -283,11 +283,11 @@
 
 | 功能 | Commit | 设计章节 | 说明 |
 |------|--------|----------|------|
-| count_rows scalar response | 本次小步 | Section 5.4 | `count_rows` 成功响应不再返回 command wrapper，而是直接返回 JSON integer body |
-| explain/analyze scalar response | 本次小步 | Section 5.4 | `explain_plan` / `analyze_plan` 成功响应直接返回 JSON string body |
-| scalar response coverage | 本次小步 | Section 9.6 | 新增 enabled REST tests 覆盖 P2-DATA-009、011、012 |
-| legacy audit guard | 本次小步 | Section 12.3 | legacy bridge read 的 audit 允许 tableAssetId 为空，避免非 native Lance asset 触发 NPE |
-| disabled backend contract fix | 本次小步 | Section 8.3 / 12.1 | disabled backend 覆盖先解析存在的表，并按 JSON/Arrow endpoint 的真实 media type 调用 |
+| count_rows scalar response | 15a4f3f | Section 5.4 | `count_rows` 成功响应不再返回 command wrapper，而是直接返回 JSON integer body |
+| explain/analyze scalar response | 15a4f3f | Section 5.4 | `explain_plan` / `analyze_plan` 成功响应直接返回 JSON string body |
+| scalar response coverage | 15a4f3f | Section 9.6 | 新增 enabled REST tests 覆盖 P2-DATA-009、011、012 |
+| legacy audit guard | 15a4f3f | Section 12.3 | legacy bridge read 的 audit 允许 tableAssetId 为空，避免非 native Lance asset 触发 NPE |
+| disabled backend contract fix | 15a4f3f | Section 8.3 / 12.1 | disabled backend 覆盖先解析存在的表，并按 JSON/Arrow endpoint 的真实 media type 调用 |
 
 **参考来源：** 设计文档 Section 5.4, Section 12.3，测试设计文档 Section 9.6, Section 9.12
 
@@ -295,10 +295,10 @@
 
 | 功能 | Commit | 设计章节 | 说明 |
 |------|--------|----------|------|
-| error requestId body/header | 本次小步 | Section 12.1 | Lance 错误响应统一返回 `requestId`，并在响应 header 中回传 `x-request-id` |
-| generated requestId for pre-context errors | 本次小步 | Section 5.3 / 12.1 | Content-Type/body size 等进入 execution context 前的错误也会生成稳定 requestId |
-| backend_request_id top-level field | 本次小步 | Section 12.2 | backend timeout/error 从 audit 中提升 `backend_request_id`，便于客户端和排障系统识别 worker 请求 |
-| error response REST coverage | 本次小步 | Section 9.12 | 新增 enabled REST tests 覆盖 P2-ERROR-015 requestId 与 backend_request_id 合同 |
+| error requestId body/header | 17ece32 | Section 12.1 | Lance 错误响应统一返回 `requestId`，并在响应 header 中回传 `x-request-id` |
+| generated requestId for pre-context errors | 17ece32 | Section 5.3 / 12.1 | Content-Type/body size 等进入 execution context 前的错误也会生成稳定 requestId |
+| backend_request_id top-level field | 17ece32 | Section 12.2 | backend timeout/error 从 audit 中提升 `backend_request_id`，便于客户端和排障系统识别 worker 请求 |
+| error response REST coverage | 17ece32 | Section 9.12 | 新增 enabled REST tests 覆盖 P2-ERROR-015 requestId 与 backend_request_id 合同 |
 
 **参考来源：** 设计文档 Section 12.1, Section 12.2，测试设计文档 Section 9.12
 
@@ -306,11 +306,11 @@
 
 | 功能 | Commit | 设计章节 | 说明 |
 |------|--------|----------|------|
-| runtime credential merge | 本次小步 | Section 6.5 | `x-lance-fake-runtime-credential` 模拟 StorageCredentialVendor 输出，并合并到 data-plane `storageOptions` |
-| runtime overrides template | 本次小步 | Section 6.5 | runtime storage options 覆盖同名 template 字段，template 原值仍保留在 `storageOptionsTemplate` |
-| credential expiry/denied errors | 本次小步 | Section 12.1 | mock expired/denied credential 在 backend 前返回受控 Lance error shape |
-| no persistence/redaction guard | 本次小步 | Section 9.9 / 14.2 | runtime credential 不写回 describe/template，scalar client response 不暴露 token/session |
-| storage credential REST coverage | 本次小步 | Section 9.9 | 新增 enabled REST tests 覆盖 P2-STORAGE-001~007 与 P2-META-008 |
+| runtime credential merge | 036d510 | Section 6.5 | `x-lance-fake-runtime-credential` 模拟 StorageCredentialVendor 输出，并合并到 data-plane `storageOptions` |
+| runtime overrides template | 036d510 | Section 6.5 | runtime storage options 覆盖同名 template 字段，template 原值仍保留在 `storageOptionsTemplate` |
+| credential expiry/denied errors | 036d510 | Section 12.1 | mock expired/denied credential 在 backend 前返回受控 Lance error shape |
+| no persistence/redaction guard | 036d510 | Section 9.9 / 14.2 | runtime credential 不写回 describe/template，scalar client response 不暴露 token/session |
+| storage credential REST coverage | 036d510 | Section 9.9 | 新增 enabled REST tests 覆盖 P2-STORAGE-001~007 与 P2-META-008 |
 
 **参考来源：** 设计文档 Section 6.5, Section 12.1，测试设计文档 Section 9.9
 
@@ -318,20 +318,20 @@
 
 | 功能 | Commit | 设计章节 | 说明 |
 |------|--------|----------|------|
-| WorkerHttpLanceExecutionBackend | Add Lance worker HTTP backend | Section 8.1-8.3 | 新增 `worker-http` backend type，通过 server property 配置 worker base URL |
-| internal worker path routing | Add Lance worker HTTP backend | Section 8.2 | JSON command 转发到 `/internal/lance/v1/commands/*`，Arrow command 转发到 `/internal/lance/v1/arrow/*` |
-| worker header propagation | Add Lance worker HTTP backend | Section 8.3 / 13.2 | 转发 `x-request-id`、deadline 与 idempotency hash，不转发明文 idempotency key |
-| worker error envelope mapping | Add Lance worker HTTP backend | Section 12.2 | worker error JSON 映射为 Lance error shape，并提升 `backend_request_id` |
-| worker non-JSON error fallback | Add Lance worker error fallback | Section 12.2 | worker 返回非 JSON 错误体时保留 worker HTTP 状态，回退为稳定 `worker_error` Lance error shape |
-| fake worker HTTP coverage | Add Lance worker HTTP backend | Section 9.11 | 新增 enabled REST tests 覆盖 P2-WORKER-001/002/004/005/006/007/008 |
-| worker retry semantics | Add Lance worker retry semantics | Section 8.4 | read 503 最多自动重试一次并写入 retry audit；write 503-after-body 不自动重试 |
-| worker client timeout | Add Lance worker client timeout | Section 8.4 / 12.2 | worker HTTP 调用使用 command deadlineMs 作为 Armeria response/write timeout，客户端侧超时映射为 `backend_timeout` 504 |
-| worker health probe | Add Lance worker health probe + 本次小步 | Section 8.3 / 8.4 | `/admin/worker/health` 按 server property 配置的 worker health path 探测 success/failure，并覆盖自定义 health path |
-| worker command reserved field guard | 本次小步 | Section 8.2 / 13.2 | Worker JSON command payload 由 UC 生成字段最终覆盖用户 attributes，防止伪造 operation/table/requestId/workerBaseUrl |
-| Arrow body handoff | Add Lance worker Arrow body handoff + 本次小步 | Section 8.2 / 13.3 | Arrow command 使用 metadata headers + streaming Arrow body 转发到 worker；metadata 明确传递 ucRequestMode=streaming 且不包含 Arrow body，worker 已验证收到原始 body bytes |
-| Arrow response handoff | Add Lance worker Arrow response handoff | Section 4.1 / 13.3 | worker query 返回 Arrow IPC body 时，UC 保留 media type/body 并交给 `LanceArrowResponseWriter` 返回客户端 |
-| worker unavailable mapping | Add Lance worker unavailable mapping | Section 12.2 | worker 连接失败/无响应时收敛为稳定 `worker_unavailable` 503 Lance error shape，并写入 failure audit |
-| minimal real worker E2E fixture | 本次小步 | Section 8.1-8.4 / 10.3 | 新增有状态 HTTP worker fixture，跑通 UC worker-http → declared insert 物理化 → metadata 回写 → query Arrow → count/stats 一致的最小闭环 |
+| WorkerHttpLanceExecutionBackend | ffc16fc | Section 8.1-8.3 | 新增 `worker-http` backend type，通过 server property 配置 worker base URL |
+| internal worker path routing | ffc16fc | Section 8.2 | JSON command 转发到 `/internal/lance/v1/commands/*`，Arrow command 转发到 `/internal/lance/v1/arrow/*` |
+| worker header propagation | ffc16fc | Section 8.3 / 13.2 | 转发 `x-request-id`、deadline 与 idempotency hash，不转发明文 idempotency key |
+| worker error envelope mapping | ffc16fc | Section 12.2 | worker error JSON 映射为 Lance error shape，并提升 `backend_request_id` |
+| worker non-JSON error fallback | 1652684 | Section 12.2 | worker 返回非 JSON 错误体时保留 worker HTTP 状态，回退为稳定 `worker_error` Lance error shape |
+| fake worker HTTP coverage | ffc16fc | Section 9.11 | 新增 enabled REST tests 覆盖 P2-WORKER-001/002/004/005/006/007/008 |
+| worker retry semantics | 623ced2 | Section 8.4 | read 503 最多自动重试一次并写入 retry audit；write 503-after-body 不自动重试 |
+| worker client timeout | 1068b67 | Section 8.4 / 12.2 | worker HTTP 调用使用 command deadlineMs 作为 Armeria response/write timeout，客户端侧超时映射为 `backend_timeout` 504 |
+| worker health probe | 2e23702, 2dc1b5a | Section 8.3 / 8.4 | `/admin/worker/health` 按 server property 配置的 worker health path 探测 success/failure，并覆盖自定义 health path |
+| worker command reserved field guard | c263465 | Section 8.2 / 13.2 | Worker JSON command payload 由 UC 生成字段最终覆盖用户 attributes，防止伪造 operation/table/requestId/workerBaseUrl |
+| Arrow body handoff | d07e86a, 304c5b4, 80822a1 | Section 8.2 / 13.3 | Arrow command 使用 metadata headers + streaming Arrow body 转发到 worker；metadata 明确传递 ucRequestMode=streaming 且不包含 Arrow body，worker 已验证收到原始 body bytes |
+| Arrow response handoff | 7cf8374 | Section 4.1 / 13.3 | worker query 返回 Arrow IPC body 时，UC 保留 media type/body 并交给 `LanceArrowResponseWriter` 返回客户端 |
+| worker unavailable mapping | 10a34bc | Section 12.2 | worker 连接失败/无响应时收敛为稳定 `worker_unavailable` 503 Lance error shape，并写入 failure audit |
+| minimal real worker E2E fixture | 9f59f55 | Section 8.1-8.4 / 10.3 | 新增有状态 HTTP worker fixture，跑通 UC worker-http → declared insert 物理化 → metadata 回写 → query Arrow → count/stats 一致的最小闭环 |
 | unknown-length Arrow runtime limit | 8c9f6b9 | Section 8.3 / 13.3 | 不带 Content-Length 的 chunked Arrow 写入超过 `lance.execution.max-arrow-request-bytes` 时，UC 中断 stream 并返回稳定 413/受控失败语义 |
 | streaming worker failure cleanup | 888afae | Section 8.4 / 13.3 | worker 在 streaming body 期间返回 503、断连或超时时，写请求不重试，上游 body 被关闭，audit/metrics 稳定 |
 | stateful worker write-chain E2E | c5086fa | Section 10.3 | 最小 HTTP worker fixture 覆盖 active insert、merge_insert、update、delete 的 metadata version/stats 推进 |
@@ -396,13 +396,13 @@
 |------|----------|------|--------|
 | W2-0: 准备与收口 | 15.1 | ✅ 完成 | 74fe4a4 |
 | W2-1: Backend SPI | 15.2 | ✅ 完成 | 74fe4a4, ec3e6e0, 1fbc0ba |
-| W2-2: Resolver + Storage | 15.3 | ✅ 高/中优先级完成 | ec4cee3 + 本次小步（Resolver/TableRef tableUri + sanitized template + runtime credential mock/contract 完成） |
-| W2-3: Data endpoint service | 15.4 | ✅ 高优先级完成 | ec4cee3 + 本次工作（架构/Authorization/入口校验/metadata success path/legacy read 配置/Arrow response/JSON scalar response/error requestId 完成） |
-| W2-4: Arrow IPC | 15.5 | ✅ 完成 | media type/size limit + request reader + response writer + worker-http streaming pass-through + unknown-length runtime limit 已完成 |
-| W2-5: Worker HTTP backend | 15.6 | ✅ PR 完成 / ⚠️ Nightly 扩展 | WorkerHttpLanceExecutionBackend、fake worker contract、retry/no-retry、timeout、health、Arrow request/response handoff、unavailable/error fallback、streaming failure cleanup、有状态 worker E2E、真实 LanceDB worker process query/count/stats/insert/create/merge/update/delete 已完成；sidecar 化、real worker explain/analyze 决策、真实环境压力矩阵待续 |
-| W2-6: Metadata 状态推进 | 15.7 | ✅ 完成 | 本次工作（Repository methods + data plane success path + backend_committed marker + version 防倒退 + reconcile 完成） |
-| W2-7: 授权、审计、观测 | 15.8 | ✅ 完成 | 本次工作 + Add Lance backend failure labels（授权 + audit/metrics + failure backend labels + P2-AUTH-005-008、011-014 enabled 覆盖完成） |
-| W2-8: Connector 回归 | 15.9 | ⚠️ 协议 smoke 部分完成 | raw HTTP 10 endpoint、Python urllib+pyarrow、Java JDK HTTP、Rust std HTTP 最小协议 smoke 已完成；官方 LanceDB/UC Client、Spark、Ray、DuckDB、Pandas/PyArrow 仍待接入 |
+| W2-2: Resolver + Storage | 15.3 | ✅ 高/中优先级完成 | ec4cee3, 47f9e8a, 6d425ea, 036d510（resolver/tableRef tableUri、storage binding、sanitized template、runtime credential mock/contract 完成） |
+| W2-3: Data endpoint service | 15.4 | ✅ 高优先级完成 | ec4cee3, 9a27fe6, 0387513, d2778b1, d6fbe85, db40af7, 15a4f3f, 17ece32（架构、authorization、入口校验、metadata success path、legacy read 配置、Arrow response、JSON scalar response、error requestId 完成） |
+| W2-4: Arrow IPC | 15.5 | ✅ 完成 | 575e015, db40af7, d07e86a, 9c4c931, 304c5b4, 80822a1, 8c9f6b9（media type/size limit、request reader、response writer、worker-http streaming pass-through、unknown-length runtime limit 完成） |
+| W2-5: Worker HTTP backend | 15.6 | ✅ PR 完成 / ⚠️ Nightly 未完成 | ffc16fc, 623ced2, 2e23702, d07e86a, 7cf8374, 10a34bc, 1652684, 1068b67, c263465, 2dc1b5a, 9f59f55, 888afae, db9fb41, 496291d（PR 层和真实 LanceDB worker process 主链路完成；sidecar 化、real worker explain/analyze 决策、真实环境压力矩阵未完成） |
+| W2-6: Metadata 状态推进 | 15.7 | ✅ 完成 | 46055de, d2778b1, 5d21f2a, d44eb40, 7e0e448（repository methods、data plane success path、backend_committed marker、version 防倒退、reconcile 完成） |
+| W2-7: 授权、审计、观测 | 15.8 | ✅ 完成 | 9a27fe6, b67cbfc, bb58088, 6c92ca4, 4a41e92, 0407702（授权、audit/metrics、failure backend labels、P2-AUTH-005~008/011~014 enabled 覆盖完成） |
+| W2-8: Connector 回归 | 15.9 | ⚠️ 协议 smoke 部分完成 / ❌ 官方生态未完成 | 56fe8f6, 2495350, 975c3b2（raw HTTP 10 endpoint、Python urllib+pyarrow、Java JDK HTTP、Rust std HTTP 最小协议 smoke 完成；官方 LanceDB/UC Client、Spark、Ray、DuckDB、Pandas/PyArrow 未完成） |
 
 ---
 
@@ -410,13 +410,13 @@
 
 | 测试类 | 测试数 | 状态 | 启用条件 |
 |--------|--------|------|----------|
-| LancePhase2ContractAndRequestRestTest | 16 | @Disabled | 早期 skeleton；route/request/validation 已由拆分 enabled tests 部分覆盖，待归并 |
-| LancePhase2BackendAndResolverRestTest | 20 | @Disabled | 早期 skeleton；backend/resolver command coverage 已由拆分 enabled tests 部分覆盖，待归并 |
-| LancePhase2ArrowRestTest | 11 | @Disabled | 早期 skeleton；request/response reader-writer 已由 enabled tests 覆盖，待归并 |
-| LancePhase2DataReadRestTest | 13 | @Disabled | 早期 skeleton；基础 read/scalar/Arrow 已覆盖，复杂 query 参数与 real worker explain/analyze 待整理 |
-| LancePhase2DataWriteRestTest | 11 | @Disabled | 早期 skeleton；write metadata 与 real worker write 链路已拆分覆盖，待归并 |
-| LancePhase2MetadataAndStorageRestTest | 18 | @Disabled | 早期 skeleton；metadata/reconcile/storage mock 已拆分覆盖，S3-compatible smoke 仍待 nightly |
-| LancePhase2AuthGovernanceRestTest | 17 | @Disabled | 早期 skeleton；READ/WRITE allow-deny 与 audit/metrics 已拆分覆盖，Bearer/API key 细项待归并 |
+| LancePhase2ContractAndRequestRestTest | 16 | @Disabled | 早期 skeleton；route/request/validation 已由拆分 enabled tests 部分覆盖，归并未完成 |
+| LancePhase2BackendAndResolverRestTest | 20 | @Disabled | 早期 skeleton；backend/resolver command coverage 已由拆分 enabled tests 部分覆盖，归并未完成 |
+| LancePhase2ArrowRestTest | 11 | @Disabled | 早期 skeleton；request/response reader-writer 已由 enabled tests 覆盖，归并未完成 |
+| LancePhase2DataReadRestTest | 13 | @Disabled | 早期 skeleton；基础 read/scalar/Arrow 已覆盖，复杂 query 参数与 real worker explain/analyze 整理未完成 |
+| LancePhase2DataWriteRestTest | 11 | @Disabled | 早期 skeleton；write metadata 与 real worker write 链路已拆分覆盖，归并未完成 |
+| LancePhase2MetadataAndStorageRestTest | 18 | @Disabled | 早期 skeleton；metadata/reconcile/storage mock 已拆分覆盖，S3-compatible smoke 未完成 |
+| LancePhase2AuthGovernanceRestTest | 17 | @Disabled | 早期 skeleton；READ/WRITE allow-deny 与 audit/metrics 已拆分覆盖，Bearer/API key 细项归并未完成 |
 | LancePhase2RequestMappingRestTest | 7 | Enabled | request mapping + storage/deadline contract + header/body reserved field spoofing guard |
 | LancePhase2DataPlaneAuthorizationRestTest | 4 | Enabled | P2-AUTH-005-008 read/write allow-deny 覆盖 |
 | LanceDataPlaneAuthorizerTest | 3 | Enabled | READ_DATA/WRITE_DATA 兼容权限映射 |
@@ -439,9 +439,9 @@
 | LancePhase2RawHttpClientSmokeRestTest | 1 | Enabled | P2-CLIENT-001 raw HTTP 覆盖 10 个 data endpoint |
 | LancePhase2PythonClientSmokeRestTest | 1 | Enabled | P2-CLIENT-002 最小 Python 协议客户端；依赖 `lancedb`/`pyarrow`，不是官方 SDK |
 | LancePhase2JavaRustClientSmokeRestTest | 2 | Enabled | P2-CLIENT-004/005 最小 Java JDK HTTP 与 Rust std HTTP 协议客户端；不是官方 SDK |
-| LancePhase2ErrorAndRegressionRestTest | 28 | @Disabled | 早期 skeleton；错误/回归已有拆分覆盖，未支持 endpoint 与全量 UC/Iceberg/Delta 回归待整理 |
-| LancePhase2WorkerAndResilienceRestTest | 16 | @Disabled | 早期 skeleton；worker resilience 已由 `LancePhase2WorkerHttpBackendRestTest` 覆盖大部分，待归并 |
-| LancePhase2EcosystemSmokeTest | 26 | @Disabled | P2-CLIENT-003/006、P2-SPARK、P2-RAY、P2-LOCAL 官方 connector/nightly smoke 待接入 |
+| LancePhase2ErrorAndRegressionRestTest | 28 | @Disabled | 早期 skeleton；错误/回归已有拆分覆盖，未支持 endpoint 与全量 UC/Iceberg/Delta 回归整理未完成 |
+| LancePhase2WorkerAndResilienceRestTest | 16 | @Disabled | 早期 skeleton；worker resilience 已由 `LancePhase2WorkerHttpBackendRestTest` 覆盖大部分，归并未完成 |
+| LancePhase2EcosystemSmokeTest | 26 | @Disabled | P2-CLIENT-003/006、P2-SPARK、P2-RAY、P2-LOCAL 官方 connector/nightly smoke 未接入 |
 
 ---
 
@@ -516,14 +516,14 @@
 
 | 标准 | 状态 |
 |------|------|
-| 所有 Phase 2 必做 endpoint 可用 | ⚠️ raw HTTP + 最小 worker fixture 已覆盖 10 个 endpoint；真实 LanceDB worker process 覆盖 query/count/stats/insert/create/merge_insert/update/delete，explain/analyze 真实 worker 语义待定 |
+| 所有 Phase 2 必做 endpoint 可用 | ⚠️ raw HTTP + 最小 worker fixture 已覆盖 10 个 endpoint；真实 LanceDB worker process 覆盖 query/count/stats/insert/create/merge_insert/update/delete，explain/analyze 真实 worker 语义未完成 |
 | query 返回 Arrow IPC 且可被客户端消费 | ✅ fake worker、真实 LanceDB worker process、Python/Java/Rust 最小协议客户端均已覆盖 Arrow 消费 |
 | insert/merge/update/delete 通过真实 worker 执行 | ✅ 真实 LanceDB worker process 已覆盖 insert/create/merge_insert/update/delete 并验证 metadata version/stats 回写 |
 | declared-only table 可首次物理化 | ✅ fake backend、最小 worker fixture、真实 LanceDB worker process 均已有覆盖 |
-| stats/count 和 query/DML 结果一致 | ✅ 基础 real worker query/count/stats/insert/create/write 链路已覆盖；复杂 query/vector/filter 仍待 P2-CLIENT-003/生态 smoke |
+| stats/count 和 query/DML 结果一致 | ✅ 基础 real worker query/count/stats/insert/create/write 链路已覆盖；复杂 query/vector/filter 的 P2-CLIENT-003/生态 smoke 未完成 |
 | data endpoint 认证、授权、审计可验证 | ✅ P2-AUTH-005-008、011-014 enabled 覆盖 |
-| runtime storage credentials 不落库、不进日志 | ✅ runtime credential mock/merge/redaction 覆盖就绪；真实 credential vendor/S3 仍待 nightly |
-| backend 未配置、backend 超时、worker 错误有稳定错误语义 | ✅ disabled backend + fake/HTTP worker health/timeout/error/fallback/retry/unavailable/streaming failure cleanup 已覆盖；真实 sidecar 压力矩阵仍待 nightly |
+| runtime storage credentials 不落库、不进日志 | ✅ runtime credential mock/merge/redaction 覆盖就绪；真实 credential vendor/S3 nightly 验证未完成 |
+| backend 未配置、backend 超时、worker 错误有稳定错误语义 | ✅ disabled backend + fake/HTTP worker health/timeout/error/fallback/retry/unavailable/streaming failure cleanup 已覆盖；真实 sidecar 压力矩阵未完成 |
 | data endpoint media type 和 request size 错误稳定 | ✅ 415/413 Lance error shape、unknown-length chunked runtime limit 已覆盖 |
 | Phase 1 metadata endpoint 回归通过 | ✅ 已有 Phase 1 回归覆盖；发布前仍需全量重跑 |
 | UC 原有路由回归通过 | ✅ 已有 UC/Iceberg/Delta 回归覆盖；发布前仍需全量重跑 |
