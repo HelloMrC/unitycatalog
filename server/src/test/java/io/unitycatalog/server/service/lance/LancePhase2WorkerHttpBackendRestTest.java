@@ -10,6 +10,7 @@ import com.linecorp.armeria.common.HttpData;
 import com.linecorp.armeria.common.HttpHeaderNames;
 import com.linecorp.armeria.common.HttpObject;
 import com.linecorp.armeria.common.HttpResponse;
+import com.linecorp.armeria.common.HttpResponseWriter;
 import com.linecorp.armeria.common.HttpRequestWriter;
 import com.linecorp.armeria.common.HttpStatus;
 import com.linecorp.armeria.common.MediaType;
@@ -369,6 +370,24 @@ class LancePhase2WorkerHttpBackendRestTest extends BaseLancePhase2RestTest {
         "streaming-timeout", 504, "backend_timeout", Map.of("x-lance-deadline-ms", "50"));
   }
 
+  @Test
+  @DisplayName("P2-CONC-006 mid-stream query failure is not retried")
+  void midStreamQueryFailureIsNotRetried() throws Exception {
+    createActiveTableFixture();
+
+    var response =
+        postJsonWithHeaders(
+            "/v1/table/" + P2_ACTIVE_TABLE_ID + "/query",
+            "{}",
+            Map.of(
+                HttpHeaderNames.ACCEPT.toString(), ARROW_STREAM.toString(),
+                "x-lance-fake-worker-error", "query-stream-break"));
+
+    assertLanceErrorShape(response, 503);
+    assertThat(json(response).path("type").asText()).isEqualTo("worker_unavailable");
+    assertThat(workerAttempts.get("query").get()).isEqualTo(1);
+  }
+
   private void assertStreamingWorkerFailureClosesUpstream(
       String mode, int expectedStatus, String expectedType, Map<String, String> extraHeaders)
       throws Exception {
@@ -552,6 +571,9 @@ class LancePhase2WorkerHttpBackendRestTest extends BaseLancePhase2RestTest {
               .build();
       return HttpResponse.of(responseHeaders, HttpData.ofUtf8("plain worker failure"));
     }
+    if ("query-stream-break".equals(mode)) {
+      return brokenArrowResponse();
+    }
     if ("true".equals(contextValue(command, "fakeWorkerArrowResponse"))) {
       ResponseHeaders responseHeaders =
           ResponseHeaders.builder(HttpStatus.OK).contentType(ARROW_STREAM).build();
@@ -573,6 +595,14 @@ class LancePhase2WorkerHttpBackendRestTest extends BaseLancePhase2RestTest {
     } catch (InterruptedException e) {
       Thread.currentThread().interrupt();
     }
+  }
+
+  private HttpResponse brokenArrowResponse() {
+    HttpResponseWriter response = HttpResponse.streaming();
+    response.write(ResponseHeaders.builder(HttpStatus.OK).contentType(ARROW_STREAM).build());
+    response.write(HttpData.ofUtf8("partial-arrow-response"));
+    response.close(new IllegalStateException("fake worker stream broke"));
+    return response;
   }
 
   private Map<String, Object> command(RequestHeaders headers, AggregatedHttpRequest request) {
