@@ -353,7 +353,7 @@
 | 真实 LanceDB worker sidecar 化 | Section 8.1-8.4；P2-WORKER-E2E | 测试资源中已有 `real_lancedb_worker.py`，可通过 `LanceRealLanceDbWorkerProcessFixture` 启动真实 `lancedb` 进程 | 把当前 test-only Python 进程沉淀为可重复 nightly fixture/sidecar：依赖安装、启动参数、health path、临时目录清理、日志输出和 skip 条件都要文档化 | CI/nightly 能在无人工准备的环境中启动 worker，稳定跑过真实 worker E2E |
 | real worker explain/analyze 决策 | P2-DATA-08/09；P2-CLIENT-001 | raw HTTP smoke 已通过最小有状态 worker 覆盖 10 个 endpoint；真实 LanceDB worker process 目前覆盖 query/count/stats/insert/create/merge_insert/update/delete | 明确 explain_plan/analyze_plan 在真实 LanceDB worker 的 Phase 2 行为：实现真实响应、代理为 worker 支持能力，或返回稳定 `UNIMPLEMENTED` 并补对应测试 | 10 个 data endpoint 在真实 worker/sidecar 下均有明确、可回归的成功或受控不支持语义 |
 | 真实 worker resilience/backpressure | P2-ARROW-012；P2-WORKER-011~013；P2-CONC-005 | fake worker 已覆盖 unknown-length chunked 超限、503/断连/超时期间关闭 upstream body、不重试写请求 | 将同类压力路径补到真实 worker/sidecar 或 nightly fault worker，覆盖大 Arrow stream、慢消费者、worker 中途失败和 audit/metrics 证据 | 真实 worker/nightly 层证明 UC 不聚合大 body、不泄漏 upstream、失败语义稳定 |
-| 并发与幂等完整回归 | P2-CONC-001~006；P2-META-007 | 已有 version 防倒退、write no-retry、runtime limit 等局部覆盖；早期并发 skeleton 仍禁用 | 启用或重写并发 query、active 并发写、declared 首次物理化并发、idempotency hash 和 response-stream 中断测试 | 并发测试可在 PR 或 nightly 稳定运行，UC metadata version 不倒退，重复/竞争写有明确语义 |
+| 并发与幂等完整回归 | P2-CONC-001~006；P2-META-007 | `6b54eae` 已新增 PR 级本地 enabled tests 覆盖并发 query requestId 隔离、active 并发写 version 防倒退、declared 首次物理化竞争和 idempotency key 脱敏；P2-CONC-005 的 request streaming/backpressure 主体已由 fake worker streaming 测试覆盖 | 剩余 P2-CONC-006 response stream 已开始后 worker 中断的稳定语义；如需更强证据，再补 fake fault response-stream 或真实 sidecar/nightly 用例 | 并发测试可在 PR 或 nightly 稳定运行，UC metadata version 不倒退，重复/竞争写有明确语义 |
 | 发布前数据库/环境矩阵 | Section 10.5 | H2 + local FS 为主；PostgreSQL/S3 兼容路径尚未形成可重复证据 | 增加 PostgreSQL metadata DB、local FS + 至少一个 S3-compatible object store、credential expiry/denied 的发布前执行记录 | 发布前报告含 DB/storage/backend 组合矩阵与失败排查日志 |
 
 ### 3.2 Client / SDK 兼容性
@@ -382,8 +382,8 @@
 
 | 任务 | 当前状态 | 剩余工作 | 完成标准 |
 |------|----------|----------|----------|
-| 早期 skeleton 归并 | 多个 `LancePhase2*RestTest` 仍 `@Disabled`，其中不少场景已由拆分后的 enabled tests 覆盖 | 将 skeleton 中仍有价值的断言迁移到已启用测试；已重复或过期的 skeleton 标注/删除，避免进度误读 | `@Disabled` 只保留真实外部依赖或 nightly/release gate，不再保留已完成能力的旧占位 |
-| 测试命令分层 | 当前已有 PR 级 enabled tests、真实 worker process tests、ecosystem disabled skeleton | 在文档和 CI 中拆清 PR、nightly、release gate 命令；记录 Python/lancedb/pyarrow/rustc/Spark/Ray/DuckDB 等依赖 skip 语义 | 开发者能按一条命令跑 PR 层，nightly 能输出外部依赖缺失原因 |
+| 早期 skeleton 归并 | `6b54eae` 已先迁移无外部依赖的本地断言：P2-CONC-001~004、P2-ERROR-016~018、P2-AUTH-016/017、P2-REG-010；多个旧 `LancePhase2*RestTest` 仍 `@Disabled` | 继续将 contract/backend/read/write/auth/error/regression skeleton 中仍有价值且不需要外部依赖的断言迁移到 enabled tests；已重复或过期的 skeleton 标注/删除，避免进度误读 | `@Disabled` 只保留真实外部依赖或 nightly/release gate，不再保留已完成能力的旧占位 |
+| 测试命令分层 | 当前已有 PR 级 enabled tests、真实 worker process tests、ecosystem disabled skeleton；命令分层整理未完成 | 在文档和 CI 中拆清 PR、nightly、release gate 命令；记录 Python/lancedb/pyarrow/rustc/Spark/Ray/DuckDB 等依赖 skip 语义 | 开发者能按一条命令跑 PR 层，nightly 能输出外部依赖缺失原因 |
 | 进度文档维护 | 本文档已刷新到 2026-05-11 状态 | 每次完成 P2-CLIENT/P2-SPARK/P2-RAY/P2-LOCAL 或 sidecar 化时同步更新 Section 3/5/9 | 文档、代码测试和准出状态保持一致 |
 
 ---
@@ -416,7 +416,7 @@
 | LancePhase2DataReadRestTest | 13 | @Disabled | 早期 skeleton；基础 read/scalar/Arrow 已覆盖，复杂 query 参数与 real worker explain/analyze 整理未完成 |
 | LancePhase2DataWriteRestTest | 11 | @Disabled | 早期 skeleton；write metadata 与 real worker write 链路已拆分覆盖，归并未完成 |
 | LancePhase2MetadataAndStorageRestTest | 18 | @Disabled | 早期 skeleton；metadata/reconcile/storage mock 已拆分覆盖，S3-compatible smoke 未完成 |
-| LancePhase2AuthGovernanceRestTest | 17 | @Disabled | 早期 skeleton；READ/WRITE allow-deny 与 audit/metrics 已拆分覆盖，Bearer/API key 细项归并未完成 |
+| LancePhase2AuthGovernanceRestTest | 17 | @Disabled | 早期 skeleton；READ/WRITE allow-deny、audit/metrics、token exchange loopback guard 与非 Lance route exclusion 已拆分覆盖，Bearer/API key 细项归并未完成 |
 | LancePhase2RequestMappingRestTest | 7 | Enabled | request mapping + storage/deadline contract + header/body reserved field spoofing guard |
 | LancePhase2DataPlaneAuthorizationRestTest | 4 | Enabled | P2-AUTH-005-008 read/write allow-deny 覆盖 |
 | LanceDataPlaneAuthorizerTest | 3 | Enabled | READ_DATA/WRITE_DATA 兼容权限映射 |
@@ -430,8 +430,10 @@
 | LancePhase2BackendCommittedFailureRestTest | 1 | Enabled | metadata update failure returns backend_committed marker |
 | LancePhase2ReconcileRestTest | 2 | Enabled | P2-META-009/010 reconcile dry-run/backfill |
 | LancePhase2ObservabilityRestTest | 4 | Enabled | P2-AUTH-011~014 audit success/failure/redaction + metrics，含失败 backend label 对齐断言 |
+| LancePhase2ConcurrencyRestTest | 4 | Enabled | `6b54eae` 覆盖 P2-CONC-001~004：并发 query requestId 隔离、active 并发写 version 防倒退、declared 首次物理化竞争、idempotency key 脱敏 |
 | LancePhase2ScalarResponseRestTest | 3 | Enabled | P2-DATA-009、011、012 count/explain/analyze scalar response |
 | LancePhase2ErrorResponseContractRestTest | 3 | Enabled | P2-ERROR-015 requestId/backend_request_id 合同覆盖 |
+| LancePhase2LocalUnsupportedRestTest | 5 | Enabled | `6b54eae` 覆盖 P2-ERROR-016~018、P2-AUTH-016/017、P2-REG-010，不依赖外部 runtime |
 | LancePhase2StorageCredentialRestTest | 8 | Enabled | P2-STORAGE-001~007 + P2-META-008 runtime credential mock/contract 覆盖 |
 | LancePhase2WorkerHttpBackendRestTest | 18 | Enabled | P2-WORKER-001~013 + P2-ARROW-012 fake HTTP worker 合同覆盖，含 health、headers、retry/no-retry、timeout、unavailable、non-JSON fallback、streaming limit 与 upstream close |
 | LancePhase2RealWorkerE2ERestTest | 2 | Enabled | 有状态 HTTP worker fixture E2E：declared insert 物理化、active write metadata、Arrow query、count/stats 一致 |
@@ -439,8 +441,8 @@
 | LancePhase2RawHttpClientSmokeRestTest | 1 | Enabled | P2-CLIENT-001 raw HTTP 覆盖 10 个 data endpoint |
 | LancePhase2PythonClientSmokeRestTest | 1 | Enabled | P2-CLIENT-002 最小 Python 协议客户端；依赖 `lancedb`/`pyarrow`，不是官方 SDK |
 | LancePhase2JavaRustClientSmokeRestTest | 2 | Enabled | P2-CLIENT-004/005 最小 Java JDK HTTP 与 Rust std HTTP 协议客户端；不是官方 SDK |
-| LancePhase2ErrorAndRegressionRestTest | 28 | @Disabled | 早期 skeleton；错误/回归已有拆分覆盖，未支持 endpoint 与全量 UC/Iceberg/Delta 回归整理未完成 |
-| LancePhase2WorkerAndResilienceRestTest | 16 | @Disabled | 早期 skeleton；worker resilience 已由 `LancePhase2WorkerHttpBackendRestTest` 覆盖大部分，归并未完成 |
+| LancePhase2ErrorAndRegressionRestTest | 28 | @Disabled | 早期 skeleton；错误 shape、未支持 endpoint 与 route exclusion 已拆分覆盖，全量 UC/Iceberg/Delta 回归整理未完成 |
+| LancePhase2WorkerAndResilienceRestTest | 16 | @Disabled | 早期 skeleton；worker resilience 已由 `LancePhase2WorkerHttpBackendRestTest` 覆盖大部分，P2-CONC-001~004 已由 `LancePhase2ConcurrencyRestTest` 覆盖；response-stream 中断语义未完成 |
 | LancePhase2EcosystemSmokeTest | 26 | @Disabled | P2-CLIENT-003/006、P2-SPARK、P2-RAY、P2-LOCAL 官方 connector/nightly smoke 未接入 |
 
 ---
@@ -449,6 +451,7 @@
 
 | Commit | 日期 | 描述 |
 |--------|------|------|
+| 6b54eae | 2026-05-11 | Add local Lance Phase 2 regression coverage |
 | 975c3b2 | 2026-05-09 | Add Java and Rust Lance protocol smoke tests |
 | 496291d | 2026-05-09 | Extend real LanceDB worker write coverage |
 | 2495350 | 2026-05-09 | Add Python Lance client smoke |
@@ -495,16 +498,15 @@
 
 ### 8.1 立即可做（不引入重型生态环境）
 
-1. **官方 Python client 兼容性调研与最小 smoke** - 先确认 upstream LanceDB Python client 能否配置到 UC Lance REST；若不能，明确 adapter/UC Client wrapper 方案。当前 `python_client_smoke.py` 只能证明协议可消费，不能作为官方 SDK 验收。
-2. **P2-CLIENT-003 vector/filter/withRowId** - 在真实 LanceDB worker fixture 下补 vector table 和 query shape，优先验证 Arrow 返回能被目标 Python 侧消费。
-3. **P2-CLIENT-006 client error recognition** - 用目标客户端覆盖 backend disabled、permission denied、worker timeout/error，证明 Lance error shape 在客户端侧可识别。
-4. **整理 disabled skeleton** - 把已经由拆分 enabled tests 覆盖的旧 `@Disabled` 场景归并或删除，只保留真实外部依赖/nightly gate。
+1. **继续整理 disabled skeleton** - `6b54eae` 已完成第一批无外部依赖迁移；下一批优先处理 contract/backend/read/write/auth/error/regression skeleton 中已经由 enabled tests 覆盖或可纯本地验证的断言。
+2. **测试命令分层** - 在文档和 CI 中拆清 PR、nightly、release gate 命令，并把 Python/lancedb/pyarrow/rustc/Spark/Ray/DuckDB 等依赖的 skip 语义写清楚。
+3. **P2-CONC-006 response stream 中断语义** - 可先用 fake fault worker 补稳定错误/不重试断言；若需要真实网络 backpressure 证据，再放入 nightly。
 
 ### 8.2 需要 nightly fixture 或外部依赖
 
 1. **真实 LanceDB worker sidecar 化** - 固化依赖安装、启动、health、日志、临时目录和 skip 语义，减少 `LANCE_REAL_WORKER_PYTHONPATH` 这类手动准备。
 2. **real worker explain/analyze 行为** - 对 P2-DATA-08/09 给出真实 worker 支持或稳定不支持语义，并补回归。
-3. **官方 Java/Rust client 或 UC generated client** - 当前 Java/Rust 只是最小 HTTP 协议客户端，下一步需要决定并接入官方 SDK 或生成客户端路径。
+3. **官方 Python/Java/Rust client 或 UC generated client** - 当前客户端测试仍是最小协议客户端，下一步需要决定并接入官方 SDK、UC generated client 或明确 adapter/wrapper 方案。
 4. **Spark/Ray/DuckDB/Pandas/PyArrow smoke** - 逐步启用 `LancePhase2EcosystemSmokeTest` 中的 P2-SPARK、P2-RAY、P2-LOCAL。
 5. **S3-compatible + PostgreSQL 发布前矩阵** - 接入 MinIO/兼容 S3 和 PostgreSQL metadata DB，形成 release gate 证据。
 
@@ -521,12 +523,12 @@
 | insert/merge/update/delete 通过真实 worker 执行 | ✅ 真实 LanceDB worker process 已覆盖 insert/create/merge_insert/update/delete 并验证 metadata version/stats 回写 |
 | declared-only table 可首次物理化 | ✅ fake backend、最小 worker fixture、真实 LanceDB worker process 均已有覆盖 |
 | stats/count 和 query/DML 结果一致 | ✅ 基础 real worker query/count/stats/insert/create/write 链路已覆盖；复杂 query/vector/filter 的 P2-CLIENT-003/生态 smoke 未完成 |
-| data endpoint 认证、授权、审计可验证 | ✅ P2-AUTH-005-008、011-014 enabled 覆盖 |
+| data endpoint 认证、授权、审计可验证 | ✅ P2-AUTH-005-008、011-014、016-017 enabled 覆盖 |
 | runtime storage credentials 不落库、不进日志 | ✅ runtime credential mock/merge/redaction 覆盖就绪；真实 credential vendor/S3 nightly 验证未完成 |
 | backend 未配置、backend 超时、worker 错误有稳定错误语义 | ✅ disabled backend + fake/HTTP worker health/timeout/error/fallback/retry/unavailable/streaming failure cleanup 已覆盖；真实 sidecar 压力矩阵未完成 |
 | data endpoint media type 和 request size 错误稳定 | ✅ 415/413 Lance error shape、unknown-length chunked runtime limit 已覆盖 |
 | Phase 1 metadata endpoint 回归通过 | ✅ 已有 Phase 1 回归覆盖；发布前仍需全量重跑 |
-| UC 原有路由回归通过 | ✅ 已有 UC/Iceberg/Delta 回归覆盖；发布前仍需全量重跑 |
+| UC 原有路由回归通过 | ✅ P2-REG-010 非 Lance route exclusion 已覆盖；UC/Iceberg/Delta 发布前仍需全量重跑 |
 | Python client smoke | ⚠️ 最小 `urllib` + `pyarrow` 协议 smoke 已完成；官方 LanceDB Python client 形态未完成 |
 | Java/Rust client smoke | ⚠️ Java JDK HTTP 与 Rust std HTTP 协议 smoke 已完成；官方 SDK/UC Client 形态未完成 |
 | Spark/Ray/local engine smoke | ❌ `P2-SPARK`、`P2-RAY`、`P2-LOCAL` 仍在 disabled ecosystem skeleton 中，需 nightly/发布前补齐 |
