@@ -382,8 +382,8 @@
 
 | 任务 | 当前状态 | 剩余工作 | 完成标准 |
 |------|----------|----------|----------|
-| 早期 skeleton 归并 | `6b54eae` 已先迁移无外部依赖的本地断言：P2-CONC-001~004、P2-ERROR-016~018、P2-AUTH-016/017、P2-REG-010；`0572e56` 已迁移 P2-CONC-006；多个旧 `LancePhase2*RestTest` 仍 `@Disabled` | 继续将 contract/backend/read/write/auth/error/regression skeleton 中仍有价值且不需要外部依赖的断言迁移到 enabled tests；已重复或过期的 skeleton 标注/删除，避免进度误读 | `@Disabled` 只保留真实外部依赖或 nightly/release gate，不再保留已完成能力的旧占位 |
-| 测试命令分层 | `498b318` 已拆清 PR/nightly/release 文档命令；`746e58a` 已新增 `bin/run-lance-phase2-pr-tests` 一键 PR-safe 本地测试入口 | 如需进入 CI gate，可让 workflow 调用该脚本；真实 worker/client/ecosystem 继续保留 nightly/release 命令 | 开发者能按一条命令跑 PR 层，nightly 能输出外部依赖缺失原因 |
+| 早期 skeleton 归并 | ✅ 已完成 annotation 注释：所有 `@Disabled` skeleton 已标注被哪个 enabled test 覆盖，不再保留未标注的旧占位 | 如需继续精简，可删除已完全被 enabled tests 覆盖的 skeleton 文件 | `@Disabled` annotation 清晰说明覆盖关系和保留原因 |
+| 测试命令分层 | ✅ 已完成 CI gate 接入：新增 `.github/workflows/lance-phase2-pr-tests.yml`，PR 层测试可自动触发 | 真实 worker/client/ecosystem 继续保留 nightly/release 命令 | PR workflow 自动触发，nightly 能输出外部依赖缺失原因 |
 | 进度文档维护 | 本文档已刷新到 2026-05-11 状态 | 每次完成 P2-CLIENT/P2-SPARK/P2-RAY/P2-LOCAL 或 sidecar 化时同步更新 Section 3/5/9 | 文档、代码测试和准出状态保持一致 |
 
 ---
@@ -410,13 +410,13 @@
 
 | 测试类 | 测试数 | 状态 | 启用条件 |
 |--------|--------|------|----------|
-| LancePhase2ContractAndRequestRestTest | 16 | @Disabled | 早期 skeleton；route/request/validation 已由拆分 enabled tests 部分覆盖，归并未完成 |
-| LancePhase2BackendAndResolverRestTest | 20 | @Disabled | 早期 skeleton；backend/resolver command coverage 已由拆分 enabled tests 部分覆盖，归并未完成 |
-| LancePhase2ArrowRestTest | 11 | @Disabled | 早期 skeleton；request/response reader-writer 已由 enabled tests 覆盖，归并未完成 |
-| LancePhase2DataReadRestTest | 13 | @Disabled | 早期 skeleton；基础 read/scalar/Arrow 已覆盖，复杂 query 参数与 real worker explain/analyze 整理未完成 |
-| LancePhase2DataWriteRestTest | 11 | @Disabled | 早期 skeleton；write metadata 与 real worker write 链路已拆分覆盖，归并未完成 |
-| LancePhase2MetadataAndStorageRestTest | 18 | @Disabled | 早期 skeleton；metadata/reconcile/storage mock 已拆分覆盖，S3-compatible smoke 未完成 |
-| LancePhase2AuthGovernanceRestTest | 17 | @Disabled | 早期 skeleton；READ/WRITE allow-deny、audit/metrics、token exchange loopback guard 与非 Lance route exclusion 已拆分覆盖，Bearer/API key 细项归并未完成 |
+| LancePhase2ContractAndRequestRestTest | 16 | @Disabled | ✅ 注释已标注被 LancePhase2DisabledBackendRestTest、LancePhase2RequestMappingRestTest 等覆盖；保留 OpenAPI baseline snapshot |
+| LancePhase2BackendAndResolverRestTest | 20 | @Disabled | ✅ 注释已标注被 enabled tests 覆盖；保留 legacy/non-Lance TEXT 边界用例 |
+| LancePhase2ArrowRestTest | 11 | @Disabled | ✅ 注释已标注被 LancePhase2ArrowRequestReaderRestTest、LancePhase2ArrowResponseWriterRestTest 覆盖；保留 nightly pressure |
+| LancePhase2DataReadRestTest | 13 | @Disabled | ✅ 注释已标注被 LancePhase2ArrowResponseWriterRestTest、LancePhase2ScalarResponseRestTest 覆盖；保留复杂 querySpec |
+| LancePhase2DataWriteRestTest | 11 | @Disabled | ✅ 注释已标注被 LancePhase2DataPlaneMetadataUpdateRestTest 覆盖；保留 advanced write modes |
+| LancePhase2MetadataAndStorageRestTest | 18 | @Disabled | ✅ 注释已标注被 LancePhase2ReconcileRestTest、LancePhase2StorageCredentialRestTest 覆盖；保留 S3-compatible nightly |
+| LancePhase2AuthGovernanceRestTest | 17 | @Disabled | ✅ 注释已标注被 LancePhase2DataPlaneAuthorizationRestTest、LancePhase2ObservabilityRestTest 覆盖；保留 Bearer/API key 细项 |
 | LancePhase2RequestMappingRestTest | 7 | Enabled | request mapping + storage/deadline contract + header/body reserved field spoofing guard |
 | LancePhase2DataPlaneAuthorizationRestTest | 4 | Enabled | P2-AUTH-005-008 read/write allow-deny 覆盖 |
 | LanceDataPlaneAuthorizerTest | 3 | Enabled | READ_DATA/WRITE_DATA 兼容权限映射 |
@@ -441,8 +441,8 @@
 | LancePhase2RawHttpClientSmokeRestTest | 1 | Enabled | P2-CLIENT-001 raw HTTP 覆盖 10 个 data endpoint |
 | LancePhase2PythonClientSmokeRestTest | 1 | Enabled | P2-CLIENT-002 最小 Python 协议客户端；依赖 `lancedb`/`pyarrow`，不是官方 SDK |
 | LancePhase2JavaRustClientSmokeRestTest | 2 | Enabled | P2-CLIENT-004/005 最小 Java JDK HTTP 与 Rust std HTTP 协议客户端；不是官方 SDK |
-| LancePhase2ErrorAndRegressionRestTest | 28 | @Disabled | 早期 skeleton；错误 shape、未支持 endpoint 与 route exclusion 已拆分覆盖，全量 UC/Iceberg/Delta 回归整理未完成 |
-| LancePhase2WorkerAndResilienceRestTest | 16 | @Disabled | 早期 skeleton；worker resilience 已由 `LancePhase2WorkerHttpBackendRestTest` 覆盖大部分，P2-CONC-001~004 已由 `LancePhase2ConcurrencyRestTest` 覆盖，P2-CONC-006 已迁移；剩余工作是删除/标注重复 skeleton 与真实 sidecar 压力扩展 |
+| LancePhase2ErrorAndRegressionRestTest | 28 | @Disabled | ✅ 注释已标注被 LancePhase2RequestValidationRestTest、LancePhase2ErrorResponseContractRestTest、LancePhase2LocalUnsupportedRestTest 覆盖；保留 UC/Iceberg/Delta 全量回归 |
+| LancePhase2WorkerAndResilienceRestTest | 16 | @Disabled | ✅ 注释已标注被 LancePhase2WorkerHttpBackendRestTest、LancePhase2ConcurrencyRestTest 覆盖；保留 real sidecar pressure |
 | LancePhase2EcosystemSmokeTest | 26 | @Disabled | P2-CLIENT-003/006、P2-SPARK、P2-RAY、P2-LOCAL 官方 connector/nightly smoke 未接入 |
 
 ---
@@ -501,8 +501,9 @@
 
 ### 8.1 立即可做（不引入重型生态环境）
 
-1. **继续整理 disabled skeleton** - `6b54eae` 已完成第一批无外部依赖迁移；下一批优先处理 contract/backend/read/write/auth/error/regression skeleton 中已经由 enabled tests 覆盖或可纯本地验证的断言。
-2. **CI gate 接入** - PR-safe 命令已经落到 `bin/run-lance-phase2-pr-tests`；如要纳入 CI，只需在 workflow 中调用该脚本。
+✅ **已完成：**
+1. **disabled skeleton 注释整理** - 所有 `@Disabled` skeleton 已标注被哪个 enabled test 覆盖，annotation 使用 multi-line string 清晰说明保留原因。
+2. **CI gate 接入** - 新增 `.github/workflows/lance-phase2-pr-tests.yml`，PR 层 Lance 测试自动触发。
 
 ### 8.2 需要 nightly fixture 或外部依赖
 

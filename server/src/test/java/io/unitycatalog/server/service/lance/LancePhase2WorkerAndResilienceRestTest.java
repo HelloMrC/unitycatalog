@@ -17,7 +17,13 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 @Tag("lance-phase2")
-@Disabled("Enable after Lance Phase 2 worker HTTP backend and resilience fixtures are implemented.")
+@Disabled("""
+    Superseded by enabled tests:
+    - P2-WORKER-001~013: LancePhase2WorkerHttpBackendRestTest
+    - P2-CONC-001~004: LancePhase2ConcurrencyRestTest
+    - P2-CONC-006: LancePhase2WorkerHttpBackendRestTest
+    - P2-ARROW-012: LancePhase2WorkerHttpBackendRestTest
+    Retain for real sidecar pressure tests.""")
 class LancePhase2WorkerAndResilienceRestTest extends BaseLancePhase2RestTest {
 
   @Test

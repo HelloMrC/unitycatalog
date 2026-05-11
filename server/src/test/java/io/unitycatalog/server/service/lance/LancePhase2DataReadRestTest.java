@@ -10,7 +10,13 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 @Tag("lance-phase2")
-@Disabled("Enable after Lance Phase 2 read endpoints and fake/worker backends are implemented.")
+@Disabled("""
+    Superseded by enabled tests:
+    - P2-DATA-001 Arrow query: LancePhase2ArrowResponseWriterRestTest
+    - P2-DATA-009/011/012 scalar: LancePhase2ScalarResponseRestTest
+    - query/count/stats: LancePhase2WorkerHttpBackendRestTest
+    - real worker: LancePhase2RealLanceDbWorkerProcessRestTest
+    Retain for complex querySpec (columns, filter, vector) and explain/analyze.""")
 class LancePhase2DataReadRestTest extends BaseLancePhase2RestTest {
 
   @Test

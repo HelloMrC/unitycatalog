@@ -11,7 +11,12 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 @Tag("lance-phase2")
-@Disabled("Enable after Lance Phase 2 write endpoints and metadata update hooks are implemented.")
+@Disabled("""
+    Superseded by enabled tests:
+    - P2-DATA-021 declared materialization: LancePhase2DataPlaneMetadataUpdateRestTest
+    - write metadata version/stats: LancePhase2DataPlaneMetadataUpdateRestTest
+    - write chain E2E: LancePhase2RealWorkerE2ERestTest, LancePhase2RealLanceDbWorkerProcessRestTest
+    Retain for advanced write modes and rollback scenarios.""")
 class LancePhase2DataWriteRestTest extends BaseLancePhase2RestTest {
 
   @Test

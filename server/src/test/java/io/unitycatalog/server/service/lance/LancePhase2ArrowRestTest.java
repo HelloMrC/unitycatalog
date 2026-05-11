@@ -11,7 +11,13 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 @Tag("lance-phase2")
-@Disabled("Enable after Lance Phase 2 Arrow IPC reader/writer fixtures are implemented.")
+@Disabled("""
+    Superseded by enabled tests:
+    - P2-ARROW-001~006: LancePhase2ArrowRequestReaderRestTest
+    - P2-ARROW-007~009: LancePhase2ArrowResponseWriterRestTest
+    - P2-ARROW-010~011: LancePhase2ArrowRequestReaderRestTest
+    - P2-ARROW-012 streaming limit: LancePhase2WorkerHttpBackendRestTest
+    Retain for nightly pressure/real worker extension.""")
 class LancePhase2ArrowRestTest extends BaseLancePhase2RestTest {
 
   @Test

@@ -16,7 +16,14 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 @Tag("lance-phase2")
-@Disabled("Enable after Lance Phase 2 data plane routes and fake backend fixtures are implemented.")
+@Disabled("""
+    Superseded by enabled tests:
+    - P2-CONTRACT-006 disabled backend: LancePhase2DisabledBackendRestTest
+    - P2-REQ-001~008 request mapping: LancePhase2RequestMappingRestTest
+    - P2-CONTRACT-004 content type validation: LancePhase2RequestValidationRestTest
+    - P2-CONTRACT-005 Arrow response: LancePhase2ArrowResponseWriterRestTest
+    - P2-CONTRACT-008 UC route exclusion: LancePhase2LocalUnsupportedRestTest
+    Retain for OpenAPI baseline snapshot (P2-CONTRACT-001) and route mount verification.""")
 class LancePhase2ContractAndRequestRestTest extends BaseLancePhase2RestTest {
 
   @Test

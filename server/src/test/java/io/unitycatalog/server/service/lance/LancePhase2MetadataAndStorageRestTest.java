@@ -12,8 +12,12 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 @Tag("lance-phase2")
-@Disabled(
-    "Enable after Lance Phase 2 metadata update and storage binding services are implemented.")
+@Disabled("""
+    Superseded by enabled tests:
+    - P2-META-002~005 repository: LancePhase2DataPlaneMetadataUpdateRestTest
+    - P2-META-007/009/010 reconcile: LancePhase2ReconcileRestTest
+    - P2-STORAGE-001~007 credential: LancePhase2StorageCredentialRestTest
+    Retain for P2-META-001 advanced asset tables check and P2-STORAGE-008 S3-compatible nightly.""")
 class LancePhase2MetadataAndStorageRestTest extends BaseLancePhase2RestTest {
 
   @Test

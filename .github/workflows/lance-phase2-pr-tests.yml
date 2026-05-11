@@ -1,0 +1,44 @@
+name: Lance Phase 2 PR Tests
+
+on:
+  pull_request:
+    branches: [ "main", "branch-*" ]
+    paths:
+      # Only run when Lance-related files change
+      - 'server/src/main/java/io/unitycatalog/server/service/lance/**'
+      - 'server/src/test/java/io/unitycatalog/server/service/lance/**'
+      - 'server/src/main/java/io/unitycatalog/server/persist/Lance*Repository.java'
+      - 'server/src/main/java/io/unitycatalog/server/persist/dao/Lance*DAO.java'
+      - 'server/src/main/java/io/unitycatalog/server/utils/ServerProperties.java'
+      - 'bin/run-lance-phase2-pr-tests'
+      - '.github/workflows/lance-phase2-pr-tests.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  lance-phase2-tests:
+    runs-on: ubuntu-latest
+    name: Lance Phase 2 PR Gate Tests
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: Build and run Lance Phase 2 PR tests
+      run: ./bin/run-lance-phase2-pr-tests
+
+    - name: Upload test results on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: lance-phase2-test-results
+        path: |
+          server/target/test-reports/
+          server/target/surefire-reports/
+        retention-days: 7

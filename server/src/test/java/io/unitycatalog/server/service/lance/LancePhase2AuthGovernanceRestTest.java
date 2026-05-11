@@ -17,7 +17,12 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 @Tag("lance-phase2")
-@Disabled("Enable after Lance Phase 2 auth, audit, and access-control integration is implemented.")
+@Disabled("""
+    Superseded by enabled tests:
+    - P2-AUTH-005~008 read/write allow-deny: LancePhase2DataPlaneAuthorizationRestTest
+    - P2-AUTH-011~014 audit/metrics: LancePhase2ObservabilityRestTest
+    - P2-AUTH-016/017 token exchange loopback: LancePhase2LocalUnsupportedRestTest
+    Retain for Bearer/API key granular tests and LanceApiKeyRepository integration.""")
 class LancePhase2AuthGovernanceRestTest extends BaseLancePhase2RestTest {
   private LanceApiKeyRepository lanceApiKeyRepository;
 

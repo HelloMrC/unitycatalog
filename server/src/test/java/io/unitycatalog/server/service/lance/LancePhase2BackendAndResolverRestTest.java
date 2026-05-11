@@ -14,7 +14,13 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 @Tag("lance-phase2")
-@Disabled("Enable after Lance Phase 2 backend SPI, resolver, and fake backend are implemented.")
+@Disabled("""
+    Superseded by enabled tests:
+    - P2-BACKEND-001 SPI: verified by LanceExecutionBackend interface
+    - P2-BACKEND-002~008: LancePhase2RequestMappingRestTest
+    - P2-RESOLVE-001~006: LancePhase2DataPlaneMetadataUpdateRestTest
+    - P2-RESOLVE-007~010: LancePhase2LegacyReadConfigRestTest
+    Retain for legacy/non-Lance TEXT edge cases.""")
 class LancePhase2BackendAndResolverRestTest extends BaseLancePhase2RestTest {
 
   @Test

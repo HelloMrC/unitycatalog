@@ -12,7 +12,13 @@ import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 
 @Tag("lance-phase2")
-@Disabled("Enable after Lance Phase 2 error mapper and regression gates are implemented.")
+@Disabled("""
+    Superseded by enabled tests:
+    - P2-ERROR-001~004 error shape: LancePhase2RequestValidationRestTest
+    - P2-ERROR-015 requestId/backend_request_id: LancePhase2ErrorResponseContractRestTest
+    - P2-ERROR-016~018 unsupported endpoints: LancePhase2LocalUnsupportedRestTest
+    - P2-REG-010 UC route exclusion: LancePhase2LocalUnsupportedRestTest
+    Retain for P2-REG-001~009 UC/Iceberg/Delta full regression suite.""")
 class LancePhase2ErrorAndRegressionRestTest extends BaseLancePhase2RestTest {
 
   @Test
