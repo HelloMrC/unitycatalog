@@ -596,6 +596,12 @@ Nightly 层至少通过：
 PR 层建议只跑不需要真实 LanceDB、外部对象存储或生态客户端 runtime 的测试：
 
 ```bash
+bin/run-lance-phase2-pr-tests
+```
+
+该脚本展开为：
+
+```bash
 build/sbt "server/testOnly \
   io.unitycatalog.server.service.lance.LancePhase2RequestMappingRestTest \
   io.unitycatalog.server.service.lance.LancePhase2RequestValidationRestTest \

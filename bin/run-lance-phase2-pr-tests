@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT_DIR"
+
+classes=(
+  io.unitycatalog.server.service.lance.LancePhase2RequestMappingRestTest
+  io.unitycatalog.server.service.lance.LancePhase2RequestValidationRestTest
+  io.unitycatalog.server.service.lance.LancePhase2ConfigurableBackendRestTest
+  io.unitycatalog.server.service.lance.LancePhase2DisabledBackendRestTest
+  io.unitycatalog.server.service.lance.LancePhase2DataPlaneAuthorizationRestTest
+  io.unitycatalog.server.service.lance.LanceDataPlaneAuthorizerTest
+  io.unitycatalog.server.service.lance.LancePhase2ArrowRequestReaderRestTest
+  io.unitycatalog.server.service.lance.LancePhase2ArrowResponseWriterRestTest
+  io.unitycatalog.server.service.lance.LancePhase2DataPlaneMetadataUpdateRestTest
+  io.unitycatalog.server.service.lance.LancePhase2BackendCommittedFailureRestTest
+  io.unitycatalog.server.service.lance.LancePhase2ReconcileRestTest
+  io.unitycatalog.server.service.lance.LancePhase2ObservabilityRestTest
+  io.unitycatalog.server.service.lance.LancePhase2ScalarResponseRestTest
+  io.unitycatalog.server.service.lance.LancePhase2ErrorResponseContractRestTest
+  io.unitycatalog.server.service.lance.LancePhase2StorageCredentialRestTest
+  io.unitycatalog.server.service.lance.LancePhase2ConcurrencyRestTest
+  io.unitycatalog.server.service.lance.LancePhase2LocalUnsupportedRestTest
+  io.unitycatalog.server.service.lance.LancePhase2WorkerHttpBackendRestTest
+)
+
+./build/sbt "server/testOnly ${classes[*]}"
+./build/sbt javafmtCheck server/testJavastyle
