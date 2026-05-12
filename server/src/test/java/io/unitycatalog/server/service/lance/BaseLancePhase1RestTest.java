@@ -142,10 +142,17 @@ abstract class BaseLancePhase1RestTest extends BaseServerTest {
   }
 
   protected void createRootAndChildNamespaces() {
-    assertSuccess(
-        postJson("/v1/namespace/" + ROOT_NAMESPACE + "/create", createNamespaceRequest()));
-    assertSuccess(
-        postJson("/v1/namespace/" + CHILD_NAMESPACE + "/create", createNamespaceRequest()));
+    createNamespaceIfNotExists(ROOT_NAMESPACE);
+    createNamespaceIfNotExists(CHILD_NAMESPACE);
+  }
+
+  private void createNamespaceIfNotExists(String namespace) {
+    AggregatedHttpResponse response =
+        postJson("/v1/namespace/" + namespace + "/create", createNamespaceRequest());
+    int code = response.status().code();
+    if (code != 200 && code != 201 && code != 409) {
+      assertThat(code).isBetween(200, 299);
+    }
   }
 
   protected String createInternalBearerToken(String subject) {

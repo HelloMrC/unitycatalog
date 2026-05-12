@@ -453,6 +453,92 @@ public class LanceMetadataService {
     return new DeregisterTableResponse(true);
   }
 
+  /**
+   * Rename a Lance table. This is a metadata-only operation that updates the table's path_key,
+   * canonical_identifier, name, and namespace_id. The physical storage_location remains unchanged.
+   *
+   * @param currentIdentifier The current table identifier
+   * @param delimiter The delimiter used for identifier parsing
+   * @param newTableName The new table name
+   * @param newNamespacePath The new namespace path (optional, if null keeps current namespace)
+   * @return The updated table view
+   */
+  public TableView renameTable(
+      String currentIdentifier,
+      String delimiter,
+      String newTableName,
+      List<String> newNamespacePath) {
+    UUID rootScopeId = metastoreRepository.getMetastoreId();
+    List<String> currentPath = identifierCodec.decodeIdentifier(currentIdentifier, delimiter);
+    String currentPathKey = identifierCodec.toPathKey(currentPath);
+
+    // Find current table
+    Optional<LanceAssetDAO> assetOpt = tableRepository.findAssetByPathKey(currentPathKey);
+    if (assetOpt.isEmpty()) {
+      if (findLegacyTable(currentPath).isPresent()) {
+        throw new BaseException(
+            ErrorCode.UNIMPLEMENTED,
+            "Renaming legacy bridge tables not supported in current phase.");
+      }
+      throw new BaseException(ErrorCode.NOT_FOUND, "Lance table not found: " + currentIdentifier);
+    }
+
+    LanceAssetDAO assetDAO = assetOpt.get();
+    authorizationService.authorizeModifyTable(assetDAO);
+
+    // Check that the table is in a valid state for rename
+    String state = assetDAO.getState();
+    if (!"ACTIVE".equals(state) && !"DECLARED".equals(state)) {
+      throw new BaseException(
+          ErrorCode.NOT_FOUND, "Lance table is not active or declared: " + state);
+    }
+
+    // Build new path
+    List<String> newPath;
+    if (newNamespacePath != null && !newNamespacePath.isEmpty()) {
+      newPath = new ArrayList<>(newNamespacePath);
+    } else {
+      // Keep current namespace
+      int lastIndex = currentPath.size() - 1;
+      newPath = new ArrayList<>(currentPath.subList(0, lastIndex));
+    }
+    newPath.add(newTableName);
+    String newPathKey = identifierCodec.toPathKey(newPath);
+
+    // Find new namespace
+    int newLastIndex = newPath.size() - 1;
+    List<String> newNamespacePathKeyPath = newPath.subList(0, newLastIndex);
+    String newNamespacePathKey = identifierCodec.toPathKey(newNamespacePathKeyPath);
+    LanceNamespaceDAO newNamespaceDAO =
+        namespaceRepository.getNamespaceOrThrow(rootScopeId, newNamespacePathKey);
+    authorizationService.authorizeModifyNamespace(newNamespaceDAO);
+
+    // Perform rename
+    String newCanonicalIdentifier = identifierCodec.toExternalIdentifier(newPathKey, delimiter);
+    tableRepository.renameTable(
+        assetDAO.getId(),
+        newPathKey,
+        newCanonicalIdentifier,
+        newTableName,
+        newNamespaceDAO.getId(),
+        currentOwner());
+
+    // Return updated table view
+    Optional<LanceAssetDAO> updatedAssetOpt = tableRepository.findAssetByPathKey(newPathKey);
+    Optional<LanceTableDAO> updatedTableOpt =
+        tableRepository.findTableByAssetId(updatedAssetOpt.get().getId());
+    return toTableView(
+        updatedAssetOpt.get(),
+        updatedTableOpt.orElse(null),
+        delimiter,
+        false,
+        false,
+        updatedTableOpt.isPresent()
+            && Boolean.TRUE.equals(updatedTableOpt.get().getIsOnlyDeclared()),
+        false,
+        null);
+  }
+
   private TableView toTableView(
       LanceAssetDAO assetDAO,
       LanceTableDAO tableDAO,

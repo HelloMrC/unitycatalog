@@ -453,4 +453,65 @@ public class LanceTableRepository {
         "Failed to deregister Lance table",
         false);
   }
+
+  /**
+   * Rename a Lance table. This is a metadata-only operation that updates the table's path_key,
+   * canonical_identifier, name, and namespace_id. The physical storage_location remains unchanged.
+   *
+   * @param assetId The asset ID of the table to rename
+   * @param newPathKey The new path_key (e.g., "ns1/ns2/new_table_name")
+   * @param newCanonicalIdentifier The new external identifier
+   * @param newTableName The new table name
+   * @param newNamespaceId The new namespace ID (may be same as current if only renaming)
+   * @param updatedBy The user performing the rename
+   */
+  public void renameTable(
+      UUID assetId,
+      String newPathKey,
+      String newCanonicalIdentifier,
+      String newTableName,
+      UUID newNamespaceId,
+      String updatedBy) {
+    TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          LanceAssetDAO assetDAO = session.get(LanceAssetDAO.class, assetId);
+          if (assetDAO == null) {
+            throw new BaseException(ErrorCode.NOT_FOUND, "Lance table asset not found: " + assetId);
+          }
+          if (!ACTIVE_STATE.equals(assetDAO.getState())
+              && !DECLARED_STATE.equals(assetDAO.getState())) {
+            throw new BaseException(
+                ErrorCode.NOT_FOUND,
+                "Lance table is not active or declared: " + assetDAO.getState());
+          }
+
+          // Check new namespace exists
+          LanceNamespaceDAO newNamespace = session.get(LanceNamespaceDAO.class, newNamespaceId);
+          if (newNamespace == null) {
+            throw new BaseException(
+                ErrorCode.NOT_FOUND, "Target namespace not found: " + newNamespaceId);
+          }
+
+          // Check new path_key doesn't already exist
+          if (findAsset(session, newPathKey).isPresent()) {
+            throw new BaseException(
+                ErrorCode.ALREADY_EXISTS, "Table already exists at new location: " + newPathKey);
+          }
+
+          // Update metadata (physical storage_location remains unchanged)
+          Date now = new Date();
+          assetDAO.setPathKey(newPathKey);
+          assetDAO.setCanonicalIdentifier(newCanonicalIdentifier);
+          assetDAO.setName(newTableName);
+          assetDAO.setNamespaceId(newNamespaceId);
+          assetDAO.setUpdatedAt(now);
+          assetDAO.setUpdatedBy(updatedBy);
+
+          session.merge(assetDAO);
+          return null;
+        },
+        "Failed to rename Lance table",
+        false);
+  }
 }

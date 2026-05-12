@@ -9,6 +9,7 @@ import com.linecorp.armeria.server.annotation.Param;
 import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.persist.Repositories;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -135,6 +136,44 @@ public class LanceRestTableService {
         metadataService.deregisterTable(id, delimiter.orElse(null), effectiveDelete));
   }
 
+  @Post("/v1/table/{id}/rename")
+  public HttpResponse renameTable(
+      @Param("id") String id,
+      @Param("delimiter") Optional<String> delimiter,
+      TableRenameRequest request) {
+    String newTableName =
+        request == null || request.newTableName() == null
+            ? null
+            : request.newTableName();
+    if (newTableName == null || newTableName.isBlank()) {
+      return HttpResponse.ofJson(
+          HttpStatus.BAD_REQUEST,
+          Map.of(
+              "type", "invalid_argument",
+              "message", "new_table_name is required",
+              "code", HttpStatus.BAD_REQUEST.code()));
+    }
+    List<String> newNamespace = request == null ? null : request.newNamespace();
+    return HttpResponse.ofJson(
+        metadataService.renameTable(id, delimiter.orElse(null), newTableName, newNamespace));
+  }
+
+  @Post("/v1/table/{id}/restore")
+  public HttpResponse restoreTable(
+      @Param("id") String id,
+      @Param("delimiter") Optional<String> delimiter,
+      Object ignored) {
+    // restore requires Lance file format manipulation which is not supported in UC
+    // LanceDB Python SDK lacks native restore API
+    return HttpResponse.ofJson(
+        HttpStatus.NOT_IMPLEMENTED,
+        Map.of(
+            "type", "unimplemented",
+            "message",
+            "restore_table is not supported: requires Lance file format manipulation",
+            "code", HttpStatus.NOT_IMPLEMENTED.code()));
+  }
+
   private boolean effectiveVendCredentials(
       Optional<Boolean> queryVendCredentials, TableCreateRequest request) {
     return queryVendCredentials.orElse(
@@ -168,6 +207,10 @@ public class LanceRestTableService {
 
   public record TableDeregisterRequest(
       @JsonProperty("delete_physical_data") Boolean deletePhysicalData) {}
+
+  public record TableRenameRequest(
+      @JsonProperty("new_table_name") String newTableName,
+      @JsonProperty("new_namespace") List<String> newNamespace) {}
 
   private static HttpResponse methodNotAllowed() {
     return HttpResponse.ofJson(
