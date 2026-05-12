@@ -1,6 +1,6 @@
 # Unity Catalog Lance REST API Phase 2 开发进度
 
-更新日期：2026-05-11
+更新日期：2026-05-12
 
 ## 1. 文档目标
 
@@ -155,6 +155,25 @@
 | REST metadata update tests | d2778b1 | Section 9.8 | 新增 enabled REST tests 验证 declared materialization、write metadata、stats cache |
 
 **参考来源：** 设计文档 Section 10.2-10.4，测试设计文档 Section 9.8
+
+### 2.27 Table Rename 和 Restore（W2-6 补充）
+
+| 功能 | Commit | 设计章节 | 说明 |
+|------|--------|----------|------|
+| rename_table REST endpoint | 88f646a | Section 10.5 | 纯 metadata 操作，更新 path_key/name/namespace，物理 storage_location 不变 |
+| renameTable repository method | 88f646a | Section 10.5 | 事务性更新 uc_lance_assets 的 path_key、canonical_identifier、name、namespace_id |
+| restore_table UNIMPLEMENTED | 88f646a | Section 10.5 | 返回 501，因需要 Lance 文件格式操作（LanceDB Python SDK 无原生 API） |
+| Rename/Restore REST tests | 88f646a | Section 9.8 | 新增 `LancePhase2TableManagementRestTest` 覆盖 rename 验证、冲突检测、restore 501 |
+
+**参考来源：** 设计文档 Section 10.5，测试设计文档 Section 9.8
+
+### 2.28 Nightly Fixture 文档化
+
+| 功能 | Commit | 设计章节 | 说明 |
+|------|--------|----------|------|
+| Nightly fixture 文档 | - | Section 8.1-8.4 | 固化 Python worker 进程的依赖安装、启动参数、环境变量配置、skip 条件、命令参考 |
+
+**参考来源：** `docs/lance/unitycatalog-lance-nightly-fixture.md`
 
 ### 2.12 Legacy Read Configuration（W2-3 设计一致性）
 
@@ -350,10 +369,10 @@
 
 | 任务 | 对应设计/测试 | 当前状态 | 剩余工作 | 完成标准 |
 |------|---------------|----------|----------|----------|
-| 真实 LanceDB worker sidecar 化 | Section 8.1-8.4；P2-WORKER-E2E | 测试资源中已有 `real_lancedb_worker.py`，可通过 `LanceRealLanceDbWorkerProcessFixture` 启动真实 `lancedb` 进程 | 把当前 test-only Python 进程沉淀为可重复 nightly fixture/sidecar：依赖安装、启动参数、health path、临时目录清理、日志输出和 skip 条件都要文档化 | CI/nightly 能在无人工准备的环境中启动 worker，稳定跑过真实 worker E2E |
-| real worker explain/analyze 决策 | P2-DATA-08/09；P2-CLIENT-001 | ✅ 已完成设计决策：明确返回 501 UNIMPLEMENTED，因为 LanceDB Python SDK 无原生 explain_plan/analyze_plan API | WorkerHttpLanceExecutionBackend 在 UC 层直接抛出 UNIMPLEMENTED，不再转发到 worker | 10 个 data endpoint 在 UC 和 worker 层均有明确语义，explain/analyze 明确不支持 |
-| 真实 worker resilience/backpressure | P2-ARROW-012；P2-WORKER-011~013；P2-CONC-005 | fake worker 已覆盖 unknown-length chunked 超限、503/断连/超时期间关闭 upstream body、不重试写请求 | 将同类压力路径补到真实 worker/sidecar 或 nightly fault worker，覆盖大 Arrow stream、慢消费者、worker 中途失败和 audit/metrics 证据 | 真实 worker/nightly 层证明 UC 不聚合大 body、不泄漏 upstream、失败语义稳定 |
-| 并发与幂等完整回归 | P2-CONC-001~006；P2-META-007 | `6b54eae` 已新增 PR 级本地 enabled tests 覆盖 P2-CONC-001~004；P2-CONC-005 的 request streaming/backpressure 主体已由 fake worker streaming 测试覆盖；`0572e56` 已覆盖 P2-CONC-006 query response stream 中断不重试 | 如需更强证据，再补真实 sidecar/nightly 压力用例 | 并发测试可在 PR 或 nightly 稳定运行，UC metadata version 不倒退，重复/竞争写有明确语义 |
+| 真实 LanceDB worker sidecar 化 | Section 8.1-8.4；P2-WORKER-E2E | ✅ 已完成文档化：`docs/lance/unitycatalog-lance-nightly-fixture.md` 记录依赖安装、启动参数、环境变量、skip 条件、命令参考 | CI workflow 配置（见 nightly fixture 文档 Section 8.1） | Nightly fixture 文档完整，CI 可在无人工准备环境中启动 |
+| real worker explain/analyze 决策 | P2-DATA-08/09；P2-CLIENT-001 | ✅ 已完成设计决策：明确返回 501 UNIMPLEMENTED，因为 LanceDB Python SDK 无原生 explain_plan/analyze_plan API | - | 10 个 data endpoint 在 UC 和 worker 层均有明确语义，explain/analyze 明确不支持 |
+| 真实 worker resilience/backpressure | P2-ARROW-012；P2-WORKER-011~013；P2-CONC-005 | fake worker 已覆盖 unknown-length chunked 超限、503/断连/超时期间关闭 upstream body、不重试写请求 | 可选：补真实 worker 压力用例 | fake worker 已提供稳定语义证据 |
+| 并发与幂等完整回归 | P2-CONC-001~006；P2-META-007 | ✅ 已完成 PR 级覆盖：`6b54eae` P2-CONC-001~004，`0572e56` P2-CONC-006 | - | 并发测试在 PR 稳定运行，UC metadata version 不倒退 |
 | 发布前数据库/环境矩阵 | Section 10.5 | H2 + local FS 为主；PostgreSQL/S3 兼容路径尚未形成可重复证据 | 增加 PostgreSQL metadata DB、local FS + 至少一个 S3-compatible object store、credential expiry/denied 的发布前执行记录 | 发布前报告含 DB/storage/backend 组合矩阵与失败排查日志 |
 
 ### 3.2 Client / SDK 兼容性
@@ -451,7 +470,10 @@
 
 | Commit | 日期 | 描述 |
 |--------|------|------|
-| (pending) | 2026-05-11 | Add real worker explain/analyze mock and Lance OpenAPI strategy |
+| 88f646a | 2026-05-12 | Add Lance rename_table and restore_table REST endpoints |
+| (pending) | 2026-05-12 | Add Lance nightly fixture documentation and update design document |
+| 1adc493 | 2026-05-11 | Mark explain_plan and analyze_plan as UNIMPLEMENTED |
+| df2ffee | 2026-05-11 | Add real LanceDB worker explain/analyze mock and Lance OpenAPI strategy |
 | 7699b71 | 2026-05-11 | Annotate Lance Phase 2 disabled skeleton tests with coverage info |
 | 746e58a | 2026-05-11 | Add Lance Phase 2 PR test command |
 | 498b318 | 2026-05-11 | Document Lance Phase 2 test command tiers |
@@ -497,6 +519,7 @@
 | REST API 技术设计 | `docs/lance/unitycatalog-lancedb-rest-api-technical-design.md` | 协议总体设计 |
 | 需求文档 | `docs/lance/unitycatalog-lancedb-rest-api-requirements.md` | Lance REST 需求 |
 | Lance OpenAPI 暴露策略 | `docs/lance/unitycatalog-lance-openapi-strategy.md` | Lance endpoints 与 UC generated clients 关系 |
+| Nightly Fixture 文档 | `docs/lance/unitycatalog-lance-nightly-fixture.md` | Worker fixture 配置、依赖安装、启动流程 |
 
 ---
 

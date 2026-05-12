@@ -2,7 +2,7 @@
 
 副标题：Data Plane Compatibility 详细设计
 
-更新日期：2026-04-27
+更新日期：2026-05-12
 
 关联文档：
 
@@ -171,8 +171,8 @@
   - `/add_columns`
   - `/alter_columns`
   - `/drop_columns`
-- restore table（对应 `POST /v1/table/{id}/restore`）
-- rename table（对应 `POST /v1/table/{id}/rename`）
+- restore table（对应 `POST /v1/table/{id}/restore`）- 返回 501 UNIMPLEMENTED，因需要 Lance 文件格式操作
+- rename table（对应 `POST /v1/table/{id}/rename`）- ✅ 已实现为纯 metadata 操作（见 Section 10.5）
 - 物理数据删除和 UC metadata 删除的跨系统强事务
 - 面向生产的多云对象存储全矩阵验证
 - UC 主 UI 的 Lance 数据面管理页面
@@ -1205,6 +1205,70 @@ public void updateTableStats(
   - declared-only 表可推进到 `ACTIVE`
 
 第三阶段再通过 transaction/batch commit/idempotency 机制加强这一点。
+
+## 10.5 Table Rename 和 Restore（Phase 2 补充实现）
+
+虽然设计文档最初将 `rename_table` 和 `restore_table` 列为 Phase 3 能力，但经过分析后，部分能力可在 Phase 2 实现：
+
+### 10.5.1 rename_table
+
+`POST /v1/table/{id}/rename`
+
+**实现状态：✅ 已实现**
+
+设计决策：
+- `rename_table` 是纯 metadata 操作，不需要 backend 执行
+- 只更新 UC metadata（path_key、name、namespace_id），物理 storage_location 保持不变
+- Lance 表的物理数据路径由 Lance 文件系统管理，重命名仅改变 UC 的逻辑标识
+
+实现要点：
+- `LanceMetadataService.renameTable()` - 业务逻辑
+- `LanceTableRepository.renameTable()` - 持久化操作
+- `LanceRestTableService` - REST endpoint
+
+请求参数：
+- `new_table_name`（必填）- 新表名
+- `new_namespace`（可选）- 新 namespace 路径，若不填则保持在当前 namespace
+
+行为：
+- 检查表状态为 ACTIVE 或 DECLARED
+- 检查新 namespace 存在且用户有修改权限
+- 检查新路径不存在冲突（409 ALREADY_EXISTS）
+- 更新 `uc_lance_assets` 的 path_key、canonical_identifier、name、namespace_id
+- 保持 `uc_lance_tables.storage_location` 不变
+
+返回：更新后的 `TableView`
+
+### 10.5.2 restore_table
+
+`POST /v1/table/{id}/restore`
+
+**实现状态：✅ 已实现为 501 UNIMPLEMENTED**
+
+设计决策：
+- `restore_table` 需要 Lance 文件格式操作（读取特定 version manifest、重建表状态）
+- LanceDB Python SDK 没有原生 `restore_table` API
+- UC 不能独立实现 restore，必须依赖 Lance 执行引擎
+
+实现要点：
+- `LanceRestTableService.restoreTable()` 返回 501
+- 错误响应包含明确说明："requires Lance file format manipulation"
+
+返回：
+```json
+{
+  "type": "unimplemented",
+  "message": "restore_table is not supported: requires Lance file format manipulation",
+  "code": 501
+}
+```
+
+### 10.5.3 与 Phase 3 的关系
+
+Phase 3 扩展计划（参考 Section 7.2）：
+- 如果 LanceDB SDK 未来增加 `restore_table` API，可在 `LanceExecutionBackend` 接口添加 `restoreTable` 方法
+- 如果需要完整的事务恢复能力，需引入 version/tag 元数据表
+- `rename_table` 实现已稳定，Phase 3 无需修改
 
 ## 11. 认证与授权
 
