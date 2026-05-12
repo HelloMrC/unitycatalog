@@ -1,6 +1,6 @@
 # Unity Catalog 支持 LanceDB REST API 的技术设计
 
-更新日期：2026-04-23
+更新日期：2026-05-12
 
 关联需求文档：`docs/unitycatalog-lancedb-rest-api-requirements.md`
 
@@ -1275,6 +1275,9 @@ public interface LanceExecutionBackend {
 
 - `explainPlan` 与 `analyzePlan` 应作为独立执行入口显式保留，而不是隐含在 `query` 的某个模式参数中。
 - 这样可以与 Phase 2 的数据面范围、上层错误语义和测试设计中的独立验收点保持一致。
+- `restoreTable` 与 `renameTable` 在接口中列出但实际实现状态不同：
+  - `renameTable`：Phase 2 已实现为纯 metadata 操作，不经过 backend（UC 直接更新 metadata）
+  - `restoreTable`：Phase 2 返回 501 UNIMPLEMENTED，因需要 Lance 文件格式操作；完整实现延后到 Phase 3
 
 ### 8.4.2 通用参数对象
 
@@ -1609,11 +1612,18 @@ public interface LanceExecutionBackend {
 - delete
 - count rows
 - explain / analyze
+- rename table（纯 metadata 操作，见补充说明）
 
 实现重点：
 
 - 引入 `LanceExecutionBackend`
 - 引入 Arrow IPC request/response converters
+
+补充说明：
+
+- `rename_table` 原计划属于 Phase 3，但经分析后可作为纯 metadata 操作在 Phase 2 实现
+- `rename_table` 只更新 UC metadata（path_key、name、namespace_id），物理 storage_location 保持不变
+- `restore_table` 仍属于 Phase 3，因需要 Lance 文件格式操作；Phase 2 返回 501 UNIMPLEMENTED
 
 ## Phase 3：高级资产
 
