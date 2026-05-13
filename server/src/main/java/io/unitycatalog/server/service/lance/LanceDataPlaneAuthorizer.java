@@ -30,6 +30,8 @@ class LanceDataPlaneAuthorizer {
   }
 
   AuthorizationDecision authorizeRead(ResolvedLanceTable table) {
+    // Data reads accept SELECT for UC compatibility and READ_METADATA for early Lance metadata-only
+    // clients that have not yet split data and metadata privileges.
     authorize(table, READ_DATA, Privileges.SELECT, Privileges.READ_METADATA);
     return new AuthorizationDecision(
         READ_DATA, List.of(Privileges.SELECT, Privileges.READ_METADATA));

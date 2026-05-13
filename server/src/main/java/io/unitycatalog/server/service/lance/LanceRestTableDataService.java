@@ -303,6 +303,8 @@ public class LanceRestTableDataService {
         data -> {
           long totalBytes = bytesSeen.addAndGet(data.length());
           if (totalBytes > maxBytes) {
+            // Streaming Arrow writes cannot rely on Content-Length, so enforce the configured
+            // limit while chunks are being forwarded to the worker.
             LanceProtocolException exception = requestEntityTooLarge("Arrow", maxBytes);
             request.abort(exception);
             throw exception;
@@ -339,6 +341,7 @@ public class LanceRestTableDataService {
         authType(headers),
         deadlineMs(headers, defaultDeadlineMs),
         context(LanceRequestContext.currentContextHeaders()),
+        // Workers only need a stable correlation key; hashing avoids forwarding raw client keys.
         idempotencyKey == null || idempotencyKey.isBlank() ? null : sha256(idempotencyKey));
   }
 
@@ -419,6 +422,8 @@ public class LanceRestTableDataService {
       HttpRequest request,
       Optional<String> optionsHeader) {
     if (backend instanceof WorkerHttpLanceExecutionBackend) {
+      // Worker HTTP is the production path for Arrow writes. Keep the body streaming through UC so
+      // large inserts are not buffered in the server process.
       RequestHeaders headers = request.headers();
       validateArrowRequest(headers);
       LanceExecutionContext context =
@@ -440,6 +445,8 @@ public class LanceRestTableDataService {
                           .handleException(serviceContext, request, cause));
       return HttpResponse.of(response);
     }
+    // In-process/test backends receive an aggregated body because they do not consume Armeria
+    // streaming requests directly.
     validateArrowRequest(request.headers());
     return HttpResponse.of(
         request
@@ -489,6 +496,8 @@ public class LanceRestTableDataService {
 
   private Map<String, Object> safeBody(Map<String, Object> body) {
     Map<String, Object> safe = new LinkedHashMap<>(body);
+    // The path id and authenticated request context are authoritative; body-supplied identity
+    // fields are accepted for protocol compatibility but never trusted for lookup or authorization.
     safe.remove("id");
     safe.remove("identity");
     safe.remove("principal");

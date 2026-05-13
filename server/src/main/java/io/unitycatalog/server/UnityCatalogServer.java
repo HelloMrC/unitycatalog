@@ -197,6 +197,8 @@ public class UnityCatalogServer {
         new LanceRestTableService(repositories, authorizer);
     LanceExecutionBackend lanceExecutionBackend =
         LanceExecutionBackendFactory.create(unityCatalogServerBuilder.serverProperties);
+    // Lance data endpoints stay on the Lance route family because their wire format and backend
+    // dispatch are Lance REST concepts, not UC table API extensions.
     LanceRestTableDataService lanceRestTableDataService =
         new LanceRestTableDataService(
             repositories,
@@ -332,6 +334,8 @@ public class UnityCatalogServer {
   }
 
   private void addLanceDecorators(ServerBuilder armeriaServerBuilder, Repositories repositories) {
+    // Lance accepts API keys, exchanged Bearer tokens, and x-lance-* context headers, so it uses
+    // its own auth decorator before the generic UC decorators are applied to the rest of BASE_PATH.
     armeriaServerBuilder
         .routeDecorator()
         .pathPrefix(LANCE_PATH)

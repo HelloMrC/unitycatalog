@@ -182,7 +182,8 @@ public class LanceTableRepository {
   }
 
   private Optional<LanceAssetDAO> findAsset(Session session, String pathKey) {
-    // Used for duplicate check during creation - includes all states
+    // Creation checks all states so a dropped/deregistered path cannot be silently reused and hide
+    // the historical lifecycle of a Lance asset.
     Query<LanceAssetDAO> query =
         session.createQuery("FROM LanceAssetDAO WHERE pathKey = :pathKey", LanceAssetDAO.class);
     query.setParameter("pathKey", pathKey);
@@ -191,7 +192,8 @@ public class LanceTableRepository {
   }
 
   private Optional<LanceAssetDAO> findActiveAsset(Session session, String pathKey) {
-    // Only return assets that are ACTIVE or DECLARED, not DEREGISTERED or DROPPED
+    // Runtime lookups expose only active metadata plus declared tables that may still be
+    // materialized by a later create/insert operation.
     String hql =
         "FROM LanceAssetDAO WHERE pathKey = :pathKey " + "AND state IN ('ACTIVE', 'DECLARED')";
     Query<LanceAssetDAO> query = session.createQuery(hql, LanceAssetDAO.class);
@@ -305,6 +307,8 @@ public class LanceTableRepository {
           LanceTableDAO tableDAO = requireTable(session, assetId);
           Date now = new Date();
 
+          // A successful backend create/insert is the only point where declared-only metadata is
+          // promoted to an ACTIVE Lance table in UC.
           assetDAO.setState(ACTIVE_STATE);
           assetDAO.setUpdatedAt(now);
           assetDAO.setUpdatedBy(updatedBy);
@@ -381,6 +385,8 @@ public class LanceTableRepository {
 
   private void applyExecutionMetadata(
       LanceTableDAO tableDAO, Long currentVersion, String arrowSchemaJson, String statsJson) {
+    // Metadata fields are sparse because worker implementations may return only the values changed
+    // by the operation.
     if (currentVersion != null) {
       tableDAO.setCurrentVersion(currentVersion);
     }
@@ -407,11 +413,10 @@ public class LanceTableRepository {
                 "Dropping registered tables not supported. Use deregister instead.");
           }
 
-          // Delete properties first
+          // Remove properties and details but keep the asset tombstone for lifecycle/audit history.
           PropertyRepository.findProperties(session, assetId, Constants.LANCE_TABLE)
               .forEach(session::remove);
 
-          // Delete table details
           if (tableDAO != null) {
             session.remove(tableDAO);
           }
@@ -434,11 +439,10 @@ public class LanceTableRepository {
             throw new BaseException(ErrorCode.NOT_FOUND, "Lance table asset not found: " + assetId);
           }
 
-          // Delete properties first
+          // Deregister is metadata-only: the physical Lance dataset is left untouched.
           PropertyRepository.findProperties(session, assetId, Constants.LANCE_TABLE)
               .forEach(session::remove);
 
-          // Delete table details
           LanceTableDAO tableDAO = session.get(LanceTableDAO.class, assetId);
           if (tableDAO != null) {
             session.remove(tableDAO);

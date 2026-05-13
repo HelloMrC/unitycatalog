@@ -35,6 +35,7 @@ class LanceTableResolver {
     String tablePathKey = identifierCodec.toPathKey(path);
     Optional<LanceAssetDAO> assetOpt = lanceTableRepository.findAssetByPathKey(tablePathKey);
     if (assetOpt.isPresent()) {
+      // Prefer native uc_lance_* metadata; legacy UC table bridge is only a fallback.
       return resolveNativeTable(path, tablePathKey, delimiter, assetOpt.get());
     }
 
@@ -112,6 +113,7 @@ class LanceTableResolver {
       return Optional.empty();
     }
     try {
+      // The upstream Unity integration narrows legacy Lance discovery to catalog.schema.table.
       TableInfo tableInfo = unityTableRepository.getTable(String.join(".", path));
       return isLegacyLanceTable(tableInfo) ? Optional.of(tableInfo) : Optional.empty();
     } catch (BaseException e) {

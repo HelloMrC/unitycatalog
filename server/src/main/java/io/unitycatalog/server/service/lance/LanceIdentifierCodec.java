@@ -33,6 +33,8 @@ public class LanceIdentifierCodec {
     if (segments.isEmpty()) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Identifier must not be empty");
     }
+    // The repository key is slash-delimited even when the external Lance identifier uses "$" or a
+    // caller-supplied delimiter. Escaping keeps user segment text from changing the hierarchy.
     return segments.stream()
         .map(segment -> encodeSegment(segment, "/"))
         .reduce((a, b) -> a + "/" + b)
@@ -50,6 +52,7 @@ public class LanceIdentifierCodec {
 
   public String normalizeDelimiter(String delimiter) {
     if (delimiter == null || delimiter.isBlank()) {
+      // Upstream Lance Unity namespace clients use "$" as the default path delimiter.
       return DEFAULT_DELIMITER;
     }
     if (delimiter.length() != 1 || "/%".contains(delimiter)) {

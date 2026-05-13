@@ -31,10 +31,14 @@ class LanceDataPlaneMetadataUpdater {
       Long returnedVersion = longValue(payload.get("version"));
       if (!table.tableRef().declaredOnly()
           && isVersionRollback(table.tableDAO().getCurrentVersion(), returnedVersion)) {
+        // A stale worker response must not move UC's tracked Lance version backwards.
         return versionRollbackResult(
             result, table.tableDAO().getCurrentVersion(), returnedVersion);
       }
       if (table.tableRef().declaredOnly()) {
+        // First successful write/create materializes a declared-only metadata entry into an active
+        // Lance table while preserving the original declared storage location if the worker does
+        // not return one.
         String storageLocation = firstString(payload, "storage_location", "storageLocation");
         if (storageLocation == null) {
           storageLocation = table.tableDAO().getStorageLocation();
@@ -52,6 +56,8 @@ class LanceDataPlaneMetadataUpdater {
             statsJson(payload),
             updatedBy(table, context));
       } else {
+        // For active tables, the backend remains the source of truth for physical version/schema
+        // details; UC records only the fields returned by the worker.
         tableRepository.updateTableExecutionMetadata(
             table.assetDAO().getId(),
             returnedVersion,
@@ -60,6 +66,8 @@ class LanceDataPlaneMetadataUpdater {
             updatedBy(table, context));
       }
     } catch (RuntimeException e) {
+      // At this point the worker reported success. Surface the split-brain risk explicitly so the
+      // admin reconcile endpoint can be used instead of hiding it as an ordinary 500.
       throw new LanceBackendCommittedException(
           "Lance backend write completed but UC metadata update failed.", e);
     }
@@ -89,6 +97,8 @@ class LanceDataPlaneMetadataUpdater {
   LanceExecutionResult afterStats(
       ResolvedLanceTable table, LanceExecutionContext context, LanceExecutionResult result) {
     if (!table.legacyBridge()) {
+      // Stats are a cache of worker output for metadata visibility; they are not used to answer
+      // predicate-aware count_rows requests.
       tableRepository.updateTableStats(
           table.assetDAO().getId(), statsPayloadJson(result.payload()), updatedBy(table, context));
     }

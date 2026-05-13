@@ -56,6 +56,7 @@ public class LanceAuthDecorator implements DecoratingHttpServiceFunction {
     Optional<String> bearerToken = bearerToken(req);
     String apiKey = req.headers().get(X_API_KEY);
     boolean hasApiKey = apiKey != null && !apiKey.isBlank();
+    // Keep the authenticated principal unambiguous for downstream authorization and audit.
     if (bearerToken.isPresent() && hasApiKey) {
       return unauthenticated(
           "Authentication methods are mutually exclusive: provide either Authorization Bearer or"
@@ -99,6 +100,7 @@ public class LanceAuthDecorator implements DecoratingHttpServiceFunction {
         .forEach(
             header -> {
               String name = header.getKey().toString();
+              // x-lance-worker-url is test/config plumbing; do not expose it as client context.
               if (name.startsWith("x-lance-") && !"x-lance-worker-url".equals(name)) {
                 contextHeaders.put(name, header.getValue());
               }
@@ -124,6 +126,8 @@ public class LanceAuthDecorator implements DecoratingHttpServiceFunction {
       throw new BaseException(ErrorCode.UNAUTHENTICATED, "Invalid Bearer token.", e);
     }
     if (!INTERNAL.equals(decodedJWT.getIssuer())) {
+      // External Bearer tokens are normalized through UC token exchange so the Lance route can
+      // share issuer/audience validation with the rest of the server without an internal HTTP hop.
       return tokenExchangeService.exchangeToken(accessToken).principal();
     }
 

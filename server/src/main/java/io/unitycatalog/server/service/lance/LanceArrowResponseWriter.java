@@ -50,6 +50,8 @@ class LanceArrowResponseWriter {
 
   private byte[] arrowBytes(MediaType responseType, LanceExecutionResult result) {
     Object arrow = result.payload().getOrDefault("arrow", "empty");
+    // Test backends can return a lightweight placeholder. Real worker responses provide binaryBody
+    // and bypass this synthetic Arrow marker.
     String payload = "ARROW1\n" + responseType + "\n" + arrow + "\nARROW1";
     return payload.getBytes(StandardCharsets.UTF_8);
   }

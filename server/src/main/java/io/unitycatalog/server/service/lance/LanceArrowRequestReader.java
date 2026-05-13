@@ -15,6 +15,8 @@ class LanceArrowRequestReader {
     Map<String, Object> attributes = new LinkedHashMap<>();
     boolean schemaPeeked = Boolean.parseBoolean(request.headers().get(SCHEMA_PEEK_HEADER));
     byte[] arrowBody = request.content().array();
+    // Aggregated mode is for local/test backends; UC records metadata about the Arrow payload but
+    // does not parse record batches or become a Lance execution engine.
     attributes.put("inputData", "arrow-stream");
     attributes.put("inputBytes", arrowBody.length);
     attributes.put("inputMediaType", request.contentType().withoutParameters().toString());
@@ -31,6 +33,8 @@ class LanceArrowRequestReader {
   Map<String, Object> readStreaming(RequestHeaders headers) {
     Map<String, Object> attributes = new LinkedHashMap<>();
     Long contentLength = headers.getLong(HttpHeaderNames.CONTENT_LENGTH);
+    // Streaming mode intentionally omits __arrowBody; the HttpRequest itself is forwarded to the
+    // worker so large writes do not require buffering in UC.
     attributes.put("inputData", "arrow-stream");
     attributes.put("inputBytes", contentLength == null ? 0L : contentLength);
     attributes.put("inputMediaType", contentType(headers).withoutParameters().toString());

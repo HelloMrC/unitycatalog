@@ -64,6 +64,8 @@ public class LanceExceptionHandler extends BaseExceptionHandler {
     response.put("message", exception.getMessage());
     response.put("code", exception.status().code());
     response.put("requestId", requestId);
+    // The physical Lance operation may have succeeded; callers and operators need a different
+    // signal from a pre-dispatch failure so they can reconcile UC metadata.
     response.put("backend_committed", true);
     response.put("reconcileRequired", true);
     return jsonError(exception.status(), requestId, response);

@@ -28,6 +28,8 @@ class LanceStorageOptionsService {
     Map<String, String> storageOptionsTemplate = parseStorageOptionsTemplate(table.tableDAO());
     RuntimeStorageOptions runtimeOptions = runtimeStorageOptions(context);
     Map<String, String> storageOptions = new LinkedHashMap<>(storageOptionsTemplate);
+    // Runtime credentials are merged after the persisted template and are never written back to
+    // uc_lance_tables; they are scoped to this backend command only.
     storageOptions.putAll(runtimeOptions.options());
     return new LanceStorageBinding(
         table.tableRef().storageLocation(),
@@ -64,6 +66,8 @@ class LanceStorageOptionsService {
     if (storageOptionsTemplate == null || storageOptionsTemplate.isEmpty()) {
       return Map.of();
     }
+    // Templates may contain stable knobs such as region/endpoint. Secrets and session material are
+    // deliberately stripped because those values must be vended at request time.
     return storageOptionsTemplate.entrySet().stream()
         .filter(entry -> !isSensitiveStorageOption(entry.getKey()))
         .collect(
@@ -80,6 +84,8 @@ class LanceStorageOptionsService {
     if (!testCredentialVendingEnabled) {
       return RuntimeStorageOptions.empty();
     }
+    // The echo backend uses x-lance-* context headers to exercise credential vending branches in
+    // tests without requiring cloud credentials in the local UC server.
     Map<String, String> lanceContext = context == null ? Map.of() : context.lanceContext();
     if (truthy(lanceContext.get("fakeStorageDenied"))) {
       throw new BaseException(ErrorCode.PERMISSION_DENIED, "Storage credential access denied.");

@@ -221,6 +221,8 @@ public class LanceMetadataService {
       namespaceRepository.getNamespaceOrThrow(rootScopeId, namespacePathKey);
     }
     if ((pageToken == null || pageToken.isBlank()) && nextPageToken == null) {
+      // Legacy bridge rows come from UC tables and are appended only on the first native page so a
+      // page token cannot interleave two different pagination sources.
       tableIds.addAll(
           legacyTables.orElse(List.of()).stream()
               .map(table -> toLegacyPathKey(namespacePath, table.getName()))
@@ -610,6 +612,7 @@ public class LanceMetadataService {
       return Optional.empty();
     }
     try {
+      // Legacy Lance tables are ordinary UC external TEXT tables marked with table_type=lance.
       TableInfo tableInfo = unityTableRepository.getTable(String.join(".", path));
       return isLegacyLanceTable(tableInfo) ? Optional.of(tableInfo) : Optional.empty();
     } catch (BaseException e) {
@@ -627,6 +630,8 @@ public class LanceMetadataService {
       return Optional.empty();
     }
     try {
+      // UC legacy lookup is limited to catalog.schema because Unity tables are fixed at three
+      // levels, unlike Lance namespace paths which may be deeper.
       ListTablesResponse response =
           unityTableRepository.listTables(
               namespacePath.get(0),
@@ -696,6 +701,7 @@ public class LanceMetadataService {
     if (storageOptionsTemplate == null || storageOptionsTemplate.isEmpty()) {
       return Map.of();
     }
+    // Persist only stable, non-secret storage options. Runtime credentials are vended per request.
     return storageOptionsTemplate.entrySet().stream()
         .filter(entry -> !isSensitiveStorageOption(entry.getKey()))
         .collect(

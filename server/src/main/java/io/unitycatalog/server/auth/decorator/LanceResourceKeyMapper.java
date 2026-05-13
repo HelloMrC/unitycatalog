@@ -40,6 +40,8 @@ public class LanceResourceKeyMapper {
       Optional<LanceAssetDAO> asset = resolveTableAsset(resourceKeys.get(LANCE_TABLE));
       asset.ifPresent(
           lanceAssetDAO -> {
+            // A table authorization check also needs the parent namespace so UC's authorization
+            // graph can evaluate inherited namespace grants without expanding the full path here.
             resourceIds.put(LANCE_TABLE, lanceAssetDAO.getId());
             resourceIds.put(LANCE_NAMESPACE, lanceAssetDAO.getNamespaceId());
           });

@@ -255,6 +255,8 @@ class LanceDataPlaneService {
       boolean writeOperation,
       AuthorizationScope authorizationScope,
       HttpRequest binaryRequest) {
+    // Every data-plane operation follows the same boundary: resolve governed metadata, authorize on
+    // the UC resource, validate Lance table state, vend runtime storage options, then dispatch.
     ResolvedLanceTable table = tableResolver.resolve(id, delimiter.orElse(null));
     LanceDataPlaneAuthorizer.AuthorizationDecision authorizationDecision =
         authorize(authorizationScope, table);
@@ -308,6 +310,8 @@ class LanceDataPlaneService {
       ResolvedLanceTable table,
       boolean writeOperation) {
     if (table.legacyBridge()) {
+      // Legacy UC TEXT tables only prove metadata compatibility. Writes would bypass the native
+      // uc_lance_* state model, and reads stay opt-in until a worker path is explicitly configured.
       if (writeOperation) {
         throw new BaseException(
             ErrorCode.UNIMPLEMENTED,
@@ -322,6 +326,7 @@ class LanceDataPlaneService {
     }
 
     if (table.tableRef().declaredOnly() && !writeOperation) {
+      // Declared tables have UC metadata but no guaranteed physical Lance dataset yet.
       throw new BaseException(
           ErrorCode.ABORTED,
           "Declared Lance table must be materialized before " + operation + " can run.");

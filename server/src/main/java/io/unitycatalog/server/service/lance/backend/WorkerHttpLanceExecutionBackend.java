@@ -196,6 +196,8 @@ public class WorkerHttpLanceExecutionBackend implements LanceExecutionBackend {
             .contentType(ARROW_STREAM)
             .add(HttpHeaderNames.ACCEPT, MediaType.JSON.toString())
             .add("x-request-id", command.context().requestId())
+            // Arrow requests keep the body as the Arrow stream and move command metadata into
+            // sideband headers so the worker can start consuming the stream immediately.
             .add(UC_COMMAND_HEADER, command.operation())
             .add(UC_CONTEXT_HEADER, base64Json(command.context().lanceContext()))
             .add(UC_TABLE_HEADER, base64Json(command.table()))
@@ -262,6 +264,8 @@ public class WorkerHttpLanceExecutionBackend implements LanceExecutionBackend {
         return new LanceExecutionResult(payload);
       }
       if (shouldRetry(response, retryableRead, retryCount)) {
+        // Only JSON read commands are retried. Arrow writes may have already committed data after
+        // their request body reached the worker, so they are deliberately non-retryable here.
         abortRequest(request, null);
         retryCount++;
         continue;
@@ -310,6 +314,8 @@ public class WorkerHttpLanceExecutionBackend implements LanceExecutionBackend {
 
   private Map<String, Object> commandPayload(String path, LanceExecutionCommand command) {
     Map<String, Object> payload = new LinkedHashMap<>(command.attributes());
+    // JSON commands carry a full envelope in the body because there is no Arrow payload competing
+    // for the request body. This keeps worker implementations independent from UC repository types.
     payload.put("operation", command.operation());
     payload.put("workerPath", path);
     payload.put("workerBaseUrl", baseUrl);
@@ -439,6 +445,7 @@ public class WorkerHttpLanceExecutionBackend implements LanceExecutionBackend {
   private String base64Json(Object value) {
     try {
       byte[] bytes = OBJECT_MAPPER.writeValueAsBytes(value);
+      // Header-safe JSON keeps Arrow body forwarding simple and avoids delimiter-sensitive headers.
       return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     } catch (JsonProcessingException e) {
       throw new BaseException(ErrorCode.INTERNAL, "Invalid Lance worker header payload.", e);
