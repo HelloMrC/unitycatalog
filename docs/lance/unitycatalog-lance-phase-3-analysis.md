@@ -1,6 +1,6 @@
 # Unity Catalog Lance Phase 3 API 可行性分析
 
-更新日期：2026-05-12
+更新日期：2026-05-13
 
 ## 1. 设计约束
 
@@ -27,21 +27,44 @@
 | `describeIndexStats` | 索引统计信息 | 索引大小、向量数量等需要读取物理 Lance 文件 | ❌ 需要 Lance 执行引擎 |
 | `dropIndex` | 删除索引 | 需要删除物理 Lance 文件中的索引数据 | ❌ 需要 Lance 执行引擎 |
 
-**结论：Index 系列 API 全部需要 Lance 执行引擎。UC 只能维护索引元数据表，但不能创建/删除/统计索引。**
+**结论：Index 写入、删除和统计需要 Lance 执行引擎；`listIndices` 可以在 UC 已维护 `uc_lance_indices` 元数据视图后提供只读查询。**
 
 ### 2.2 Version（版本管理）
 
 | API | 操作类型 | 分析 | UC 实现可行性 |
 |-----|----------|------|---------------|
-| `listVersions` | 列出版本 | 可以读取 UC 元数据表 `uc_lance_versions`，但版本号由 Lance 写入时生成 | ⚠️ 混合：UC 可查询元数据，但元数据来源是 Lance 执行引擎写入 |
-| `createVersion` | 创建版本 | Lance 的 version 是每次写入自动生成，不能手动创建 | ❌ 无意义：Version 由 Lance 写入自动生成 |
-| `describeVersion` | 描述版本详情 | 版本详情（manifest 内容、schema 变化）在物理 Lance manifest 中 | ❌ 需要 Lance 执行引擎读取 manifest |
-| `deleteVersions` | 删除版本 | 需要删除物理 Lance 数据文件和更新 manifest | ❌ 需要 Lance 执行引擎 |
-| `batchCreateVersions` | 批量创建版本 | 同 createVersion，version 不能手动创建 | ❌ 无意义 |
+| `listVersions` | 列出版本 | 可以读取 UC 元数据表 `uc_lance_versions`，作为 Lance 写入结果的缓存 | ✅ 读操作：UC 实现，元数据由 Lance 执行引擎写入后同步 |
+| `describeVersion` | 描述版本详情 | 版本元数据（version、timestamp、操作类型）可缓存在 UC | ✅ 读操作：UC 实现，查询元数据表 |
+| `createVersion` | 创建版本 | Lance version 由写入自动生成，不能手动创建 | ❌ 显式报错：返回 400 BAD_REQUEST "version cannot be manually created" |
+| `deleteVersions` | 删除版本 | 需要删除物理 Lance 数据文件和更新 manifest | ❌ 显式报错：返回 501 UNIMPLEMENTED "requires Lance execution engine" |
+| `batchCreateVersions` | 批量创建版本 | 同 createVersion，version 不能手动创建 | ❌ 显式报错：返回 400 BAD_REQUEST |
 
-**结论：Version 系列 API 大部分需要 Lance 执行引擎。UC 可以维护版本元数据表（作为 Lance 写入结果的缓存），但不能创建/删除版本。**
+**结论：Version 读操作 UC 可实现（查询元数据表），写操作显式报错。**
 
-**重要说明：Lance 的 version 是物理概念，每次写入操作自动递增。UC 的 `current_version` 字段只是缓存 Lance 最新版本号。**
+**设计策略：**
+
+- **读操作支持**：UC 创建 `uc_lance_versions` 元数据表，Lance 执行引擎每次写入后同步写入
+- **写操作拒绝**：`createVersion` / `batchCreateVersions` 返回 400（语义错误，version 不能手动创建）；`deleteVersions` 返回 501（需要 Lance 执行引擎）
+- **元数据同步**：类似 Phase 2 的 metadata update，每次 Lance 写入成功后更新 UC version 元数据
+
+**Version 元数据表设计：**
+
+```sql
+CREATE TABLE uc_lance_versions (
+  id UUID PRIMARY KEY,
+  asset_id UUID NOT NULL REFERENCES uc_lance_assets(id),
+  version BIGINT NOT NULL,
+  operation VARCHAR(50) NOT NULL,  -- 'insert', 'update', 'delete', 'merge_insert', 'create_index'
+  timestamp TIMESTAMP NOT NULL,
+  created_by VARCHAR(255),
+  UNIQUE(asset_id, version)  -- 同一表的版本号唯一
+);
+```
+
+**同步时机（Phase 2 已实现）：**
+- Lance 执行引擎写入成功后返回 `version`
+- UC 调用 `LanceTableRepository.updateTableExecutionMetadata()` 更新 `current_version`
+- Phase 3 扩展：同时写入 `uc_lance_versions` 表记录版本历史
 
 ### 2.3 Tag（版本标签）
 
@@ -99,29 +122,30 @@
 
 ## 3. 汇总分类
 
-### 3.1 ✅ UC 可独立实现（纯 Metadata）
+### 3.1 ✅ 当前 UC 可实现的 Metadata API
 
 | API | 说明 | 实现阶段 |
 |-----|------|----------|
 | `renameTable` | 更新 path_key/name/namespace_id | Phase 2 已实现 |
 | `createEmptyTable` | 等同 declareTable | Phase 1 已实现 |
+| `listVersions` | 查询 `uc_lance_versions` 表 | Phase 3 可优先实现 |
+| `describeVersion` | 查询单个 version metadata | Phase 3 可优先实现 |
 | `listTags` | 查询 `uc_lance_tags` 表 | Phase 3 待实现 |
 | `getTagVersion` | 查询 Tag -> Version 映射 | Phase 3 待实现 |
 | `createTag` | 创建 Tag 元数据 | Phase 3 待实现 |
 | `updateTag` | 更新 Tag 指向的 Version | Phase 3 待实现 |
 | `deleteTag` | 删除 Tag 元数据 | Phase 3 待实现 |
 
-### 3.2 ❌ 需要 Lance 执行引擎
+### 3.2 ❌ 需要 Lance 执行引擎或显式报错
 
 | API | 说明 | UC 处理方式 |
 |-----|------|-------------|
 | `createIndex` | 构建向量索引 | 501 UNIMPLEMENTED 或转发 worker |
 | `describeIndexStats` | 索引统计 | 501 UNIMPLEMENTED 或转发 worker |
 | `dropIndex` | 删除索引 | 501 UNIMPLEMENTED 或转发 worker |
-| `createVersion` | Lance version 自动生成，无手动创建语义 | 返回 400 BAD_REQUEST 或 501 |
-| `describeVersion` | 读取 manifest 内容 | 501 UNIMPLEMENTED 或转发 worker |
-| `deleteVersions` | 删除物理数据文件 | 501 UNIMPLEMENTED 或转发 worker |
-| `batchCreateVersions` | 同 createVersion | 返回 400 BAD_REQUEST 或 501 |
+| `createVersion` | 真实 version 创建需要 manifest/version 来源 | 501 UNIMPLEMENTED 或转发 worker |
+| `deleteVersions` | 删除物理数据文件 | 501 UNIMPLEMENTED "requires Lance execution engine" |
+| `batchCreateVersions` | 真实批量 version 创建需要 backend 承接 | 501 UNIMPLEMENTED 或转发 worker |
 | `describeTransaction` | 读取 manifest 事务状态 | 501 UNIMPLEMENTED 或转发 worker |
 | `alterTransaction` | 修改 manifest | 501 UNIMPLEMENTED 或转发 worker |
 | `batchCommit` | 批量原子写入 | 501 UNIMPLEMENTED 或转发 worker |
@@ -132,7 +156,6 @@
 | API | UC Metadata 部分 | Lance 执行引擎部分 | 建议处理方式 |
 |-----|------------------|-------------------|--------------|
 | `listIndices` | 查询 `uc_lance_indices` | 索引元数据由 Lance 执行引擎写入 | UC 提供查询能力，但元数据来源依赖 Lance 执行引擎写入 |
-| `listVersions` | 查询 `uc_lance_versions` | 版本号由 Lance 写入自动生成 | UC 提供查询能力，元数据来源依赖 Lance 执行引擎写入 |
 | `updateTableSchemaMetadata` | 更新 `arrow_schema_json` | Lance 文件 schema 变更 | 建议统一通过 Lance 执行引擎完成，UC 只记录结果 |
 | `addColumns` | 同上 | 同上 | 同上 |
 | `alterColumns` | 同上 | 同上 | 同上 |
@@ -142,7 +165,20 @@
 
 ## 4. Phase 3 实施建议
 
-### 4.1 UC 可独立实现的能力
+### 4.1 当前可优先实现的 Metadata 能力
+
+**Version 读接口（2 个 API）：**
+
+```
+POST /v1/table/{id}/version/list      -> UC 查询 uc_lance_versions
+POST /v1/table/{id}/version/describe  -> UC 查询 uc_lance_versions
+```
+
+前置条件：
+
+- Phase 2 写入成功、reconcile 或迁移导入流程需要同步 `uc_lance_versions`
+- response 只能返回 UC 已记录字段，不能伪造未同步的 manifest / eTag / stats 细节
+- 如果没有 version 记录，`list` 返回空列表，`describe` 返回 Lance-compatible not found
 
 **Tag CRUD（5 个 API）：**
 
@@ -162,6 +198,7 @@ CREATE TABLE uc_lance_tags (
   asset_id UUID NOT NULL REFERENCES uc_lance_assets(id),
   tag_name VARCHAR(255) NOT NULL,
   version BIGINT NOT NULL,
+  metadata_json TEXT,
   created_at TIMESTAMP,
   created_by VARCHAR(255),
   updated_at TIMESTAMP,
@@ -169,9 +206,11 @@ CREATE TABLE uc_lance_tags (
 );
 ```
 
+Tag 创建和更新应校验 `target_version` 是否存在于 `uc_lance_versions`，或在需求层显式允许 dangling tag；默认建议校验存在，避免 tag 指向 UC 无法解释的版本。
+
 ### 4.2 需要 Lance 执行引擎的能力
 
-**Index、Version、Transaction、BatchCommit、Restore、Schema Evolution：**
+**Index 写入/统计、Version mutation、Transaction、BatchCommit、Restore、Schema Evolution：**
 
 建议策略：
 
@@ -180,7 +219,7 @@ CREATE TABLE uc_lance_tags (
 | 501 UNIMPLEMENTED | Lance 执行引擎未配置时 |
 | 转发 Worker | Lance 执行引擎配置时（类似 Phase 2 的 worker-http backend） |
 
-如果 Lance 执行引擎支持这些 API，UC 可作为协议转发层，类似 Phase 2 的数据面设计。
+如果 Lance 执行引擎支持这些 API，UC 可作为协议转发层，类似 Phase 2 的数据面设计。Version 读和 Tag CRUD 不需要等待执行引擎完整覆盖。
 
 ### 4.3 Version 元数据表的设计问题
 
@@ -192,19 +231,19 @@ UC 的 `uc_lance_versions` 表存在以下问题：
 2. **元数据同步**：每次 Lance 写入后，需要同步版本号到 UC（类似 Phase 2 的 metadata update）
 3. **删除语义**：UC 删除版本元数据不等于删除物理 Lance 数据
 
-**建议：`uc_lance_versions` 表作为可选的版本历史缓存，不作为主数据源。Version 操作统一通过 Lance 执行引擎。**
+**建议：`uc_lance_versions` 表作为版本历史元数据视图，支持 `listVersions` / `describeVersion` 读接口；version 创建、删除、批量创建和 restore 仍通过 Lance 执行引擎。**
 
 ---
 
 ## 5. 待讨论问题
 
-### 5.1 Tag 是否属于 Phase 3？
+### 5.1 Version 读接口和 Tag 是否必须等到完整 Phase 3？
 
-Tag CRUD 是纯 metadata 操作，技术上可以在 Phase 2 或 Phase 1 之后立即实现。
+不必须。`listVersions` / `describeVersion` 是 metadata-backed read，Tag CRUD 是纯 metadata 操作，技术上可以在 Phase 2 或 Phase 1 之后立即实现。
 
 建议：
-- Tag 作为 Phase 2 补充或独立的 Phase 2.x
-- 与 `restore_table`（需要 Lance 执行引擎）分开
+- Version 读接口和 Tag CRUD 作为 Phase 2 补充或独立的 Phase 2.x
+- 与 `restore_table`、`deleteVersions`、`batchCreateVersions` 等需要 Lance 执行引擎的能力分开
 
 ### 5.2 Schema Evolution 的责任边界
 
@@ -239,12 +278,12 @@ Schema Evolution 是混合操作，存在两个设计选项：
 
 | 分类 | API 数量 | UC 实现方式 |
 |------|----------|-------------|
-| ✅ 纯 Metadata | 7 | UC 独立实现 |
-| ❌ 需要 Lance 执行引擎 | 12 | 501 UNIMPLEMENTED 或转发 worker |
-| ⚠️ 混合 | 6 | 需明确边界，建议统一通过 Lance 执行引擎 |
+| ✅ 当前可实现 Metadata API | 9 | UC 查询或更新 Lance 专用元数据表 |
+| ❌ 需要 Lance 执行引擎 | 10+ | 501 UNIMPLEMENTED 或转发 worker |
+| ⚠️ 混合 | 5+ | 需明确边界，建议统一通过 Lance 执行引擎写入后同步 UC 元数据 |
 
 **核心结论：**
 
-- **Tag CRUD** 是 Phase 3 中唯一 UC 可完全独立实现的能力
-- **Index、Version（大部分）、Transaction、BatchCommit、Restore、Schema Evolution** 需要 Lance 执行引擎
-- UC 作为元数据治理平台，Phase 3 的价值在于维护 Tag 元数据和提供协议转发层（如果配置了 Lance 执行引擎）
+- **Version 读接口**（`listVersions` / `describeVersion`）和 **Tag CRUD** 是当前可以优先实现的 metadata 能力
+- **Version mutation、Transaction、BatchCommit、Restore、Schema Evolution 和 Index 写入/统计** 需要 Lance 执行引擎
+- UC 作为元数据治理平台，Phase 3 的价值在于维护 version/tag 等治理元数据，并为依赖存储或执行的 API 提供协议转发层
