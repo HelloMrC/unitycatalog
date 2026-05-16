@@ -61,6 +61,8 @@ import io.unitycatalog.server.service.lance.LanceDataPlaneObservability;
 import io.unitycatalog.server.service.lance.LanceRestNamespaceService;
 import io.unitycatalog.server.service.lance.LanceRestTableDataService;
 import io.unitycatalog.server.service.lance.LanceRestTableService;
+import io.unitycatalog.server.service.lance.LanceRestTagService;
+import io.unitycatalog.server.service.lance.LanceRestVersionService;
 import io.unitycatalog.server.service.lance.backend.LanceExecutionBackend;
 import io.unitycatalog.server.service.lance.backend.LanceExecutionBackendFactory;
 import io.unitycatalog.server.utils.OptionParser;
@@ -195,6 +197,9 @@ public class UnityCatalogServer {
         new LanceRestNamespaceService(repositories, authorizer);
     LanceRestTableService lanceRestTableService =
         new LanceRestTableService(repositories, authorizer);
+    LanceRestVersionService lanceRestVersionService =
+        new LanceRestVersionService(repositories, authorizer);
+    LanceRestTagService lanceRestTagService = new LanceRestTagService(repositories, authorizer);
     LanceExecutionBackend lanceExecutionBackend =
         LanceExecutionBackendFactory.create(unityCatalogServerBuilder.serverProperties);
     // Lance data endpoints stay on the Lance route family because their wire format and backend
@@ -274,6 +279,8 @@ public class UnityCatalogServer {
             BASE_PATH + "external-locations", externalLocationService, requestConverterFunction)
         .annotatedService(LANCE_PATH, lanceRestNamespaceService, requestConverterFunction)
         .annotatedService(LANCE_PATH, lanceRestTableService, requestConverterFunction)
+        .annotatedService(LANCE_PATH, lanceRestVersionService, requestConverterFunction)
+        .annotatedService(LANCE_PATH, lanceRestTagService, requestConverterFunction)
         .annotatedService(LANCE_PATH, lanceRestTableDataService, requestConverterFunction);
     addIcebergApiServices(
         armeriaServerBuilder,
