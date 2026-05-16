@@ -105,7 +105,7 @@ class LanceDataPlaneService {
         prepared.command(),
         prepared.table(),
         () -> metadataUpdater.afterWrite(
-            prepared.table(), context, backend.insert(prepared.command())));
+            "insert", prepared.table(), context, backend.insert(prepared.command())));
   }
 
   LanceExecutionResult mergeInsert(
@@ -136,7 +136,7 @@ class LanceDataPlaneService {
         prepared.command(),
         prepared.table(),
         () -> metadataUpdater.afterWrite(
-            prepared.table(), context, backend.mergeInsert(prepared.command())));
+            "merge_insert", prepared.table(), context, backend.mergeInsert(prepared.command())));
   }
 
   LanceExecutionResult update(
@@ -150,7 +150,7 @@ class LanceDataPlaneService {
         prepared.command(),
         prepared.table(),
         () -> metadataUpdater.afterWrite(
-            prepared.table(), context, backend.update(prepared.command())));
+            "update", prepared.table(), context, backend.update(prepared.command())));
   }
 
   LanceExecutionResult delete(
@@ -164,7 +164,7 @@ class LanceDataPlaneService {
         prepared.command(),
         prepared.table(),
         () -> metadataUpdater.afterWrite(
-            prepared.table(), context, backend.delete(prepared.command())));
+            "delete", prepared.table(), context, backend.delete(prepared.command())));
   }
 
   LanceExecutionResult explainPlan(
@@ -231,7 +231,7 @@ class LanceDataPlaneService {
         prepared.command(),
         prepared.table(),
         () -> metadataUpdater.afterWrite(
-            prepared.table(), context, backend.create(prepared.command())));
+            "create", prepared.table(), context, backend.create(prepared.command())));
   }
 
   private PreparedCommand command(

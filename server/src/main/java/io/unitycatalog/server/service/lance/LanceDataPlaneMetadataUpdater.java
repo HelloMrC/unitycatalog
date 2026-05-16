@@ -5,8 +5,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.LanceTableRepository;
+import io.unitycatalog.server.persist.LanceVersionRepository;
 import io.unitycatalog.server.service.lance.backend.LanceExecutionContext;
 import io.unitycatalog.server.service.lance.backend.LanceExecutionResult;
+import java.util.Date;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -15,13 +17,19 @@ class LanceDataPlaneMetadataUpdater {
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
   private final LanceTableRepository tableRepository;
+  private final LanceVersionRepository versionRepository;
 
-  LanceDataPlaneMetadataUpdater(LanceTableRepository tableRepository) {
+  LanceDataPlaneMetadataUpdater(
+      LanceTableRepository tableRepository, LanceVersionRepository versionRepository) {
     this.tableRepository = tableRepository;
+    this.versionRepository = versionRepository;
   }
 
   LanceExecutionResult afterWrite(
-      ResolvedLanceTable table, LanceExecutionContext context, LanceExecutionResult result) {
+      String operation,
+      ResolvedLanceTable table,
+      LanceExecutionContext context,
+      LanceExecutionResult result) {
     if (table.legacyBridge()) {
       return result;
     }
@@ -65,6 +73,7 @@ class LanceDataPlaneMetadataUpdater {
             statsJson(payload),
             updatedBy(table, context));
       }
+      recordVersionMetadata(operation, table, context, payload, returnedVersion);
     } catch (RuntimeException e) {
       // At this point the worker reported success. Surface the split-brain risk explicitly so the
       // admin reconcile endpoint can be used instead of hiding it as an ordinary 500.
@@ -72,6 +81,28 @@ class LanceDataPlaneMetadataUpdater {
           "Lance backend write completed but UC metadata update failed.", e);
     }
     return result;
+  }
+
+  private void recordVersionMetadata(
+      String operation,
+      ResolvedLanceTable table,
+      LanceExecutionContext context,
+      Map<String, Object> payload,
+      Long returnedVersion) {
+    if (returnedVersion == null) {
+      return;
+    }
+    versionRepository.upsertVersion(
+        table.assetDAO().getId(),
+        returnedVersion,
+        operation,
+        new Date(),
+        firstString(payload, "manifest_path", "manifestPath"),
+        firstLong(payload, "manifest_size", "manifestSize"),
+        firstString(payload, "etag"),
+        firstString(payload, "metadata_json", "metadataJson"),
+        statsJson(payload),
+        updatedBy(table, context));
   }
 
   private boolean isVersionRollback(Long currentVersion, Long returnedVersion) {
@@ -119,6 +150,16 @@ class LanceDataPlaneMetadataUpdater {
     }
     if (value instanceof String stringValue && !stringValue.isBlank()) {
       return Long.parseLong(stringValue);
+    }
+    return null;
+  }
+
+  private Long firstLong(Map<String, Object> payload, String... keys) {
+    for (String key : keys) {
+      Long value = longValue(payload.get(key));
+      if (value != null) {
+        return value;
+      }
     }
     return null;
   }
