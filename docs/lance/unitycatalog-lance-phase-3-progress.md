@@ -196,13 +196,22 @@ Phase 3 的目标不是让 UC 执行 Lance 物理数据操作，而是让 UC 作
 - declared-only table 调用 syncVersion 返回 409 ABORTED。
 - legacy bridge table 调用 syncVersion 返回 501 UNIMPLEMENTED。
 
-### 4.7 服务注册
+### 4.7 Index REST API
+
+| API | 状态 | 服务 | 说明 |
+|-----|------|------|------|
+| `POST /v1/table/{id}/index/list` | 已实现 | `LanceRestIndexService` | 查询 index 列表 |
+| `POST /v1/table/{id}/index/describe` | 已实现 | `LanceRestIndexService` | 查询 index 详情 |
+| `POST /v1/table/{id}/metadata/sync/index` | 已实现 | `LanceRestIndexService` | 外部 Worker 回写 index metadata |
+
+### 4.8 服务注册
 
 | 服务 | 状态 | 代码位置 |
 |------|------|----------|
 | `LanceRestVersionService` | 已注册 | `UnityCatalogServer` |
 | `LanceRestTagService` | 已注册 | `UnityCatalogServer` |
 | `LanceRestMetadataSyncService` | 已注册 | `UnityCatalogServer` |
+| `LanceRestIndexService` | 已注册 | `UnityCatalogServer` |
 
 ---
 
@@ -214,19 +223,20 @@ Phase 3 的目标不是让 UC 执行 Lance 物理数据操作，而是让 UC 作
 |--------|----------|
 | `LanceVersionAndTagRepositoryTest` | version upsert/list、tag create/update/list/delete、duplicate tag |
 | `LancePhase2DataPlaneMetadataUpdateRestTest` | 写入后同步 version row、版本防倒退时不记录旧 version |
-| `LancePhase3MetadataRestTest` | version list/describe、tag CRUD、手动 createVersion 语义拒绝 |
-| `LancePhase3MetadataSyncRestTest` | syncVersion 正常同步、缺失 version、declared-only table、upsert 语义 |
+| `LancePhase3MetadataRestTest` | 18 tests: Version 查询、Tag CRUD、Tag alias、语义错误拒绝 |
+| `LancePhase3MetadataSyncRestTest` | 6 tests: syncVersion 成功、upsert、校验、错误码 |
+| `LancePhase3IndexRestTest` | 10 tests: Index 查询、syncIndex 成功、upsert、过滤、别名 |
 
 ### 5.2 最近验证命令
 
 ```bash
-build/sbt "server/testOnly io.unitycatalog.server.service.lance.LancePhase3MetadataRestTest io.unitycatalog.server.service.lance.LancePhase3MetadataSyncRestTest"
+build/sbt "server/testOnly io.unitycatalog.server.service.lance.LancePhase3*RestTest"
 ```
 
 验证结果：
 
-- 7 个测试通过
-- 覆盖 Phase 3 已实现的 version metadata 和 syncVersion API
+- 34 个测试通过
+- 覆盖 Phase 3 已实现的所有 API: Version、Tag、Index、syncVersion、syncIndex
 
 ---
 
