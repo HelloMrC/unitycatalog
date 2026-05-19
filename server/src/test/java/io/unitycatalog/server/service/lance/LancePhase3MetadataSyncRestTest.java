@@ -21,9 +21,11 @@ class LancePhase3MetadataSyncRestTest extends BaseLancePhase2RestTest {
         LanceTestEchoExecutionBackend.class.getName());
   }
 
+  // ========== P3-SYNC-001: syncVersion 测试 ==========
+
   @Test
-  @DisplayName("Phase 3 syncVersion API syncs version metadata from external executor")
-  void syncVersionSyncsMetadataFromExternalExecutor() throws Exception {
+  @DisplayName("P3-SYNC-001-01: syncVersion writes version metadata")
+  void syncVersionWritesVersionMetadata() throws Exception {
     createActiveTableFixture();
 
     AggregatedHttpResponse syncResponse =
@@ -51,35 +53,7 @@ class LancePhase3MetadataSyncRestTest extends BaseLancePhase2RestTest {
   }
 
   @Test
-  @DisplayName("Phase 3 syncVersion API rejects missing version with INVALID_ARGUMENT")
-  void syncVersionRejectsMissingVersion() throws Exception {
-    createActiveTableFixture();
-
-    AggregatedHttpResponse response =
-        postJson(
-            "/v1/table/" + P2_ACTIVE_TABLE_ID + "/metadata/sync/version",
-            "{\"operation\":\"update\"}");
-
-    assertLanceErrorShape(response, 400);
-    assertThat(json(response).path("message").asText()).contains("version is required");
-  }
-
-  @Test
-  @DisplayName("Phase 3 syncVersion API rejects declared-only table with ABORTED")
-  void syncVersionRejectsDeclaredOnlyTable() throws Exception {
-    createDeclaredTableFixture();
-
-    AggregatedHttpResponse response =
-        postJson(
-            "/v1/table/" + P2_DECLARED_TABLE_ID + "/metadata/sync/version",
-            "{\"version\":1,\"operation\":\"insert\"}");
-
-    assertLanceErrorShape(response, 409);
-    assertThat(json(response).path("message").asText()).contains("must be materialized");
-  }
-
-  @Test
-  @DisplayName("Phase 3 syncVersion API upserts existing version metadata")
+  @DisplayName("P3-SYNC-001-02: syncVersion upserts existing version")
   void syncVersionUpsertsExistingVersion() throws Exception {
     createActiveTableFixture();
 
@@ -102,5 +76,73 @@ class LancePhase3MetadataSyncRestTest extends BaseLancePhase2RestTest {
         postJson("/v1/table/" + P2_ACTIVE_TABLE_ID + "/version/describe", "{\"version\":5}");
 
     assertThat(json(describeResponse).path("operation").asText()).isEqualTo("update");
+  }
+
+  @Test
+  @DisplayName("P3-SYNC-001-03: syncVersion rejects missing version")
+  void syncVersionRejectsMissingVersion() throws Exception {
+    createActiveTableFixture();
+
+    AggregatedHttpResponse response =
+        postJson(
+            "/v1/table/" + P2_ACTIVE_TABLE_ID + "/metadata/sync/version",
+            "{\"operation\":\"update\"}");
+
+    assertLanceErrorShape(response, 400);
+    assertThat(json(response).path("message").asText()).contains("version is required");
+  }
+
+  @Test
+  @DisplayName("P3-SYNC-001-04: syncVersion rejects declared-only table")
+  void syncVersionRejectsDeclaredOnlyTable() throws Exception {
+    createDeclaredTableFixture();
+
+    AggregatedHttpResponse response =
+        postJson(
+            "/v1/table/" + P2_DECLARED_TABLE_ID + "/metadata/sync/version",
+            "{\"version\":1,\"operation\":\"insert\"}");
+
+    assertLanceErrorShape(response, 409);
+    assertThat(json(response).path("message").asText()).contains("must be materialized");
+  }
+
+  @Test
+  @DisplayName("P3-SYNC-001-05: syncVersion with full metadata fields")
+  void syncVersionWithFullMetadataFields() throws Exception {
+    createActiveTableFixture();
+
+    AggregatedHttpResponse syncResponse =
+        postJson(
+            "/v1/table/" + P2_ACTIVE_TABLE_ID + "/metadata/sync/version",
+            "{\"version\":10,\"operation\":\"merge_insert\","
+                + "\"manifest_path\":\"s3://bucket/table/_manifests/10.manifest\","
+                + "\"manifest_size\":4096,\"etag\":\"abc123\","
+                + "\"metadata\":{\"config\":{\"key\":\"value\"}},"
+                + "\"stats\":{\"num_rows\":500,\"num_bytes\":10240}}");
+
+    assertSuccess(syncResponse);
+    JsonNode synced = json(syncResponse);
+    assertThat(synced.path("version").asLong()).isEqualTo(10L);
+    assertThat(synced.path("operation").asText()).isEqualTo("merge_insert");
+    assertThat(synced.path("manifest_path").asText())
+        .isEqualTo("s3://bucket/table/_manifests/10.manifest");
+    assertThat(synced.path("manifest_size").asLong()).isEqualTo(4096L);
+    assertThat(synced.path("etag").asText()).isEqualTo("abc123");
+    assertThat(synced.path("metadata").isObject()).isTrue();
+    assertThat(synced.path("stats").path("num_rows").asInt()).isEqualTo(500);
+  }
+
+  @Test
+  @DisplayName("P3-SYNC-001-07: syncVersion respects explicit createdBy")
+  void syncVersionRespectsExplicitCreatedBy() throws Exception {
+    createActiveTableFixture();
+
+    AggregatedHttpResponse syncResponse =
+        postJson(
+            "/v1/table/" + P2_ACTIVE_TABLE_ID + "/metadata/sync/version",
+            "{\"version\":4,\"operation\":\"delete\",\"created_by\":\"custom-executor\"}");
+
+    assertSuccess(syncResponse);
+    assertThat(json(syncResponse).path("created_by").asText()).isEqualTo("custom-executor");
   }
 }
