@@ -1,6 +1,6 @@
 # Unity Catalog Lance REST API Phase 3 开发进度
 
-更新日期：2026-05-16
+更新日期：2026-05-19
 
 ## 1. 文档目标
 
@@ -37,7 +37,7 @@ Phase 3 的目标不是让 UC 执行 Lance 物理数据操作，而是让 UC 作
 | Index metadata | index 表、查询 API、同步 API | 未实现 | 尚无 `uc_lance_indices`、Repository、REST 服务 |
 | Transaction metadata | transaction 表、查询 API、同步 API | 未实现 | 尚无 `uc_lance_transactions`、Repository、REST 服务 |
 | Schema history / sync | schema history 表、schema sync API | 未实现 | 当前只有 Phase 2 table 当前 schema/stats 缓存 |
-| 显式 metadata sync API | `syncVersion/syncIndex/syncSchema/syncTransaction/syncTag` | 未实现 | 当前 version 只在 UC data plane write 后内部记录 |
+| 显式 metadata sync API | `syncVersion/syncIndex/syncSchema/syncTransaction/syncTag` | 部分实现 | `syncVersion` 已实现，允许外部 Worker/Lance SDK 回写 UC |
 | Phase 3 Worker forwarding | index/deleteVersions/batchCommit/schema/restore 转发 | 未实现 | `LanceExecutionBackend` 尚未扩展 Phase 3 方法 |
 
 ---
@@ -172,12 +172,37 @@ Phase 3 的目标不是让 UC 执行 Lance 物理数据操作，而是让 UC 作
 - declared-only table 创建/更新/删除 tag 会被拒绝，需要先 materialize。
 - legacy bridge table 不支持 tag metadata。
 
-### 4.6 服务注册
+### 4.6 syncVersion REST API
+
+| API | 状态 | 服务 | 说明 |
+|-----|------|------|------|
+| `POST /v1/table/{id}/metadata/sync/version` | 已实现 | `LanceRestMetadataSyncService` | 外部 Worker/Lance SDK 回写 version metadata |
+
+请求字段覆盖：
+
+- `version` (required)
+- `operation` (required)
+- `timestamp`
+- `manifest_path`
+- `manifest_size`
+- `etag`
+- `metadata`
+- `stats`
+- `created_by`
+
+说明：
+
+- syncVersion 使用 upsert 语义，已存在 version 会更新字段。
+- declared-only table 调用 syncVersion 返回 409 ABORTED。
+- legacy bridge table 调用 syncVersion 返回 501 UNIMPLEMENTED。
+
+### 4.7 服务注册
 
 | 服务 | 状态 | 代码位置 |
 |------|------|----------|
 | `LanceRestVersionService` | 已注册 | `UnityCatalogServer` |
 | `LanceRestTagService` | 已注册 | `UnityCatalogServer` |
+| `LanceRestMetadataSyncService` | 已注册 | `UnityCatalogServer` |
 
 ---
 
@@ -190,17 +215,18 @@ Phase 3 的目标不是让 UC 执行 Lance 物理数据操作，而是让 UC 作
 | `LanceVersionAndTagRepositoryTest` | version upsert/list、tag create/update/list/delete、duplicate tag |
 | `LancePhase2DataPlaneMetadataUpdateRestTest` | 写入后同步 version row、版本防倒退时不记录旧 version |
 | `LancePhase3MetadataRestTest` | version list/describe、tag CRUD、手动 createVersion 语义拒绝 |
+| `LancePhase3MetadataSyncRestTest` | syncVersion 正常同步、缺失 version、declared-only table、upsert 语义 |
 
 ### 5.2 最近验证命令
 
 ```bash
-build/sbt "server/testOnly io.unitycatalog.server.service.lance.LancePhase3MetadataRestTest io.unitycatalog.server.service.lance.LancePhase2DataPlaneMetadataUpdateRestTest io.unitycatalog.server.persist.LanceVersionAndTagRepositoryTest"
+build/sbt "server/testOnly io.unitycatalog.server.service.lance.LancePhase3MetadataRestTest io.unitycatalog.server.service.lance.LancePhase3MetadataSyncRestTest"
 ```
 
 验证结果：
 
-- 11 个测试通过
-- 覆盖 Phase 3 当前已实现最小闭环
+- 7 个测试通过
+- 覆盖 Phase 3 已实现的 version metadata 和 syncVersion API
 
 ---
 
