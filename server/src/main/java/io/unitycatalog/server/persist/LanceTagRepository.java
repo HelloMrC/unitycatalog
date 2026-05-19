@@ -148,6 +148,53 @@ public class LanceTagRepository {
     return query.list();
   }
 
+  public LanceTagDAO upsertTag(
+      UUID tableAssetId, String tagName, Long version, String metadataJson, String createdBy) {
+    return TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> upsertTag(session, tableAssetId, tagName, version, metadataJson, createdBy),
+        "Failed to upsert Lance tag metadata",
+        false);
+  }
+
+  private LanceTagDAO upsertTag(
+      Session session,
+      UUID tableAssetId,
+      String tagName,
+      Long version,
+      String metadataJson,
+      String createdBy) {
+    validateTag(tagName, version);
+    Optional<LanceTagDAO> existing = findTag(session, tableAssetId, tagName);
+    if (existing.isPresent()) {
+      LanceTagDAO tagDAO = existing.get();
+      tagDAO.setVersion(version);
+      tagDAO.setMetadataJson(metadataJson);
+      tagDAO.setUpdatedAt(new Date());
+      tagDAO.setUpdatedBy(createdBy);
+      session.merge(tagDAO);
+      return tagDAO;
+    }
+
+    Date now = new Date();
+    UUID tagId = UUID.randomUUID();
+    LanceTagDAO tagDAO =
+        LanceTagDAO.builder()
+            .id(tagId)
+            .assetId(tagId)
+            .tableAssetId(tableAssetId)
+            .tagName(tagName)
+            .version(version)
+            .metadataJson(metadataJson)
+            .createdAt(now)
+            .createdBy(createdBy)
+            .updatedAt(now)
+            .updatedBy(createdBy)
+            .build();
+    session.persist(tagDAO);
+    return tagDAO;
+  }
+
   private void validateTag(String tagName, Long version) {
     if (tagName == null || tagName.isBlank()) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Lance tag_name is required.");

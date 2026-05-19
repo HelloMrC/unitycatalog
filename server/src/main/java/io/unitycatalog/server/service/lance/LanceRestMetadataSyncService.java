@@ -11,8 +11,10 @@ import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.LanceTagRepository;
 import io.unitycatalog.server.persist.LanceVersionRepository;
 import io.unitycatalog.server.persist.Repositories;
+import io.unitycatalog.server.persist.dao.LanceTagDAO;
 import io.unitycatalog.server.persist.dao.LanceVersionDAO;
 import java.util.Date;
 import java.util.Optional;
@@ -23,12 +25,14 @@ public class LanceRestMetadataSyncService {
 
   private final LanceTableResolver tableResolver;
   private final LanceVersionRepository versionRepository;
+  private final LanceTagRepository tagRepository;
   private final LanceAuthorizationService authorizationService;
 
   public LanceRestMetadataSyncService(
       Repositories repositories, UnityCatalogAuthorizer authorizer) {
     this.tableResolver = new LanceTableResolver(repositories);
     this.versionRepository = repositories.getLanceVersionRepository();
+    this.tagRepository = repositories.getLanceTagRepository();
     this.authorizationService = new LanceAuthorizationService(repositories, authorizer);
   }
 
@@ -63,6 +67,35 @@ public class LanceRestMetadataSyncService {
     return HttpResponse.ofJson(toSyncVersionResponse(versionDAO));
   }
 
+  @Post("/v1/table/{id}/metadata/sync/tag")
+  public HttpResponse syncTag(
+      @Param("id") String id,
+      @Param("delimiter") Optional<String> delimiter,
+      SyncTagRequest request) {
+    ResolvedLanceTable table =
+        resolveActiveNativeTable(id, delimiter.orElse(null), "sync tag metadata");
+    authorizationService.authorizeModifyTable(table.assetDAO());
+
+    if (request == null || request.tagName() == null || request.tagName().isBlank()) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Lance tag_name is required.");
+    }
+    if (request.version() == null) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Lance tag version is required.");
+    }
+
+    LanceTagDAO tagDAO =
+        tagRepository.upsertTag(
+            table.assetDAO().getId(),
+            request.tagName(),
+            request.version(),
+            toJson(request.metadata(), "tag metadata"),
+            request.createdBy() == null || request.createdBy().isBlank()
+                ? currentPrincipal(table)
+                : request.createdBy());
+
+    return HttpResponse.ofJson(toSyncTagResponse(tagDAO));
+  }
+
   private SyncVersionResponse toSyncVersionResponse(LanceVersionDAO versionDAO) {
     return new SyncVersionResponse(
         versionDAO.getVersion(),
@@ -75,6 +108,17 @@ public class LanceRestMetadataSyncService {
         parseJson(versionDAO.getStatsJson(), "version stats_json"),
         versionDAO.getCreatedBy(),
         timestampString(versionDAO.getCreatedAt()));
+  }
+
+  private SyncTagResponse toSyncTagResponse(LanceTagDAO tagDAO) {
+    return new SyncTagResponse(
+        tagDAO.getTagName(),
+        tagDAO.getVersion(),
+        parseJson(tagDAO.getMetadataJson(), "tag metadata_json"),
+        timestampString(tagDAO.getCreatedAt()),
+        tagDAO.getCreatedBy(),
+        timestampString(tagDAO.getUpdatedAt()),
+        tagDAO.getUpdatedBy());
   }
 
   private String timestampString(Date date) {
@@ -136,6 +180,12 @@ public class LanceRestMetadataSyncService {
       Object stats,
       @JsonProperty("created_by") String createdBy) {}
 
+  public record SyncTagRequest(
+      @JsonProperty("tag_name") String tagName,
+      Long version,
+      Object metadata,
+      @JsonProperty("created_by") String createdBy) {}
+
   @JsonInclude(JsonInclude.Include.NON_NULL)
   public record SyncVersionResponse(
       Long version,
@@ -148,4 +198,14 @@ public class LanceRestMetadataSyncService {
       Object stats,
       @JsonProperty("created_by") String createdBy,
       @JsonProperty("created_at") String createdAt) {}
+
+  @JsonInclude(JsonInclude.Include.NON_NULL)
+  public record SyncTagResponse(
+      @JsonProperty("tag_name") String tagName,
+      Long version,
+      Object metadata,
+      @JsonProperty("created_at") String createdAt,
+      @JsonProperty("created_by") String createdBy,
+      @JsonProperty("updated_at") String updatedAt,
+      @JsonProperty("updated_by") String updatedBy) {}
 }

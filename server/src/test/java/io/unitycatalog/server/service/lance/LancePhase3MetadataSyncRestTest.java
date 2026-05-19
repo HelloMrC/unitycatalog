@@ -145,4 +145,98 @@ class LancePhase3MetadataSyncRestTest extends BaseLancePhase2RestTest {
     assertSuccess(syncResponse);
     assertThat(json(syncResponse).path("created_by").asText()).isEqualTo("custom-executor");
   }
+
+  // ========== P3-SYNC-005: syncTag 测试 ==========
+
+  @Test
+  @DisplayName("P3-SYNC-005-01: syncTag writes tag metadata")
+  void syncTagWritesTagMetadata() throws Exception {
+    createActiveTableFixture();
+
+    AggregatedHttpResponse syncResponse =
+        postJson(
+            "/v1/table/" + P2_ACTIVE_TABLE_ID + "/metadata/sync/tag",
+            "{\"tag_name\":\"release-v1\",\"version\":10,"
+                + "\"metadata\":{\"description\":\"production release\"},"
+                + "\"created_by\":\"external-worker\"}");
+
+    assertSuccess(syncResponse);
+    JsonNode synced = json(syncResponse);
+    assertThat(synced.path("tag_name").asText()).isEqualTo("release-v1");
+    assertThat(synced.path("version").asLong()).isEqualTo(10L);
+    assertThat(synced.path("metadata").isObject()).isTrue();
+    assertThat(synced.path("created_by").asText()).isEqualTo("external-worker");
+
+    AggregatedHttpResponse getResponse =
+        postJson("/v1/table/" + P2_ACTIVE_TABLE_ID + "/tags/get", "{\"tag_name\":\"release-v1\"}");
+
+    assertSuccess(getResponse);
+    JsonNode tag = json(getResponse);
+    assertThat(tag.path("tag_name").asText()).isEqualTo("release-v1");
+    assertThat(tag.path("version").asLong()).isEqualTo(10L);
+  }
+
+  @Test
+  @DisplayName("P3-SYNC-005-02: syncTag upserts existing tag")
+  void syncTagUpsertsExistingTag() throws Exception {
+    createActiveTableFixture();
+
+    assertSuccess(
+        postJson(
+            "/v1/table/" + P2_ACTIVE_TABLE_ID + "/metadata/sync/tag",
+            "{\"tag_name\":\"test-tag\",\"version\":5}"));
+
+    AggregatedHttpResponse updateResponse =
+        postJson(
+            "/v1/table/" + P2_ACTIVE_TABLE_ID + "/metadata/sync/tag",
+            "{\"tag_name\":\"test-tag\",\"version\":8," + "\"metadata\":{\"updated\":true}}");
+
+    assertSuccess(updateResponse);
+    assertThat(json(updateResponse).path("version").asLong()).isEqualTo(8L);
+    assertThat(json(updateResponse).path("metadata").isObject()).isTrue();
+
+    AggregatedHttpResponse getResponse =
+        postJson("/v1/table/" + P2_ACTIVE_TABLE_ID + "/tags/get", "{\"tag_name\":\"test-tag\"}");
+
+    assertThat(json(getResponse).path("version").asLong()).isEqualTo(8L);
+  }
+
+  @Test
+  @DisplayName("P3-SYNC-005-03: syncTag rejects missing tag_name")
+  void syncTagRejectsMissingTagName() throws Exception {
+    createActiveTableFixture();
+
+    AggregatedHttpResponse response =
+        postJson("/v1/table/" + P2_ACTIVE_TABLE_ID + "/metadata/sync/tag", "{\"version\":10}");
+
+    assertLanceErrorShape(response, 400);
+    assertThat(json(response).path("message").asText()).contains("tag_name is required");
+  }
+
+  @Test
+  @DisplayName("P3-SYNC-005-04: syncTag rejects missing version")
+  void syncTagRejectsMissingVersion() throws Exception {
+    createActiveTableFixture();
+
+    AggregatedHttpResponse response =
+        postJson(
+            "/v1/table/" + P2_ACTIVE_TABLE_ID + "/metadata/sync/tag", "{\"tag_name\":\"test\"}");
+
+    assertLanceErrorShape(response, 400);
+    assertThat(json(response).path("message").asText()).contains("version is required");
+  }
+
+  @Test
+  @DisplayName("P3-SYNC-005-05: syncTag rejects declared-only table")
+  void syncTagRejectsDeclaredOnlyTable() throws Exception {
+    createDeclaredTableFixture();
+
+    AggregatedHttpResponse response =
+        postJson(
+            "/v1/table/" + P2_DECLARED_TABLE_ID + "/metadata/sync/tag",
+            "{\"tag_name\":\"test\",\"version\":1}");
+
+    assertLanceErrorShape(response, 409);
+    assertThat(json(response).path("message").asText()).contains("must be materialized");
+  }
 }
