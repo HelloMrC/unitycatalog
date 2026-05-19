@@ -9,6 +9,7 @@ import io.unitycatalog.server.persist.dao.FunctionInfoDAO;
 import io.unitycatalog.server.persist.dao.FunctionParameterInfoDAO;
 import io.unitycatalog.server.persist.dao.LanceApiKeyDAO;
 import io.unitycatalog.server.persist.dao.LanceAssetDAO;
+import io.unitycatalog.server.persist.dao.LanceIndexDAO;
 import io.unitycatalog.server.persist.dao.LanceNamespaceDAO;
 import io.unitycatalog.server.persist.dao.LanceTableDAO;
 import io.unitycatalog.server.persist.dao.LanceTagDAO;
@@ -83,6 +84,7 @@ public class HibernateConfigurator {
       configuration.addAnnotatedClass(LanceApiKeyDAO.class);
       configuration.addAnnotatedClass(LanceVersionDAO.class);
       configuration.addAnnotatedClass(LanceTagDAO.class);
+      configuration.addAnnotatedClass(LanceIndexDAO.class);
 
       ServiceRegistry serviceRegistry =
           new StandardServiceRegistryBuilder().applySettings(configuration.getProperties()).build();
