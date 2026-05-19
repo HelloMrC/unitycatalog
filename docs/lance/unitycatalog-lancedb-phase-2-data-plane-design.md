@@ -42,7 +42,9 @@
 
 阶段非目标：
 
-- 不落地 index / version / tag / transaction / batch commit 的完整元数据表和状态机
+- Index、Version、Transaction、Batch Commit、Schema Evolution 等执行类操作不在 Phase 2 实现
+- 这些操作在 Phase 3 通过 UC 协议转发层或 Lance SDK 直连执行，执行后同步元数据到 UC
+- Tag CRUD 在 Phase 3 实现（纯 metadata 操作）
 - 不把 Lance 数据面执行逻辑直接塞进 UC Java 主进程
 - 不在本阶段承诺完整事务原子性，物理数据和 UC metadata 的跨系统强一致性留到第三阶段继续强化
 
@@ -159,20 +161,25 @@
 
 ## 2.3 本阶段不做
 
-以下能力不在第二阶段交付范围内：
+以下能力在 Phase 3 实现（UC 提供查询 API，执行类操作通过协议转发或 Lance SDK 直连执行）：
 
-- index 创建、查询、删除、异步构建状态管理
-- version list/create/describe/delete
-- tag list/create/update/delete
-- transaction describe/alter/commit 状态机
-- `/v1/table/batch-commit`
-- schema evolution endpoint 的完整协议支持：
-  - `/schema_metadata/update`
-  - `/add_columns`
-  - `/alter_columns`
-  - `/drop_columns`
-- restore table（对应 `POST /v1/table/{id}/restore`）- 返回 501 UNIMPLEMENTED，因需要 Lance 文件格式操作
+- Index：查询 API 由 UC 提供，`createIndex`/`dropIndex` 通过 Worker 执行后同步元数据
+- Version：查询 API 由 UC 提供，`deleteVersions` 通过 Worker 执行后同步元数据
+- Transaction：查询 API 由 UC 提供，`alterTransaction` 通过 Worker 执行后同步元数据
+- Batch Commit：通过 Worker 执行，完成后同步元数据
+- Schema Evolution：通过 Worker 执行，完成后同步 schema 到 UC
+- Restore Table：通过 Worker 执行 Lance 文件格式操作
+
+以下能力在 Phase 3 实现（UC 独立实现，纯 metadata）：
+
+- Tag CRUD：list/get-version/create/update/delete - 纯 metadata 操作
+
+以下能力已在 Phase 2 实现：
+
 - rename table（对应 `POST /v1/table/{id}/rename`）- ✅ 已实现为纯 metadata 操作（见 Section 10.5）
+
+以下能力不在当前范围：
+
 - 物理数据删除和 UC metadata 删除的跨系统强事务
 - 面向生产的多云对象存储全矩阵验证
 - UC 主 UI 的 Lance 数据面管理页面
@@ -180,8 +187,8 @@
 
 说明：
 
-- `stats_json`、`current_version`、`arrow_schema_json` 可以在第二阶段被更新，但这不是 version/tag/transaction 元数据表的替代品。
-- 若 worker 在执行 DML 时返回 schema 变化，本阶段只允许更新 `uc_lance_tables.arrow_schema_json`，不引入完整 schema evolution endpoint。
+- `stats_json`、`current_version`、`arrow_schema_json` 可以在第二阶段被更新，这些字段由 Lance 执行引擎返回后同步到 UC。
+- UC 不维护 version/tag/transaction/index 元数据表，这些物理元数据保持在 Lance manifest 中。
 
 ## 2.4 Legacy bridge 边界
 
@@ -698,22 +705,42 @@ public interface LanceExecutionBackend {
 说明：
 
 - Phase 2 接口只放本阶段要实现的方法。
-- Phase 3 再追加 index/version/tag/transaction 方法，或引入子接口 `LanceAdvancedExecutionBackend`。
+- Phase 3 实现 Tag CRUD，但 Tag 是纯 metadata 操作，不经过 backend（UC 直接操作元数据表）。
 - 不建议一开始就在 Java interface 中放几十个未实现方法，避免第二阶段代码到处出现 `throw new UnsupportedOperationException()`。
 
-**Phase 3 接口扩展路径：**
+**Phase 3 Backend 扩展能力：**
 
-Phase 3 将在最小接口基础上扩展为完整 backend 接口（参考总体设计文档 Section 8.4.1），新增方法包括：
+Phase 3 通过 UC 协议转发层扩展以下 Backend 能力（UC 作为协议转发层，Worker 执行后同步元数据到 UC）：
 
-| 能力域 | Phase 3 新增方法 | 说明 |
+| 能力域 | Backend 方法 | 执行方式 | 元数据同步 |
+|---|---|---|---|
+| Index | `createIndex`, `dropIndex` | Worker 执行 | 调用 `syncIndex` API |
+| Version | `deleteVersions` | Worker 执行 | 调用 `syncVersion` API |
+| Transaction | `alterTransaction` | Worker 执行 | 调用 `syncTransaction` API |
+| Batch Commit | `batchCommit` | Worker 执行 | 调用 `syncVersion` / `syncTransaction` |
+| Schema Evolution | `addColumns`, `alterColumns`, `dropColumns` | Worker 执行 | 调用 `syncSchema` API |
+| Restore | `restoreTable` | Worker 执行 | Lance 文件格式操作 |
+
+**Phase 3 UC 提供的查询 API（不经过 Backend）：**
+
+以下查询 API 由 UC 直接提供，数据来源于执行器同步到 UC 元数据表：
+
+| API | UC 实现方式 | 数据来源 |
 |---|---|---|
-| Index | `createIndex`, `listIndices`, `describeIndexStats`, `dropIndex` | 向量索引创建与管理 |
-| Version | `listVersions`, `createVersion`, `describeVersion`, `deleteVersions`, `batchCreateVersions` | 表版本管理 |
-| Tag | `listTags`, `getTagVersion`, `createTag`, `updateTag`, `deleteTag` | 版本标签管理 |
-| Transaction | `describeTransaction`, `alterTransaction` | 事务状态管理 |
-| Batch Commit | `batchCommit` | 批量提交操作 |
-| Schema Evolution | `updateTableSchemaMetadata`, `addColumns`, `alterColumns`, `dropColumns` | Schema 变更 |
-| Table Operations | `restoreTable`, `renameTable`, `createEmptyTable` | 表恢复、重命名、空表创建 |
+| `listVersions` / `describeVersion` | 查询 `uc_lance_versions` 表 | 执行器写入后同步 |
+| `listIndices` / `describeIndexStats` | 查询 `uc_lance_indices` 表 | 执行器创建索引后同步 |
+| `describeTransaction` | 查询 `uc_lance_transactions` 表 | 执行器执行事务后同步 |
+
+**Phase 3 UC 独立实现的纯 Metadata 能力：**
+
+Tag CRUD（`listTags`, `getTagVersion`, `createTag`, `updateTag`, `deleteTag`）是纯 metadata 操作，UC 直接实现，不经过 backend。
+
+**Phase 3 UC 拒绝的语义错误请求：**
+
+| API | 原因 | UC 处理 |
+|---|---|---|
+| `createVersion` | Lance version 由写入自动产生，不能手动创建 | 400 BAD_REQUEST |
+| `batchCreateVersions` | 同上 | 400 BAD_REQUEST |
 
 扩展策略建议：
 

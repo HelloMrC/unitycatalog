@@ -112,9 +112,11 @@ POST /api/2.1/unity-catalog/lance/v1/table/{id}/query
 
 | 能力 | 本阶段处理 |
 |---|---|
-| index / version / tag / transaction / batch commit | 不测完整功能，Phase 3 覆盖 |
-| schema evolution endpoint | 不测完整 endpoint，只验证写后 `arrow_schema_json` 回填；`/schema_metadata/update`、`/add_columns`、`/alter_columns`、`/drop_columns` 在 Phase 2 必须返回 Lance 兼容 `UNIMPLEMENTED` 或不挂载 |
-| restore / rename table | 不测功能正确性，后续阶段覆盖；`/v1/table/{id}/restore`、`/v1/table/{id}/rename` 在 Phase 2 必须返回 Lance 兼容 `UNIMPLEMENTED` 或不挂载 |
+| index / version / transaction / batch commit | UC 不提供，不测试。客户端应通过 Lance 执行引擎或直接读取 Lance manifest 获取 |
+| tag CRUD | Phase 3 实现（纯 metadata 操作），不在 Phase 2 测试 |
+| schema evolution endpoint | UC 不提供，不测试。`/schema_metadata/update`、`/add_columns`、`/alter_columns`、`/drop_columns` 不挂载 |
+| restore table | UC 不提供，不测试。`/v1/table/{id}/restore` 不挂载 |
+| rename table | ✅ 已在 Phase 2 实现为纯 metadata 操作，需要测试 |
 | 跨系统强事务 | 只验证失败暴露、audit 和 reconcile 入口，不要求自动回滚 |
 | Lance 引擎内部算法正确性 | 不测，worker 或 Lance upstream 自己覆盖 |
 | 全云厂商对象存储矩阵 | 发布前抽样，不作为 PR 必跑 |
@@ -335,7 +337,7 @@ PR 层不要求真实解析 Arrow record batch，但必须能用 fixture 验证 
 
 | 用例 ID | 场景 | 步骤 | 断言 |
 |---|---|---|---|
-| `P2-META-001` | Phase 2 不新增高级资产表 | 检查 DDL | 不要求 indices/versions/tags/transactions |
+| `P2-META-001` | Phase 2 不新增高级资产表 | 检查 DDL | 不要求 indices/versions/transactions（UC 不维护）；tags 在 Phase 3 创建 |
 | `P2-META-002` | `markTableMaterialized` transaction | declared-only 首次物理化 | asset state 和 table `is_only_declared` 同事务更新 |
 | `P2-META-003` | `updateTableExecutionMetadata` | write success | current_version/schema/stats 更新 |
 | `P2-META-004` | schema 不被 null 覆盖 | 原 schema 非空，worker schema null | 保持原 schema |

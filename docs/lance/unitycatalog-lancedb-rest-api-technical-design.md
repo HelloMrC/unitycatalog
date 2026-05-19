@@ -898,49 +898,131 @@ HTTP request
 - 任何短期凭证、临时 session token、STS token、`expires_at_millis` 等信息都不能持久化到该字段
 - `vend_credentials=true` 时返回的 `storage_options` 必须在请求时动态生成，并与模板字段合并后返回
 
-## 6.5 索引、版本、标签、事务明细表
+## 6.5 高级资产元数据表
+
+UC 作为 Catalog 层，记录执行器同步的元数据，提供查询 API。
+
+### 6.5.1 Version 元数据表
+
+建议新增：
+
+- `uc_lance_versions`
+
+DDL 时序：
+
+- Phase 3 创建，用于记录版本历史
+
+```sql
+CREATE TABLE uc_lance_versions (
+  id UUID PRIMARY KEY,
+  asset_id UUID NOT NULL REFERENCES uc_lance_assets(id),
+  version BIGINT NOT NULL,
+  operation VARCHAR(50) NOT NULL,  -- 'insert', 'update', 'delete', 'merge_insert', 'create_index'
+  timestamp TIMESTAMP NOT NULL,
+  manifest_path VARCHAR(500),
+  manifest_size BIGINT,
+  etag VARCHAR(255),
+  metadata_json TEXT,
+  created_by VARCHAR(255),
+  UNIQUE(asset_id, version)
+);
+```
+
+**元数据同步时机**：
+- Lance 执行引擎写入成功后返回 version 和 manifest 信息
+- 执行器调用 UC 的 `syncVersion` API 将 version 信息写入 `uc_lance_versions`
+- UC 提供 `listVersions` / `describeVersion` 查询 API
+
+### 6.5.2 Index 元数据表
 
 建议新增：
 
 - `uc_lance_indices`
-- `uc_lance_versions`
+
+DDL 时序：
+
+- Phase 3 创建，用于记录索引元数据
+
+```sql
+CREATE TABLE uc_lance_indices (
+  id UUID PRIMARY KEY,
+  asset_id UUID NOT NULL REFERENCES uc_lance_assets(id),
+  table_asset_id UUID NOT NULL REFERENCES uc_lance_assets(id),
+  index_name VARCHAR(255) NOT NULL,
+  index_type VARCHAR(50) NOT NULL,  -- 'vector', 'scalar', 'fts'
+  target_columns_json TEXT NOT NULL,
+  distance_type VARCHAR(50),
+  build_params_json TEXT,
+  stats_json TEXT,
+  status VARCHAR(20) NOT NULL,  -- 'READY', 'BUILDING', 'FAILED'
+  created_at TIMESTAMP NOT NULL,
+  created_by VARCHAR(255),
+  UNIQUE(table_asset_id, index_name)
+);
+```
+
+**元数据同步时机**：
+- Lance SDK 执行 `createIndex` 成功后，调用 UC 的 `syncIndex` API
+- UC 提供 `listIndices` / `describeIndexStats` 查询 API
+
+### 6.5.3 Tag 元数据表
+
+建议新增：
+
 - `uc_lance_tags`
+
+DDL 时序：
+
+- Phase 3 创建，Tag CRUD 可在 Phase 2.x 提前实现
+
+```sql
+CREATE TABLE uc_lance_tags (
+  id UUID PRIMARY KEY,
+  asset_id UUID NOT NULL REFERENCES uc_lance_assets(id),
+  table_asset_id UUID NOT NULL REFERENCES uc_lance_assets(id),
+  tag_name VARCHAR(255) NOT NULL,
+  version BIGINT NOT NULL,
+  metadata_json TEXT,
+  created_at TIMESTAMP NOT NULL,
+  created_by VARCHAR(255),
+  updated_at TIMESTAMP,
+  updated_by VARCHAR(255),
+  UNIQUE(table_asset_id, tag_name)
+);
+```
+
+**Tag 管理模式**：
+- UC 可独立实现 Tag CRUD（纯 metadata 操作）
+- Lance SDK 也可以创建/管理 tag，完成后同步到 UC
+
+### 6.5.4 Transaction 元数据表
+
+建议新增：
+
 - `uc_lance_transactions`
 
-DDL 时序建议：
+DDL 时序：
 
-- Phase 0 / Phase 1 只创建：
-  - `uc_lance_namespaces`
-  - `uc_lance_assets`
-  - `uc_lance_tables`
-- 以下 4 张表统一在 Phase 3 再创建：
-  - `uc_lance_indices`
-  - `uc_lance_versions`
-  - `uc_lance_tags`
-  - `uc_lance_transactions`
-  - 避免在 metadata compatibility 阶段过早引入尚未消费的高级资产表
+- Phase 3 创建，用于记录事务状态
 
-最小字段：
+```sql
+CREATE TABLE uc_lance_transactions (
+  id UUID PRIMARY KEY,
+  asset_id UUID NOT NULL REFERENCES uc_lance_assets(id),
+  transaction_key VARCHAR(255) NOT NULL,
+  table_asset_id UUID NOT NULL REFERENCES uc_lance_assets(id),
+  status VARCHAR(20) NOT NULL,  -- 'QUEUED', 'RUNNING', 'SUCCEEDED', 'FAILED', 'CANCELED'
+  actions_json TEXT,
+  commit_metadata_json TEXT,
+  created_at TIMESTAMP NOT NULL,
+  updated_at TIMESTAMP,
+  UNIQUE(transaction_key)
+);
+```
 
-- 索引：`asset_id`、`table_asset_id`、`index_type`、`target_columns_json`、`distance_type`、`build_params_json`、`stats_json`、`status`、`build_progress`、`queued_at`、`started_at`、`finished_at`、`failure_reason`
-- 版本：`asset_id`、`table_asset_id`、`version_number`、`manifest_path`、`manifest_size`、`etag`、`metadata_json`
-- 标签：`asset_id`、`table_asset_id`、`tag_name`、`target_version`、`metadata_json`
-- 事务：`asset_id`、`transaction_key`、`table_asset_id`、`status`、`actions_json`、`commit_metadata_json`
-
-索引状态建议使用内部枚举 `IndexBuildStatus`：
-
-- `QUEUED`
-- `BUILDING`
-- `READY`
-- `FAILED`
-- `CANCELED`
-
-其中：
-
-- `status` 用于对外协议映射和 UI / CLI 展示
-- `build_progress` 取值范围建议定义为 `0..100`
-- `queued_at` / `started_at` / `finished_at` 用于排障和审计
-- `failure_reason` 用于记录异步构建失败原因
+**元数据同步时机**：
+- Lance SDK 执行事务后，调用 UC 的 `syncTransaction` API
+- UC 提供 `describeTransaction` 查询 API
 
 ## 6.6 API Key 映射表
 
@@ -988,32 +1070,65 @@ DDL 时序建议：
 - `uc_lance_api_keys` 属于认证辅助表，因此应在 Phase 0 / Phase 1 随基础模型一并落地
 - 如后续需要支持 key 轮换、前缀展示或多重哈希算法，可在不破坏主键模型的前提下扩展 `key_id`、`key_prefix`、`hash_algorithm` 等字段
 
-## 6.7 Tag / Version 协议覆盖要求
+## 6.7 高级资产协议覆盖要求
 
-技术设计中必须显式覆盖 Lance 的版本与标签端点，而不能只在资产模型里抽象提到 `version` / `tag`。
+技术设计中必须显式覆盖 Lance 的高级资产端点。
 
-Version 端点至少包括：
-
-- `/v1/table/{id}/version/list`
-- `/v1/table/{id}/version/create`
-- `/v1/table/{id}/version/describe`
-- `/v1/table/{id}/version/delete`
-- `/v1/table/version/batch-create`
-
-Tag 端点至少包括：
+### 6.7.1 Tag 端点（UC 独立实现）
 
 - `/v1/table/{id}/tags/list`
-- `/v1/table/{id}/tags/version`
+- `/v1/table/{id}/tags/get-version`
 - `/v1/table/{id}/tags/create`
 - `/v1/table/{id}/tags/delete`
 - `/v1/table/{id}/tags/update`
 
 设计约束：
 
-- `version` 与 `tag` 既是协议对象，也是 UC 可治理资产
-- 元数据层需要能索引与审计这些对象
-- 执行后端需要对变更类操作保持物理状态一致性
-- `batch-create versions` 与 `batch-commit tables` 必须分开建模
+- Tag 是 UC 治理元数据，Tag CRUD 是纯 metadata 操作
+- UC 可独立实现，不需要执行引擎
+- 使用 tag 恢复数据（restore by tag）需 Lance 执行引擎
+
+### 6.7.2 Version 端点（UC 提供查询，数据由执行器同步）
+
+- `/v1/table/{id}/version/list` - UC 查询 `uc_lance_versions`
+- `/v1/table/{id}/version/describe` - UC 查询 `uc_lance_versions`
+- `/v1/table/{id}/version/create` - ❌ 语义不支持，返回 400 BAD_REQUEST
+- `/v1/table/{id}/version/delete` - Lance SDK 执行，完成后同步到 UC
+
+设计约束：
+
+- Version 元数据由执行器写入后同步到 UC
+- UC 提供查询 API，数据来源是执行器同步
+
+### 6.7.3 Index 端点（UC 提供查询，数据由执行器同步）
+
+- `/v1/table/{id}/index/list` - UC 查询 `uc_lance_indices`
+- `/v1/table/{id}/index/describe` - UC 查询 `uc_lance_indices`
+- `/v1/table/{id}/index/create` - Lance SDK 执行，完成后同步到 UC
+- `/v1/table/{id}/index/drop` - Lance SDK 执行，完成后同步到 UC
+
+设计约束：
+
+- Index 元数据由执行器创建索引后同步到 UC
+- UC 提供查询 API，数据来源是执行器同步
+
+### 6.7.4 Transaction 端点（UC 提供查询，数据由执行器同步）
+
+- `/v1/table/{id}/transaction/describe` - UC 查询 `uc_lance_transactions`
+- `/v1/table/{id}/transaction/alter` - Lance SDK 执行，完成后同步到 UC
+
+### 6.7.5 Batch Commit 端点
+
+- `/v1/table/batch-commit` - Lance SDK 执行，完成后同步到 UC
+
+### 6.7.6 元数据同步端点
+
+执行器操作成功后调用同步 API：
+
+- `/v1/table/{id}/metadata/sync-version`
+- `/v1/table/{id}/metadata/sync-index`
+- `/v1/table/{id}/metadata/sync-schema`
+- `/v1/table/{id}/metadata/sync-transaction`
 
 ## 6.8 Transaction 状态枚举
 
@@ -1047,7 +1162,7 @@ Tag 端点至少包括：
 
 ## 7.2 新增权限类型
 
-建议把 Lance 相关权限分成“首阶段最小集合”和“后续扩展集合”两层。
+建议把 Lance 相关权限分成”首阶段最小集合”和”后续扩展集合”两层。
 
 Phase 1 最小集合：
 
@@ -1072,7 +1187,7 @@ Phase 3 扩展集合：
 
 - Lance REST 协议本身不定义这些 UC 内部 privilege 名称
 - 这些权限是 UC 为了接入统一治理、审计和授权体系而增加的内部权限语义
-- 因此不应把它们表述成“Lance 官方权限模型”，而应表述成“UC 对 Lance 资产的治理权限扩展”
+- 因此不应把它们表述成”Lance 官方权限模型”，而应表述成”UC 对 Lance 资产的治理权限扩展”
 
 ## 7.3 层级关系
 
@@ -1222,7 +1337,10 @@ Phase 3 扩展集合：
 
 ## 8.4 执行后端 SPI
 
-由于 UC 当前是 Java 服务，而 Lance 的完整数据面和索引能力主要不在 UC 现有核心里，建议不要在首版中把全部执行逻辑直接塞进 UC 主进程。
+由于 UC 当前是 Java 服务，而 Lance 的完整数据面和索引能力需要执行引擎，建议：
+
+- **UC 作为协议转发层**：接收请求，转发到 Lance Worker 执行
+- **Worker 执行后同步元数据**：执行成功后调用 UC 的同步 API
 
 新增接口：
 
@@ -1234,14 +1352,9 @@ Phase 3 扩展集合：
 
 ```java
 public interface LanceExecutionBackend {
+  // Phase 2 数据面方法
   CreateTableResult createTable(CreateTableCommand cmd);
   CreateEmptyTableResult createEmptyTable(CreateEmptyTableCommand cmd);
-  UpdateTableSchemaMetadataResult updateTableSchemaMetadata(UpdateTableSchemaMetadataCommand cmd);
-  AlterTableAddColumnsResult addColumns(AlterTableAddColumnsCommand cmd);
-  AlterTableAlterColumnsResult alterColumns(AlterTableAlterColumnsCommand cmd);
-  AlterTableDropColumnsResult dropColumns(AlterTableDropColumnsCommand cmd);
-  RestoreTableResult restoreTable(RestoreTableCommand cmd);
-  RenameTableResult renameTable(RenameTableCommand cmd);
   InsertRowsResult insert(InsertRowsCommand cmd);
   MergeInsertRowsResult mergeInsert(MergeInsertRowsCommand cmd);
   UpdateRowsResult update(UpdateRowsCommand cmd);
@@ -1251,33 +1364,38 @@ public interface LanceExecutionBackend {
   AnalyzePlanResult analyzePlan(AnalyzePlanCommand cmd);
   CountRowsResult countRows(CountRowsCommand cmd);
   GetTableStatsResult getTableStats(GetTableStatsCommand cmd);
+
+  // Phase 3 协议转发方法（UC 转发到 Worker，Worker 执行后同步元数据）
   CreateIndexResult createIndex(CreateIndexCommand cmd);
-  ListIndicesResult listIndices(ListIndicesCommand cmd);
-  DescribeIndexStatsResult describeIndexStats(DescribeIndexStatsCommand cmd);
   DropIndexResult dropIndex(DropIndexCommand cmd);
-  ListVersionsResult listVersions(ListTableVersionsCommand cmd);
-  CreateVersionResult createVersion(CreateTableVersionCommand cmd);
-  DescribeVersionResult describeVersion(DescribeTableVersionCommand cmd);
   DeleteVersionsResult deleteVersions(DeleteTableVersionsCommand cmd);
-  BatchCreateVersionsResult batchCreateVersions(BatchCreateTableVersionsCommand cmd);
-  ListTagsResult listTags(ListTableTagsCommand cmd);
-  GetTagVersionResult getTagVersion(GetTableTagVersionCommand cmd);
-  CreateTagResult createTag(CreateTableTagCommand cmd);
-  UpdateTagResult updateTag(UpdateTableTagCommand cmd);
-  DeleteTagResult deleteTag(DeleteTableTagCommand cmd);
-  DescribeTransactionResult describeTransaction(DescribeTransactionCommand cmd);
   AlterTransactionResult alterTransaction(AlterTransactionCommand cmd);
   BatchCommitResult batchCommit(BatchCommitTablesCommand cmd);
+  UpdateTableSchemaMetadataResult updateTableSchemaMetadata(UpdateTableSchemaMetadataCommand cmd);
+  AlterTableAddColumnsResult addColumns(AlterTableAddColumnsCommand cmd);
+  AlterTableAlterColumnsResult alterColumns(AlterTableAlterColumnsCommand cmd);
+  AlterTableDropColumnsResult dropColumns(AlterTableDropColumnsCommand cmd);
+  RestoreTableResult restoreTable(RestoreTableCommand cmd);
+
+  // renameTable 为纯 metadata 操作，不经过 backend
 }
 ```
 
-补充说明：
+**方法说明**：
 
-- `explainPlan` 与 `analyzePlan` 应作为独立执行入口显式保留，而不是隐含在 `query` 的某个模式参数中。
-- 这样可以与 Phase 2 的数据面范围、上层错误语义和测试设计中的独立验收点保持一致。
-- `restoreTable` 与 `renameTable` 在接口中列出但实际实现状态不同：
-  - `renameTable`：Phase 2 已实现为纯 metadata 操作，不经过 backend（UC 直接更新 metadata）
-  - `restoreTable`：Phase 2 返回 501 UNIMPLEMENTED，因需要 Lance 文件格式操作；完整实现延后到 Phase 3
+| 方法类型 | 说明 |
+|---------|------|
+| Phase 2 数据面 | Worker 执行 query/insert 等，返回结果给 UC |
+| Phase 3 协议转发 | UC 转发请求到 Worker，Worker 执行后调用 UC 同步 API |
+| 纯 metadata | Tag CRUD 由 UC 直接实现，不经过 backend |
+
+**元数据同步机制**：
+
+Worker 执行 Phase 3 操作成功后，需要调用 UC 的同步 API：
+- `syncVersion`：写入操作成功后同步 version 信息
+- `syncIndex`：创建/删除索引后同步索引元数据
+- `syncSchema`：schema 变化后同步 schema 信息
+- `syncTransaction`：事务执行后同步事务状态
 
 ### 8.4.2 通用参数对象
 
@@ -1345,28 +1463,6 @@ public interface LanceExecutionBackend {
   - `schemaJson`
   - `storage`
   - `tableProperties`
-- `UpdateTableSchemaMetadataCommand`
-  - `context`
-  - `table`
-  - `schemaMetadata`
-  - `updateMode`
-- `AlterTableAddColumnsCommand`
-  - `context`
-  - `table`
-  - `columnsToAdd`
-  - `defaultExpressions`
-- `AlterTableAlterColumnsCommand`
-  - `context`
-  - `table`
-  - `alterations`
-- `AlterTableDropColumnsCommand`
-  - `context`
-  - `table`
-  - `columnsToDrop`
-- `RestoreTableCommand`
-  - `context`
-  - `table`
-  - `targetVersion`
 - `RenameTableCommand`
   - `context`
   - `table`
@@ -1419,6 +1515,9 @@ public interface LanceExecutionBackend {
   - `context`
   - `table`
   - `version`
+
+**Phase 3 命令对象（协议转发到 Worker）**：
+
 - `CreateIndexCommand`
   - `context`
   - `table`
@@ -1427,67 +1526,15 @@ public interface LanceExecutionBackend {
   - `targetColumns`
   - `distanceType`
   - `indexParams`
-- `ListIndicesCommand`
-  - `context`
-  - `table`
-  - `statusFilter`
-- `DescribeIndexStatsCommand`
-  - `context`
-  - `table`
-  - `indexName`
 - `DropIndexCommand`
   - `context`
   - `table`
   - `indexName`
   - `ifExists`
-- `ListTableVersionsCommand`
-  - `context`
-  - `table`
-  - `limit`
-  - `pageToken`
-- `CreateTableVersionCommand`
-  - `context`
-  - `table`
-  - `versionEntry`
-  - `metadata`
-- `DescribeTableVersionCommand`
-  - `context`
-  - `table`
-  - `versionNumber`
 - `DeleteTableVersionsCommand`
   - `context`
   - `table`
   - `versionNumbers`
-- `BatchCreateTableVersionsCommand`
-  - `context`
-  - `entries`
-  - `atomicityToken`
-- `ListTableTagsCommand`
-  - `context`
-  - `table`
-- `GetTableTagVersionCommand`
-  - `context`
-  - `table`
-  - `tagName`
-- `CreateTableTagCommand`
-  - `context`
-  - `table`
-  - `tagName`
-  - `targetVersion`
-  - `metadata`
-- `UpdateTableTagCommand`
-  - `context`
-  - `table`
-  - `tagName`
-  - `targetVersion`
-  - `metadataPatch`
-- `DeleteTableTagCommand`
-  - `context`
-  - `table`
-  - `tagName`
-- `DescribeTransactionCommand`
-  - `context`
-  - `transactionId`
 - `AlterTransactionCommand`
   - `context`
   - `transactionId`
@@ -1497,11 +1544,54 @@ public interface LanceExecutionBackend {
   - `operations`
   - `expectedVersions`
   - `commitProperties`
+- `UpdateTableSchemaMetadataCommand`
+  - `context`
+  - `table`
+  - `schemaMetadata`
+  - `updateMode`
+- `AlterTableAddColumnsCommand`
+  - `context`
+  - `table`
+  - `columnsToAdd`
+  - `defaultExpressions`
+- `AlterTableAlterColumnsCommand`
+  - `context`
+  - `table`
+  - `alterations`
+- `AlterTableDropColumnsCommand`
+  - `context`
+  - `table`
+  - `columnsToDrop`
+- `RestoreTableCommand`
+  - `context`
+  - `table`
+  - `targetVersion`
+
+**Tag CRUD 命令对象（UC 直接实现，不经过 backend）**：
+
+- `ListTableTagsCommand`
+  - `table`
+- `GetTableTagVersionCommand`
+  - `table`
+  - `tagName`
+- `CreateTableTagCommand`
+  - `table`
+  - `tagName`
+  - `targetVersion`
+  - `metadata`
+- `UpdateTableTagCommand`
+  - `table`
+  - `tagName`
+  - `targetVersion`
+  - `metadataPatch`
+- `DeleteTableTagCommand`
+  - `table`
+  - `tagName`
 
 说明：
 
-- 上述补充对象用于消除“接口签名已引用但命令对象未显式定义”的文档缺口。
-- `UpdateRowsCommand`、`DeleteRowsCommand`、`CountRowsCommand`、`ListIndicesCommand`、`DescribeIndexStatsCommand`、`DropIndexCommand`、`ListTableVersionsCommand`、`ListTableTagsCommand`、`GetTableTagVersionCommand` 与新增的 `ExplainPlanCommand`、`AnalyzePlanCommand`，都应视为执行后端 SPI 的一等命令对象。
+- Phase 3 命令对象通过 UC 协议转发层发送到 Worker，Worker 执行后调用 UC 同步 API
+- Tag CRUD 命令对象不经过 backend，UC 直接操作元数据表
 
 ### 8.4.4 BatchCommit 操作类型枚举
 
@@ -1556,7 +1646,7 @@ public interface LanceExecutionBackend {
 
 设计理由：
 
-- 与 Gravitino 的“独立协议服务 / 后端执行”思路一致
+- 与 Gravitino 的”独立协议服务 / 后端执行”思路一致
 - 不阻塞 UC 控制面演进
 - 后续可替换为嵌入式实现或 JNI 实现
 
@@ -1578,7 +1668,7 @@ public interface LanceExecutionBackend {
 
 - 路由、鉴权、持久化、授权骨架跑通
 - 仅落地 namespace / asset / table 三张基础表
-- version / tag / transaction / index 相关物理表延后到 Phase 3
+- version / index / tag / transaction 相关物理表延后到 Phase 3
 
 ## Phase 1：Metadata Compatibility
 
@@ -1625,20 +1715,33 @@ public interface LanceExecutionBackend {
 - `rename_table` 只更新 UC metadata（path_key、name、namespace_id），物理 storage_location 保持不变
 - `restore_table` 仍属于 Phase 3，因需要 Lance 文件格式操作；Phase 2 返回 501 UNIMPLEMENTED
 
-## Phase 3：高级资产
+## Phase 3：高级资产元数据治理
 
 支持：
 
-- index
-- version
-- tag
-- transaction
-- batch commit
+- Tag CRUD（UC 独立实现，纯 metadata）
+- Version 查询（UC 提供 API，数据由执行器同步）
+- Index 查询（UC 提供 API，数据由执行器同步）
+- Transaction 查询（UC 提供 API，数据由执行器同步）
+- 元数据同步 API（接收执行器同步的元数据）
 
 实现重点：
 
-- 资产子表与授权模型补齐
-- 完善审计事件和状态机
+- 创建 `uc_lance_versions`、`uc_lance_indices`、`uc_lance_tags`、`uc_lance_transactions` 元数据表
+- 实现 `listVersions`、`describeVersion`、`listIndices`、`describeIndexStats`、`describeTransaction` 查询 API
+- 实现元数据同步 API：`syncVersion`、`syncIndex`、`syncSchema`、`syncTransaction`
+- Worker 执行 `createIndex`、`dropIndex`、`deleteVersions`、`batchCommit` 等操作后，调用同步 API 将元数据同步到 UC
+
+**执行类操作**（通过 UC 协议转发层或 Lance SDK 直连执行）：
+
+- `createIndex`、`dropIndex`
+- `deleteVersions`
+- `alterTransaction`
+- `batchCommit`
+- `addColumns`、`alterColumns`、`dropColumns`
+- `restoreTable`
+
+执行器执行成功后需要调用 UC 同步 API 将元数据同步到 UC。
 
 ## 10. 测试策略
 

@@ -60,6 +60,7 @@ UC 应提供一个面向 Lance 生态的协议服务，使外部 Lance 客户端
 
 满足以下条件时，视为该需求达到目标：
 
+- UC 的 Lance 协议面以完整兼容 Lance API 为长期目标，而不是只挑选部分 endpoint
 - Lance 原生 namespace client 可以直接连接到 UC 暴露的 Lance REST endpoint
 - 多层 namespace 路径可以被原生表达、列举、描述、删除和迁移
 - 不仅 table，可治理对象还包括 index、version、tag、transaction 等 Lance 资产
@@ -71,7 +72,25 @@ UC 应提供一个面向 Lance 生态的协议服务，使外部 Lance 客户端
 
 - 让 UC 主 REST API 自身完全重命名成 Lance API
 - 在 UC 核心进程中重写整个 Lance 执行引擎
+- 在 UC 内部直接实现依赖 LanceDB 物理存储或 Lance 文件格式执行的能力
 - 追求“所有非 Lance 原生引擎都零改造”
+
+说明：
+
+- “本阶段不实现”不等于“长期不支持”。凡是 Lance API 中只涉及 metadata / control plane 的能力，即使当前 UC 公共模型没有对应对象，也必须在 Lance 专用架构中预留模型、路由、状态和权限扩展点。
+- 对于必须依赖 LanceDB 存储、Lance 文件格式或查询执行引擎的能力，UC 可以不在本进程内实现，但协议层应保留 endpoint、错误语义和后端 SPI，以便后续通过 worker / sidecar / external backend 承接。
+
+### 3.4 API 兼容目标与阶段边界
+
+需求层将 Lance API 能力分为三类：
+
+| 类别 | 定义 | 长期要求 | 当前阶段要求 |
+|---|---|---|---|
+| Metadata-only / control-plane | 只需要 UC 自身 metadata、权限、属性、状态机即可表达，不要求读写 Lance 物理数据 | 必须纳入目标架构并最终支持 | 可以暂不实现具体 endpoint，但必须预留模型、路由、权限和迁移路径 |
+| Hybrid metadata + storage metadata | 需要记录 Lance 文件、version、manifest、schema、stats 等指针或摘要，但不要求 UC 执行数据读写 | 必须有可演进的 metadata model，避免被 UC 当前 table/schema 模型锁死 | 可先返回 `UNIMPLEMENTED` 或只返回基础 metadata，但不能把字段设计成无法扩展 |
+| Storage / execution dependent | 需要 LanceDB 存储、Lance 文件格式操作、Arrow 数据读写、query / DML / index build 执行 | 协议应兼容，执行可委托给 Lance backend | 当前阶段可以不实现本地执行，但必须有稳定错误语义和 backend 接入边界 |
+
+这三个类别只影响实施顺序，不影响“长期完整兼容 Lance API”的目标。
 
 ## 4. 分析基线
 
@@ -163,6 +182,44 @@ Lance 原生客户端并不是面向某个抽象统一 catalog API 编码的，�
 - 任意深度 namespace 模型
 - 面向 Lance 全量资产的元数据与数据面语义
 
+### 6.1 原生 Lance API 目标与 UC legacy bridge 的差异边界
+
+需求定义必须区分两类能力：
+
+- **原生 Lance API 目标**：UC 对外提供 Lance Namespace / Lance REST 协议面，并以完整兼容 Lance API 为长期目标；内部用 Lance 专用元数据模型承载任意深度 namespace、多资产类型、metadata 状态和可委托的数据面语义。
+- **UC legacy bridge**：为了兼容官方当前 Unity 集成规范和已有 UC 表记录，将满足特定条件的 UC `TableInfo` 识别为 legacy Lance table，并提供只读/可迁移的桥接视图。
+
+legacy bridge 不是原生 Lance 目标模型的替代品，也不能反向决定长期对象模型。它只用于兼容已有 `catalog.schema.table` 形态的 Unity 表，并为后续迁移到 `uc_lance_*` 原生模型提供入口。
+
+| 维度 | 原生 Lance API 长期目标 | UC legacy bridge 约束 | 需求处理方式 |
+|---|---|---|---|
+| Namespace 深度 | namespace 是递归路径容器，可表达任意深度路径 | 官方 Unity 集成只支持两级 namespace：`[catalog, schema]` | 原生 Lance metadata 必须支持任意深度；legacy lookup 只在可映射为 UC `catalog.schema` 时执行 |
+| Table 标识 | table 标识为 namespace path + table name，string identifier 可通过 `$` 或 `delimiter` 表达 | legacy table 只支持三级标识：`catalog.schema.table` | 对外协议继续使用 Lance identifier；legacy table lookup 只接受可解析成三段的路径 |
+| Table list | 在任意 Lance namespace 下列举该 namespace 的 table | UC legacy 表只能通过 `catalog + schema` 调 `listTables` | native 表列表与 legacy 表列表必须分清来源；分页时不得把两个来源交错成不可重复顺序 |
+| 资产范围 | 不止 table，还包括 index、version、tag、transaction、batch commit 等资产 | legacy bridge 只能从 UC `TableInfo` 桥接 table metadata | 非 table 资产必须走原生 Lance metadata model，不能塞入 legacy UC table properties 作为长期方案 |
+| Lance table 识别 | 原生模型应有明确 Lance asset/table 类型与状态 | UC 当前没有 `DataSourceFormat=LANCE`，legacy 通过 `EXTERNAL + TEXT + properties.table_type=lance` 识别 | `TEXT + table_type=lance` 只能作为兼容标记，不能作为最终主模型 |
+| Metadata 完整性 | 可保存 Lance table URI、Arrow schema、current version、stats、storage options template 等专有元数据 | legacy `TableInfo` 主要能提供 `storage_location`、`properties`、UC columns，其他 Lance 字段可能为空 | response 必须显式处理缺失字段，不得伪造 version / stats / detailed metadata |
+| Metadata-only API | namespace、table metadata、index/version/tag/transaction 等 metadata endpoint 应纳入 Lance 专用模型 | legacy bridge 不能表达非 table 资产，也不能表达完整 Lance 状态机 | 当前阶段可暂不实现，但架构必须预留 route、model、state、authorization 和 migration path |
+| 数据面能力 | 支持 query、stats、count rows、insert、merge insert、update、delete、explain、analyze 等 Lance REST data endpoint | legacy bridge 默认只保证 metadata compatibility | 依赖 LanceDB 存储或执行的能力可暂不实现；协议层保留 endpoint 和 backend SPI，legacy 写操作仍应拒绝并提示迁移 |
+| 写入与状态推进 | 写操作成功后推进原生 Lance metadata 状态、version、schema、stats | legacy 写入会绕过 `uc_lance_assets + uc_lance_tables` 状态模型 | legacy bridge 不支持 insert / merge_insert / update / delete / create；需要数据面能力时必须迁移为原生记录 |
+| 凭证与 storage options | runtime credentials 按请求下发，不持久化短期凭证 | legacy 可基于 UC table/path credential vending 生成有限 storage options | storage options 可以桥接返回，但 token/session/secret 等短期凭证不得落库 |
+| rename / restore 等表管理 | metadata-only rename 应进入原生 metadata model；restore 等物理格式相关能力属于 storage-dependent | legacy rename/restore 无法可靠维护 UC 表与 Lance 文件状态一致性 | metadata-only 能力必须可演进；restore 这类需要 Lance 文件格式操作的能力可暂不实现但不得伪成功 |
+
+### 6.2 legacy bridge 的硬性需求约束
+
+为避免把兼容视图误认为完整 Lance 支持，需求层必须明确以下约束：
+
+- legacy bridge 只识别满足全部条件的 UC table：
+  - `table_type = EXTERNAL`
+  - `data_source_format = TEXT`
+  - `properties.table_type = lance`
+- legacy namespace list 只在路径能映射为 UC `catalog.schema` 时读取 UC table list；更深层 Lance namespace 不应回退到 UC legacy 表扫描。
+- legacy table describe / exists 只在路径能映射为 UC `catalog.schema.table` 时读取 UC `TableInfo`；少于或多于三段的路径不属于 legacy Unity table。
+- 当同一路径同时存在原生 `uc_lance_*` 记录和 legacy UC table 时，必须优先使用原生 Lance metadata。
+- legacy bridge 响应必须能够被调用方识别，例如返回 `legacy_bridge=true` 或等价元数据，避免调用方误以为该表具备完整数据面和资产治理能力。
+- legacy bridge 不自动写入 `uc_lance_assets` / `uc_lance_tables`；迁移必须通过显式迁移工具、管理 API 或后台任务完成。
+- legacy bridge 的错误响应必须清晰说明能力边界：metadata bridge 可用，但完整 Lance API 能力需要迁移到原生 Lance metadata model；依赖存储或执行的 endpoint 可通过后端实现补齐。
+
 ## 7. 重构后的需求范围
 
 ### 7.1 总体产品定义
@@ -202,20 +259,22 @@ UC 必须支持任意深度 namespace 路径，不能将多层路径通过字符
 - table 可以挂载在任意合法父 namespace 下
 - 支持从 list-style identifier 到 string-style identifier 的双向转换
 
-#### R3. 全量 Lance 资产治理
+#### R3. Lance 资产治理范围
 
-UC 必须把 Lance 资产抽象成一组可治理对象，而不是只有 table。
-
-至少包括：
+UC 作为 Catalog 层，负责治理以下对象：
 
 - `LanceNamespace`
 - `LanceTable`
-- `LanceIndex`
-- `LanceVersion`
-- `LanceTag`
-- `LanceTransaction`
+- `LanceIndex`：UC 记录索引元数据，提供查询 API，元数据由执行器同步
+- `LanceVersion`：UC 记录版本历史，提供查询 API，元数据由执行器同步
+- `LanceTag`：UC 提供完整 CRUD（纯 metadata 操作），或接收执行器同步
+- `LanceTransaction`：UC 记录事务状态，提供查询 API，元数据由执行器同步
 
-并预留面向未来资产类型扩展的能力。
+**UC 与执行引擎的职责分离**：
+
+- UC 不执行 Index/Version/Transaction 操作
+- Lance SDK 或 Worker 执行这些操作，完成后将元数据同步到 UC
+- UC 提供 `listIndices` / `listVersions` / `describeTransaction` 等查询 API
 
 #### R4. 保持 UC 统一治理能力
 
@@ -235,6 +294,38 @@ Lance 协议面不能绕过 UC 的治理能力。所有 Lance 资产都应纳入
 - 原生 Lance namespace client 直接改 endpoint 后可用
 - Spark / Ray 等已支持 Lance REST 的上层可直接接入
 - 不原生支持 Lance REST 的引擎可通过 location resolution + credential vending 访问
+
+#### R6. legacy Unity bridge 只作为兼容与迁移入口
+
+UC 必须支持已有 Unity 集成形态的 Lance 表被发现、描述和迁移，但该能力必须被明确限定为 legacy bridge：
+
+- legacy bridge 必须服从 `catalog.schema.table` 的官方 Unity 集成约束
+- legacy bridge 不得限制原生 Lance namespace 的任意深度目标
+- legacy bridge 不得承载 index / version / tag / transaction 等长期资产模型
+- legacy bridge 数据面写入必须拒绝，避免绕过原生 Lance metadata 状态机
+- legacy bridge 的迁移路径必须明确，包括迁移后如何生成 namespace、asset、table 记录
+
+#### R7. 完整 Lance API 兼容以 capability matrix 管理
+
+需求和设计必须维护一份 Lance API capability matrix，至少区分：
+
+- 已实现
+- 当前阶段暂不实现但 metadata model 已预留
+- 当前阶段暂不实现且依赖 LanceDB storage / execution backend
+- legacy bridge 不适用，必须迁移到原生 Lance metadata model
+
+任何 endpoint 被标为暂不实现时，都必须说明暂不实现原因、未来承接模块和对外错误语义，不能只因为 UC 当前公共对象模型缺失就从目标范围删除。
+
+### 7.3 metadata-only API 的最低架构要求
+
+凡是只涉及 metadata / control plane 的 Lance API，即使当前阶段不实现，也必须满足以下架构要求：
+
+- OpenAPI / route 层保留可对齐 Lance API 的 operation 名称与路径规划。
+- Service 层预留独立 handler 或 dispatcher，避免未来把能力塞进通用 UC table API。
+- Persist 层预留 Lance 专用 asset / relation / property / state 结构，不依赖 UC 固定三层对象表达全部语义。
+- Auth 层预留对应资源类型与权限映射，不把所有操作粗暴折叠成 table owner。
+- Error 层使用稳定的 Lance-compatible `UNIMPLEMENTED` / `NOT_SUPPORTED` 响应，并说明该 endpoint 是阶段未实现，不是协议不支持。
+- 测试层至少保留 disabled / skeleton / capability matrix 覆盖，防止后续 OpenAPI 漂移。
 
 ## 8. 推荐架构
 
@@ -479,24 +570,57 @@ Lance 协议面不能绕过 UC 的治理能力。所有 Lance 资产都应纳入
 - FTS index
 - async index build 状态跟踪
 
-### 10.6 版本、标签与事务能力
+### 10.6 版本、标签、索引、事务能力
 
-完整目标下必须支持：
+UC 作为 Catalog 层，提供元数据查询 API，元数据由执行器同步。
 
-- list versions
-- create version
-- describe version
-- delete version
-- batch create versions
-- table batch commit
-- create / list / delete tags
-- transaction describe / alter / commit 相关语义
+**Version 能力**：
 
-其中 `table batch commit` 应显式对应 Lance 端点：
+- `version/list`：查询版本历史 - ✅ UC 提供，数据由执行器同步到 `uc_lance_versions`
+- `version/describe`：查询版本详情 - ✅ UC 提供
+- `version/create`、`version/batch-create`：❌ 语义不支持（Lance version 由写入自动生成）
+- `version/delete`：需 Lance SDK 执行，完成后同步到 UC
 
-- `/v1/table/batch-commit`
+**Index 能力**：
 
-并且需要与版本侧的 `batch create versions` 明确区分，避免在后续设计与 OpenAPI 映射阶段将两者混为同一能力。
+- `index/list`：查询索引列表 - ✅ UC 提供，数据由执行器同步到 `uc_lance_indices`
+- `index/describe`：查询索引统计 - ✅ UC 提供
+- `index/create`、`index/drop`：需 Lance SDK 执行，完成后同步到 UC
+
+**Tag 能力**：
+
+- `tags/list`：列出 table 下所有 tag - ✅ UC 提供
+- `tags/get-version`：获取 tag 对应的 version - ✅ UC 提供
+- `tags/create`：创建 tag 到 version 的映射 - ✅ UC 独立实现（纯 metadata）
+- `tags/update`：更新 tag 指向的 version - ✅ UC 独立实现
+- `tags/delete`：删除 tag - ✅ UC 独立实现
+
+Tag CRUD 是纯 metadata 操作，UC 可独立实现，不影响 Lance 物理数据。
+
+**Transaction 能力**：
+
+- `transaction/describe`：查询事务状态 - ✅ UC 提供，数据由执行器同步
+- `transaction/alter`：需 Lance SDK 执行，完成后同步到 UC
+
+**Batch Commit**：
+
+- `table/batch-commit`：需 Lance SDK 执行，完成后同步到 UC
+
+**Schema Evolution**：
+
+- `schema/update`、`add_columns`、`alter_columns`、`drop_columns`：需 Lance SDK 执行，完成后同步 schema 到 UC
+
+**Restore Table**：
+
+- `restore table by version/tag`：需 Lance SDK 执行（修改物理 Lance manifest）
+
+**元数据同步机制**：
+
+执行器（Lance SDK / Worker）操作成功后，需要调用 UC 的同步 API 将元数据同步到 UC：
+- `syncVersion`：写入操作成功后同步 version 信息
+- `syncIndex`：创建/删除索引后同步索引元数据
+- `syncSchema`：schema 变化后同步 schema 信息
+- `syncTransaction`：事务执行后同步事务状态
 
 ### 10.7 身份、认证与上下文透传
 
@@ -575,6 +699,8 @@ Lance 协议面不能绕过 UC 的治理能力。所有 Lance 资产都应纳入
 - 元数据模型设计
 - 存储表设计
 - OpenAPI / 协议映射设计
+- Lance API capability matrix，明确每个 endpoint 属于 metadata-only、hybrid metadata、还是 storage / execution dependent
+- metadata-only endpoint 的 route、model、authorization、error contract 预留设计，即使当前阶段不落地实现
 
 ### Phase 1：Lance Metadata Compatibility
 
@@ -582,6 +708,7 @@ Lance 协议面不能绕过 UC 的治理能力。所有 Lance 资产都应纳入
 
 - 跑通 namespace 与 table metadata 兼容
 - 支持原生 Lance namespace client 基础接入
+- 建立 metadata-only API 后续扩展的最小架构骨架
 
 范围：
 
@@ -589,12 +716,15 @@ Lance 协议面不能绕过 UC 的治理能力。所有 Lance 资产都应纳入
 - table list / describe / register / declare / create-empty / exists / drop / deregister
 - 显式覆盖 `/v1/table/{id}/declare`
 - Arrow schema JSON 持久化
+- legacy bridge 的 `catalog.schema.table` 识别、只读 metadata 响应和迁移边界
+- Tag CRUD 作为 Phase 1 或 Phase 2.x 可提前实现
 
 ### Phase 2：Lance Data Plane Compatibility
 
 目标：
 
 - 跑通 query 与基础数据修改语义
+- 建立依赖 LanceDB 存储或执行能力的 backend SPI，不要求 UC 主进程实现物理执行
 
 范围：
 
@@ -611,23 +741,49 @@ Lance 协议面不能绕过 UC 的治理能力。所有 Lance 资产都应纳入
 
 - `/v1/table/{id}/stats`
 
-### Phase 3：Lance Index / Version / Tag / Transaction
+### Phase 3：高级资产元数据治理
 
 目标：
 
-- 覆盖 Lance 高价值高级资产
+- 提供 Index、Version、Tag、Transaction 等元数据查询 API
+- 建立元数据同步机制，接收执行器同步的元数据
 
 范围：
 
-- index
-- version
-- tag
-- table batch commit
-- transaction
+- **Tag CRUD**（UC 独立实现）：
+  - `tags/list`
+  - `tags/get-version`
+  - `tags/create`
+  - `tags/update`
+  - `tags/delete`
+  
+- **Version 查询**（需要执行器同步）：
+  - `version/list`
+  - `version/describe`
+  
+- **Index 查询**（需要执行器同步）：
+  - `index/list`
+  - `index/describe`
+  
+- **Transaction 查询**（需要执行器同步）：
+  - `transaction/describe`
+  
+- **元数据同步 API**：
+  - `syncVersion`：执行器写入成功后同步 version 信息
+  - `syncIndex`：执行器创建/删除索引后同步索引元数据
+  - `syncSchema`：执行器 schema 变化后同步 schema 信息
+  - `syncTransaction`：执行器事务执行后同步事务状态
 
-其中应显式覆盖：
+**执行类操作**（通过 UC 协议转发层或 Lance SDK 直连执行）：
 
-- `/v1/table/batch-commit`
+- `index/create`、`index/drop`
+- `version/delete`
+- `transaction/alter`
+- `table/batch-commit`
+- `schema/update`、`add_columns`、`alter_columns`、`drop_columns`
+- `restore table`
+
+执行器执行成功后需要调用同步 API 将元数据同步到 UC。
 
 ### Phase 4：生态适配与生产化
 

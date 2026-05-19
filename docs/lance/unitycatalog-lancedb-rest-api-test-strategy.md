@@ -49,13 +49,11 @@
 
 - Lance REST Namespace 协议兼容
 - 任意深度 namespace 模型与路径编解码
-- Lance 资产治理模型：
+- Lance 资产治理范围（UC 负责）：
   - namespace
   - table
-  - index
-  - version
-  - tag
-  - transaction
+  - tag（Phase 3，纯 metadata）
+  - index/version/transaction 元数据（Phase 3，UC 提供查询 API，元数据由执行器同步）
 - UC 治理能力接入：
   - 身份认证
   - 授权控制
@@ -68,10 +66,10 @@
   - `uc_lance_assets`
   - `uc_lance_tables`
   - `uc_lance_api_keys`
-  - `uc_lance_indices`
-  - `uc_lance_versions`
-  - `uc_lance_tags`
-  - `uc_lance_transactions`
+  - `uc_lance_tags`（Phase 3）
+  - `uc_lance_indices`（Phase 3，执行器创建索引后同步）
+  - `uc_lance_versions`（Phase 3，执行器写入后同步）
+  - `uc_lance_transactions`（Phase 3，执行器执行事务后同步）
 - 协议适配关键点：
   - `$` 默认分隔符
   - 自定义 `delimiter`
@@ -84,9 +82,8 @@
   - count rows
   - insert / merge insert / update / delete
   - explain / analyze
-- 高级资产能力：
-  - index
-  - version
+- Tag 能力（Phase 3）：
+  - tag CRUD
   - tag
   - transaction
   - batch commit
@@ -108,12 +105,17 @@
   - `uc_lance_tables`
   - `uc_lance_api_keys`
 - Phase 3 才要求落地并验证：
-  - `uc_lance_indices`
-  - `uc_lance_versions`
-  - `uc_lance_tags`
-  - `uc_lance_transactions`
+  - `uc_lance_tags`（纯 metadata）
+  - `uc_lance_indices`（执行器创建索引后同步）
+  - `uc_lance_versions`（执行器写入后同步）
+  - `uc_lance_transactions`（执行器执行事务后同步）
 
-测试报告中不得把 Phase 3 的高级资产表缺失误判为 Phase 0 / Phase 1 阻塞项。
+**元数据同步机制**：
+
+Phase 3 的 index/version/transaction 元数据表数据来源于执行器同步：
+- Lance SDK/Worker 执行操作成功后调用 UC sync API（`syncIndex`、`syncVersion`、`syncTransaction`）
+- UC 接收同步结果写入元数据表
+- UC 提供查询 API（`listIndices`、`listVersions`、`describeTransaction`）
 
 ### 3.2 范围外
 
@@ -194,7 +196,11 @@ Spark 与 Ray 的测试必须基于官方公开接入面，不允许通过 UC �
 - Phase 0 聚焦骨架、模型、授权、路由
 - Phase 1 聚焦 metadata compatibility
 - Phase 2 聚焦 data plane compatibility
-- Phase 3 聚焦 index / version / tag / transaction
+- Phase 3 聚焦：
+  - tag CRUD（纯 metadata，UC 独立实现）
+  - index/version/transaction 查询 API（元数据来自执行器同步）
+  - 元数据同步机制（syncIndex/syncVersion/syncSchema/syncTransaction）
+  - 执行类操作的协议转发（createIndex/dropIndex/deleteVersions/batchCommit 等）
 - Phase 4 聚焦生态矩阵、观测性、生产化回归
 
 ## 5. 质量风险与测试重点
@@ -202,13 +208,13 @@ Spark 与 Ray 的测试必须基于官方公开接入面，不允许通过 UC �
 | 风险编号 | 风险描述 | 影响 | 测试重点 |
 |---|---|---|---|
 | QR-01 | 仍以三层模型变相承载多层 namespace | 高 | 任意深度 namespace、路径查找、递归列举、权限继承 |
-| QR-02 | 协议兼容只覆盖部分 table API，忽略全量资产 | 高 | index/version/tag/transaction/batch commit |
+| QR-02 | 协议兼容只覆盖部分能力 | 中 | UC 提供的能力：namespace/table/tag/index查询/version查询/transaction查询；执行类操作通过协议转发 |
 | QR-03 | Lance 路由绕过 UC 治理能力 | 高 | auth、RBAC、审计、凭证、外部位置策略 |
 | QR-04 | Arrow IPC 与二进制响应不稳定 | 高 | query/stats/stream/file 响应、错误语义 |
 | QR-05 | Spark / Ray 接入因 namespace 语义不完整而降级或失败 | 高 | connector 兼容矩阵、错误语义、header 透传 |
 | QR-06 | legacy bridge 识别错误导致老表不可读或误迁移 | 中 | 识别规则、迁移前后可读性、一致性校验 |
 | QR-07 | UC 现有 API 被新路由、装饰器、权限模型影响 | 高 | `/tables`、`/schemas`、Iceberg、Delta 回归 |
-| QR-08 | 执行后端异步状态与元数据状态不一致 | 高 | index build、transaction、batch commit 状态流 |
+| QR-08 | 写后 metadata 更新不一致 | 高 | current_version/schema/stats 回填、reconcile 入口 |
 | QR-09 | 上游客户端版本变化引发回归 | 中 | 版本矩阵、契约回归、夜间兼容测试 |
 
 ## 6. 测试级别与方法
@@ -229,10 +235,12 @@ Spark 与 Ray 的测试必须基于官方公开接入面，不允许通过 UC �
 | 阶段 | 功能范围 | 主要测试活动 | 准出条件 |
 |---|---|---|---|
 | Phase 0 | 路由、鉴权、模型、仓储、授权骨架 | DDL/DAO 评审、单元测试、组件测试、基础安全测试 | `uc_lance_namespaces`、`uc_lance_assets`、`uc_lance_tables`、`uc_lance_api_keys` 可持久化，Lance 路由不影响现有 UC 路由 |
-| Phase 1 | namespace + table metadata compatibility | 协议集成测试、legacy bridge 测试、原生客户端基础兼容 | Python/Java/Rust P0 通过，`namespace exists`、`declare`、`describe`、`list`、`drop` 可用，且不要求高级资产表先行落地 |
+| Phase 1 | namespace + table metadata compatibility | 协议集成测试、legacy bridge 测试、原生客户端基础兼容 | Python/Java/Rust P0 通过，`namespace exists`、`declare`、`describe`、`list`、`drop` 可用 |
 | Phase 2 | query + stats + DML | Arrow IPC 测试、执行后端测试、数据一致性与错误路径测试 | query / stats / insert / update / delete / count 稳定可回归 |
-| Phase 3 | index/version/tag/transaction/batch commit | 高级资产 DDL、异步状态流测试、资产治理测试、审计与权限测试 | `uc_lance_indices`、`uc_lance_versions`、`uc_lance_tags`、`uc_lance_transactions` 落地，高级资产元数据与物理状态一致，关键端点覆盖 |
+| Phase 3 | tag CRUD + 元数据同步 + 协议转发 | tag 表 DDL、tag CRUD 测试、元数据同步 API 测试、协议转发测试、审计与权限测试 | `uc_lance_tags`、`uc_lance_indices`、`uc_lance_versions`、`uc_lance_transactions` 落地，tag CRUD 可用，元数据同步可用，审计记录完整 |
 | Phase 4 | 生态适配与生产化 | Spark/Ray/DuckDB/Pandas 全链路矩阵、性能、灰度与回滚演练 | 兼容矩阵达标，发布门禁、观测性、回滚方案完备 |
+
+**UC 拒绝的语义错误**：`createVersion`/`batchCreateVersions` 返回 400 BAD_REQUEST（Lance version 由写入自动产生）
 
 ## 8. 需求覆盖策略
 
@@ -240,7 +248,7 @@ Spark 与 Ray 的测试必须基于官方公开接入面，不允许通过 UC �
 |---|---|---|
 | R1 协议兼容 | 路由、header、delimiter、Arrow IPC、错误语义 | 协议集成、客户端兼容、契约回归 |
 | R2 任意深度 namespace | path segments、递归 list、root 语义、rename/drop | 单元、组件、协议集成 |
-| R3 全量 Lance 资产治理 | asset type、index/version/tag/transaction 元数据与接口 | 组件、协议集成、端到端 |
+| R3 Lance 资产治理范围 | namespace/table/tag/index/version/transaction（UC 提供查询 API，元数据由执行器同步） | 组件、协议集成、端到端 |
 | R4 保持 UC 统一治理能力 | auth、RBAC、审计、凭证、外部位置策略 | 安全测试、组件测试、端到端 |
 | R5 上层使用者尽量无感迁移 | 原生 client、Spark、Ray、DuckDB/Pandas 工作流 | 客户端兼容、迁移测试、回归测试 |
 
@@ -265,7 +273,9 @@ Spark 与 Ray 的测试必须基于官方公开接入面，不允许通过 UC �
 | Auth | UC 内部 Bearer、外部 Bearer token exchange、`x-api-key`；校验复用 `server.allowed-issuers`、`server.audiences` | 多 issuer、多 audience |
 | Delimiter | `$` | 自定义 delimiter |
 | Namespace 深度 | 1 层、2 层、4 层以上 | root + 深层混合 |
-| Asset 类型 | table | index/version/tag/transaction |
+| Asset 类型 | table | tag、index metadata、version metadata、transaction metadata（Phase 3） |
+
+**执行类操作的协议转发**：createIndex/dropIndex/deleteVersions/batchCommit/alterTransaction/addColumns/alterColumns/dropColumns 通过 Worker 执行后同步元数据到 UC
 
 ### 9.3 客户端矩阵
 
@@ -362,8 +372,9 @@ Spark 与 Ray 的测试必须基于官方公开接入面，不允许通过 UC �
 
 - `declare table`
 - `get table stats`
-- `batch commit`
-- version/tag 端点
+- tag CRUD（Phase 3）
+- index/version/transaction 查询 API（Phase 3）
+- 元数据同步 API（Phase 3）
 - token exchange
 - `storage_options` / `vend_credentials`
 - Spark namespace list 语义
@@ -378,7 +389,8 @@ Spark 与 Ray 的测试必须基于官方公开接入面，不允许通过 UC �
 - metadata-only 请求吞吐
 - query / stats 响应时间
 - token exchange 延迟
-- index build 异步任务吞吐
+- tag CRUD 响应时间（Phase 3）
+- 元数据同步 API 响应时间（Phase 3）
 
 ### 12.2 并发与一致性
 
@@ -386,9 +398,9 @@ Spark 与 Ray 的测试必须基于官方公开接入面，不允许通过 UC �
 
 - 并发创建同级 namespace 的唯一约束
 - 并发 declare / rename / drop table
-- 并发 tag/version 更新
-- batch commit 幂等性与原子性
+- 并发 tag 更新（Phase 3）
 - worker 状态更新与 DB 状态一致性
+- 元数据同步与 UC 元数据表一致性（Phase 3）
 
 ### 12.3 安全
 

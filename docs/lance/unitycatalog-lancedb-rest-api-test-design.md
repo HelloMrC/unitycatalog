@@ -36,10 +36,7 @@
   - `uc_lance_assets`
   - `uc_lance_tables`
   - `uc_lance_api_keys`
-  - `uc_lance_indices`
-  - `uc_lance_versions`
-  - `uc_lance_tags`
-  - `uc_lance_transactions`
+  - `uc_lance_tags`（Phase 3）
 - 授权模型：
   - `SecurableType`
   - `Privileges`
@@ -53,6 +50,14 @@
 - 兼容桥接：
   - legacy Unity table 识别
   - migration/import 逻辑
+
+**Phase 3 元数据表（执行器同步）**：
+
+- `uc_lance_indices`：执行器创建索引后同步到 UC
+- `uc_lance_versions`：执行器写入后同步到 UC
+- `uc_lance_transactions`：执行器执行事务后同步到 UC
+
+UC 提供查询 API（`listIndices`、`listVersions`、`describeTransaction`），数据来源于执行器同步。
 
 ## 3. 设计假设
 
@@ -77,7 +82,8 @@
 - `TD-TBL-*`：table 生命周期与 legacy bridge
 - `TD-SCHEMA-*`：schema 与列演进
 - `TD-DATA-*`：query、stats、Arrow IPC、DML
-- `TD-ADV-*`：index、version、tag、transaction、batch commit
+- `TD-TAG-*`：tag CRUD（纯 metadata）
+- `TD-ADV-*`：UC 不提供的能力（index、version、transaction、batch commit）- 仅说明不测试
 - `TD-CRED-*`：`storage_options` 与 credential vending
 - `TD-CLI-*`：Python / Java / Rust 原生客户端
 - `TD-SPARK-*`：Spark connector
@@ -92,15 +98,15 @@
 |---|---|---|
 | R1 协议兼容 | Lance 路由、header、delimiter、Arrow IPC、错误语义 | `TD-ARCH`、`TD-ID`、`TD-DATA`、`TD-CLI`、`TD-SPARK`、`TD-RAY` |
 | R2 任意深度 namespace | 多层路径、root、递归 list/drop、父子关系 | `TD-ID`、`TD-META`、`TD-NS`、`TD-AUTH` |
-| R3 全量 Lance 资产治理 | asset type、index/version/tag/transaction/batch commit | `TD-META`、`TD-ADV` |
+| R3 Lance 资产治理范围 | namespace/table/tag/index/version/transaction（UC 提供查询 API，元数据由执行器同步） | `TD-META`、`TD-TAG`、`TD-ADV`（Phase 3） |
 | R4 保持 UC 统一治理能力 | auth、RBAC、审计、凭证、外部位置策略 | `TD-AUTH`、`TD-CRED`、`TD-REG`、`TD-NFR` |
 | R5 上层使用者尽量无感迁移 | 原生 client、Spark、Ray、DuckDB/Pandas | `TD-CLI`、`TD-SPARK`、`TD-RAY`、`TD-LOCAL` |
-| 设计 4 层架构 | metadata-only 与 execution path 分离 | `TD-ARCH`、`TD-DATA`、`TD-ADV`、`TD-NFR` |
-| 设计 6.x 元数据模型 | namespace / asset / detail table 一致性 | `TD-META` |
+| 设计 4 层架构 | metadata-only 与 execution path 分离 | `TD-ARCH`、`TD-DATA`、`TD-NFR` |
+| 设计 6.x 元数据模型 | namespace / asset / tag table 一致性 | `TD-META`、`TD-TAG` |
 | 设计 7.x 授权模型 | 新资源类型、新权限、层级继承、KeyMapper | `TD-AUTH` |
 | 设计 8.2 legacy bridge | 识别、只读桥接、迁移导入 | `TD-TBL` |
 | 设计 8.3 凭证与 `storage_options` | vend credentials、对象存储访问 | `TD-CRED`、`TD-LOCAL` |
-| 设计 8.4 执行后端 SPI | query / stats / DML / async 状态 | `TD-DATA`、`TD-ADV`、`TD-NFR` |
+| 设计 8.4 执行后端 SPI | query / stats / DML | `TD-DATA`、`TD-NFR` |
 
 ## 6. 共享前置条件
 
@@ -146,16 +152,24 @@
   - `uc_lance_assets`
   - `uc_lance_tables`
   - `uc_lance_api_keys`
-- Phase 3 才预期存在：
-  - `uc_lance_indices`
-  - `uc_lance_versions`
-  - `uc_lance_tags`
-  - `uc_lance_transactions`
+- Phase 3 预期存在：
+  - `uc_lance_tags`（纯 metadata）
+  - `uc_lance_indices`（执行器创建索引后同步）
+  - `uc_lance_versions`（执行器写入后同步）
+  - `uc_lance_transactions`（执行器执行事务后同步）
+
+**元数据同步机制**：
+
+Phase 3 的 index/version/transaction 元数据表数据来源于执行器同步：
+- Lance SDK/Worker 执行操作成功后调用 UC sync API（`syncIndex`、`syncVersion`、`syncTransaction`）
+- UC 接收同步结果写入元数据表
+- UC 提供查询 API（`listIndices`、`listVersions`、`describeTransaction`）
 
 因此：
 
-- Phase 0 / Phase 1 的 `TD-META`、`TD-AUTH`、`TD-CRED` 不应把高级资产表缺失判定为失败
-- Phase 3 的 `TD-ADV` 必须补齐对应 DDL、DAO 和数据一致性验证
+- Phase 0 / Phase 1 / Phase 2 的 `TD-META`、`TD-AUTH`、`TD-CRED` 不应把 index/version/transaction 表缺失判定为失败
+- Phase 3 必须补齐 tag 表 DDL、DAO 和数据一致性验证
+- Phase 3 必须补齐 index/version/transaction 元数据同步 API 和查询 API 测试
 
 ## 7. 测试套件设计
 
@@ -193,11 +207,17 @@
 
 | 项目 | 设计 |
 |---|---|
-| 目标 | 验证 Lance 专用元数据模型能够正确承载 namespace 与多资产对象 |
+| 目标 | 验证 Lance 专用元数据模型能够正确承载 namespace 与 table 对象 |
 | 前置条件 | Lance DDL 已执行，repository/DAO 已接入 |
-| 关键场景 | `TD-META-001` `uc_lance_namespaces` 父子关系与唯一约束；`TD-META-002` `(root_scope_id, path_key)` 唯一；`TD-META-003` `path_key` 使用 canonical path，不保存 delimiter 语义；`TD-META-004` `root_scope_id` 在 v1 固定取 UC `metastore_id`；`TD-META-005` 资产主表与 detail 表一对一/一对多关系；`TD-META-006` `TABLE/INDEX/VERSION/TAG/TRANSACTION` 类型持久化；`TD-META-007` `arrow_schema_json` 原样保存；`TD-META-008` `storage_options_template_json` 只保存非敏感模板；`TD-META-009` 临时凭证、STS token、过期时间等不落库；`TD-META-010` properties 复用 `uc_properties`；`TD-META-011` Phase 0 / Phase 1 只要求 `uc_lance_namespaces`、`uc_lance_assets`、`uc_lance_tables`、`uc_lance_api_keys`；`TD-META-012` Phase 3 才验证 `uc_lance_indices`、`uc_lance_versions`、`uc_lance_tags`、`uc_lance_transactions` DDL；`TD-META-013` 删除/迁移时引用完整性；`TD-META-014` 异步状态字段更新一致 |
-| 主要断言 | 关系模型不依赖 UC 三层表结构；`path_key` 与 delimiter 解耦；`root_scope_id` 与 metastore 锚点一致；模板配置与临时凭证分离；高级资产表的验收按阶段推进；状态变更可审计、可查询 |
+| 关键场景 | `TD-META-001` `uc_lance_namespaces` 父子关系与唯一约束；`TD-META-002` `(root_scope_id, path_key)` 唯一；`TD-META-003` `path_key` 使用 canonical path，不保存 delimiter 语义；`TD-META-004` `root_scope_id` 在 v1 固定取 UC `metastore_id`；`TD-META-005` 资产主表与 detail 表一对一关系；`TD-META-006` `TABLE/TAG` 类型持久化；`TD-META-007` `arrow_schema_json` 原样保存；`TD-META-008` `storage_options_template_json` 只保存非敏感模板；`TD-META-009` 临时凭证、STS token、过期时间等不落库；`TD-META-010` properties 复用 `uc_properties`；`TD-META-011` Phase 0 / Phase 1 只要求 `uc_lance_namespaces`、`uc_lance_assets`、`uc_lance_tables`、`uc_lance_api_keys`；`TD-META-012` Phase 3 才验证 `uc_lance_tags` DDL；`TD-META-013` 删除/迁移时引用完整性 |
+| 主要断言 | 关系模型不依赖 UC 三层表结构；`path_key` 与 delimiter 解耦；`root_scope_id` 与 metastore 锚点一致；模板配置与临时凭证分离；tag 表在 Phase 3 验证；状态变更可审计、可查询 |
 | 自动化级别 | PR 必跑 |
+
+**Phase 3 元数据表验证**：
+
+- `uc_lance_indices`、`uc_lance_versions`、`uc_lance_transactions`：Phase 3 验证，元数据来源于执行器同步
+- 测试元数据同步 API（`syncIndex`、`syncVersion`、`syncTransaction`）
+- 测试查询 API（`listIndices`、`listVersions`、`describeTransaction`）
 
 ### 7.5 `TD-NS` Namespace 能力
 
@@ -239,17 +259,56 @@
 | 主要断言 | 数据面请求进入执行后端；二进制响应可被客户端消费；查询结果与 stats 一致；异常路径错误语义稳定 |
 | 自动化级别 | Nightly 必跑，发布前全量 |
 
-### 7.9 `TD-ADV` Index、Version、Tag、Transaction 与 Batch Commit
+### 7.9 `TD-TAG` Tag CRUD
 
 | 项目 | 设计 |
 |---|---|
-| 目标 | 验证高级资产端点、异步状态流和治理映射 |
-| 前置条件 | 执行后端支持对应命令；异步任务轮询能力可用 |
-| 关键场景 | `TD-ADV-001` create index；`TD-ADV-002` create scalar index；`TD-ADV-003` list index；`TD-ADV-004` describe index stats；`TD-ADV-005` drop index；`TD-ADV-006` index `QUEUED/BUILDING/READY/FAILED/CANCELED` 状态流，覆盖 `QUEUED -> BUILDING` 超时处理、`FAILED` 状态下 `failure_reason` 字段、主动取消进入 `CANCELED`；`TD-ADV-007` list versions；`TD-ADV-008` create version；`TD-ADV-009` describe version；`TD-ADV-010` delete version；`TD-ADV-011` batch create versions；`TD-ADV-012` list/create/update/delete tag；`TD-ADV-013` describe transaction；`TD-ADV-014` alter transaction；`TD-ADV-015` `/v1/table/batch-commit`；`TD-ADV-016` batch commit 幂等键；`TD-ADV-017` 原子性与失败回滚；`TD-ADV-018` 审计记录状态前后值 |
-| 主要断言 | 高级资产既可通过协议访问，也能作为治理对象被授权和审计；异步状态与物理状态一致；超时、失败原因、主动取消等状态细节可观测；批处理操作不与版本批量创建混淆 |
-| 自动化级别 | Phase 3 起必跑 |
+| 目标 | 验证 Tag CRUD 端点（纯 metadata 操作） |
+| 前置条件 | `uc_lance_tags` 表已创建；table 已存在 |
+| 关键场景 | `TD-TAG-001` list tags；`TD-TAG-002` get tag version；`TD-TAG-003` create tag；`TD-TAG-004` update tag；`TD-TAG-005` delete tag；`TD-TAG-006` tag 创建时校验 target version 存在；`TD-TAG-007` dangling tag 策略（可选）；`TD-TAG-008` 审计记录 tag 操作前后值 |
+| 主要断言 | Tag CRUD 作为治理对象可被授权和审计；tag 不影响 Lance 物理数据 |
+| 自动化级别 | PR 必跑 |
 
-### 7.10 `TD-CRED` `storage_options` 与 credential vending
+### 7.10 `TD-ADV` Phase 3 高级能力测试（Protocol Forwarding + Query API）
+
+**Phase 3 UC 提供的查询 API（元数据来源于执行器同步）**：
+
+| API | UC 实现方式 | 数据来源 | 测试套件 |
+|---|---|---|---|
+| `listIndices` / `describeIndexStats` | 查询 `uc_lance_indices` 表 | 执行器创建索引后同步 | `TD-ADV-001`、`TD-ADV-002` |
+| `listVersions` / `describeVersion` | 查询 `uc_lance_versions` 表 | 执行器写入后同步 | `TD-ADV-003`、`TD-ADV-004` |
+| `describeTransaction` | 查询 `uc_lance_transactions` 表 | 执行器执行事务后同步 | `TD-ADV-005` |
+
+**Phase 3 UC 提供的协议转发能力（Worker 执行后同步元数据）**：
+
+| 操作 | 执行方式 | 元数据同步 | 测试套件 |
+|---|---|---|---|
+| `createIndex` / `dropIndex` | Worker 执行 | 调用 `syncIndex` API | `TD-ADV-006`、`TD-ADV-007` |
+| `deleteVersions` | Worker 执行 | 调用 `syncVersion` API | `TD-ADV-008` |
+| `batchCommit` | Worker 执行 | 调用 `syncVersion` / `syncTransaction` | `TD-ADV-009` |
+| `alterTransaction` | Worker 执行 | 调用 `syncTransaction` API | `TD-ADV-010` |
+| `addColumns` / `alterColumns` / `dropColumns` | Worker 执行 | 调用 `syncSchema` API | `TD-ADV-011`、`TD-ADV-012`、`TD-ADV-013` |
+| `restoreTable` | Worker 执行 | Lance 文件格式操作 | `TD-ADV-014` |
+
+**UC 拒绝的语义错误请求**：
+
+| API | 原因 | UC 处理 | 测试套件 |
+|---|---|---|---|
+| `createVersion` | Lance version 由写入自动产生，不能手动创建 | 400 BAD_REQUEST | `TD-ADV-015` |
+| `batchCreateVersions` | 同上 | 400 BAD_REQUEST | `TD-ADV-016` |
+
+**元数据同步 API 测试**：
+
+| API | 调用时机 | 测试套件 |
+|---|---|---|
+| `syncIndex` | Lance 创建索引成功后 | `TD-ADV-017` |
+| `syncVersion` | Lance 写入成功后 | `TD-ADV-018` |
+| `syncSchema` | Lance schema 变化后 | `TD-ADV-019` |
+| `syncTransaction` | Lance 事务执行后 | `TD-ADV-020` |
+
+**自动化级别**：Phase 3 必跑
+
+### 7.11 `TD-CRED` `storage_options` 与 credential vending
 
 | 项目 | 设计 |
 |---|---|
@@ -346,12 +405,29 @@
 | delete | `TD-DATA` |
 | explain plan | `TD-DATA` |
 | analyze plan | `TD-DATA` |
-| create/list/describe/drop index | `TD-ADV` |
-| `/v1/table/{id}/version/list` 等 version 端点 | `TD-ADV` |
-| `/v1/table/{id}/tags/*` | `TD-ADV` |
-| transaction describe/alter | `TD-ADV` |
-| `/v1/table/batch-commit` | `TD-ADV` |
+| `/v1/table/{id}/tags/*` | `TD-TAG` |
 | `DescribeTable(vend_credentials=true)` | `TD-CRED`、`TD-LOCAL` |
+
+**Phase 3 端点（Protocol Forwarding + Query API）**：
+
+| 端点 | 测试套件 |
+|---|---|
+| `/v1/table/{id}/index/list` / `/v1/table/{id}/index/describe` | `TD-ADV`（查询 API） |
+| `/v1/table/{id}/index/create` / `/v1/table/{id}/index/drop` | `TD-ADV`（协议转发） |
+| `/v1/table/{id}/version/list` / `/v1/table/{id}/version/describe` | `TD-ADV`（查询 API） |
+| `/v1/table/{id}/version/delete` | `TD-ADV`（协议转发） |
+| `/v1/table/{id}/transaction/describe` / `/v1/table/{id}/transaction/alter` | `TD-ADV`（查询 API + 协议转发） |
+| `/v1/table/batch-commit` | `TD-ADV`（协议转发） |
+| `/schema_metadata/update` / `/add_columns` / `/alter_columns` / `/drop_columns` | `TD-ADV`（协议转发） |
+| `/v1/table/{id}/restore` | `TD-ADV`（协议转发） |
+| `/v1/table/{id}/metadata/sync` | `TD-ADV`（元数据同步 API） |
+
+**UC 拒绝的语义错误端点**：
+
+| 端点 | 处理 |
+|---|---|
+| `/v1/table/{id}/version/create` | 400 BAD_REQUEST |
+| `/v1/table/batch-create-versions` | 400 BAD_REQUEST |
 
 ## 9. 测试数据设计
 
@@ -361,10 +437,10 @@
 |---|---|---|
 | DS-NS-01 | 多层 namespace | 覆盖 1 层、2 层、4 层以上路径 |
 | DS-TBL-01 | 空表 | 验证 declare/create-empty/metadata-only |
-| DS-TBL-02 | 向量表 | 验证 vector query、index |
+| DS-TBL-02 | 向量表 | 验证 vector query（index 元数据由执行器同步到 UC） |
 | DS-TBL-03 | 文本表 | 验证 FTS、hybrid 查询 |
-| DS-TBL-04 | 演进表 | 验证 schema metadata 与列变更 |
-| DS-TBL-05 | 版本表 | 验证 version/tag/transaction/batch commit |
+| DS-TBL-04 | 演进表 | 验证 schema metadata 更新（schema evolution 通过 Worker 执行后同步 schema 到 UC） |
+| DS-TBL-05 | tag 数据 | 验证 tag CRUD |
 | DS-LEG-01 | legacy Unity Lance 表 | 验证识别与迁移 |
 | DS-SEC-01 | 多主体权限数据 | 验证授权与审计 |
 | DS-SEC-02 | API key 数据 | 验证 `uc_lance_api_keys` 哈希存储、主体映射与吊销 |
