@@ -367,6 +367,28 @@ public class LanceTableRepository {
         false);
   }
 
+  public void updateTableSchema(
+      UUID assetId,
+      String arrowSchemaJson,
+      Long currentVersion,
+      String statsJson,
+      String updatedBy) {
+    TransactionManager.executeWithTransaction(
+        sessionFactory,
+        session -> {
+          LanceAssetDAO assetDAO = requireAsset(session, assetId);
+          LanceTableDAO tableDAO = requireTable(session, assetId);
+          assetDAO.setUpdatedAt(new Date());
+          assetDAO.setUpdatedBy(updatedBy);
+          applyExecutionMetadata(tableDAO, currentVersion, arrowSchemaJson, statsJson);
+          session.merge(assetDAO);
+          session.merge(tableDAO);
+          return null;
+        },
+        "Failed to update Lance table schema",
+        false);
+  }
+
   private LanceAssetDAO requireAsset(Session session, UUID assetId) {
     LanceAssetDAO assetDAO = session.get(LanceAssetDAO.class, assetId);
     if (assetDAO == null) {

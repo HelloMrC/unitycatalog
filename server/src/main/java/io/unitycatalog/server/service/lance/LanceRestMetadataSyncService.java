@@ -11,6 +11,7 @@ import com.linecorp.armeria.server.annotation.Post;
 import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
+import io.unitycatalog.server.persist.LanceTableRepository;
 import io.unitycatalog.server.persist.LanceTagRepository;
 import io.unitycatalog.server.persist.LanceVersionRepository;
 import io.unitycatalog.server.persist.Repositories;
@@ -26,6 +27,7 @@ public class LanceRestMetadataSyncService {
   private final LanceTableResolver tableResolver;
   private final LanceVersionRepository versionRepository;
   private final LanceTagRepository tagRepository;
+  private final LanceTableRepository tableRepository;
   private final LanceAuthorizationService authorizationService;
 
   public LanceRestMetadataSyncService(
@@ -33,6 +35,7 @@ public class LanceRestMetadataSyncService {
     this.tableResolver = new LanceTableResolver(repositories);
     this.versionRepository = repositories.getLanceVersionRepository();
     this.tagRepository = repositories.getLanceTagRepository();
+    this.tableRepository = repositories.getLanceTableRepository();
     this.authorizationService = new LanceAuthorizationService(repositories, authorizer);
   }
 
@@ -94,6 +97,43 @@ public class LanceRestMetadataSyncService {
                 : request.createdBy());
 
     return HttpResponse.ofJson(toSyncTagResponse(tagDAO));
+  }
+
+  @Post("/v1/table/{id}/metadata/sync/schema")
+  public HttpResponse syncSchema(
+      @Param("id") String id,
+      @Param("delimiter") Optional<String> delimiter,
+      SyncSchemaRequest request) {
+    ResolvedLanceTable table =
+        resolveActiveNativeTable(id, delimiter.orElse(null), "sync schema metadata");
+    authorizationService.authorizeModifyTable(table.assetDAO());
+
+    if (request == null || request.schema() == null) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Lance schema is required.");
+    }
+
+    String schemaJson = toJson(request.schema(), "schema");
+    String updatedBy =
+        request.createdBy() == null || request.createdBy().isBlank()
+            ? currentPrincipal(table)
+            : request.createdBy();
+
+    tableRepository.updateTableSchema(
+        table.assetDAO().getId(),
+        schemaJson,
+        request.version(),
+        toJson(request.stats(), "table stats"),
+        updatedBy);
+
+    return HttpResponse.ofJson(
+        new SyncSchemaResponse(
+            request.version(),
+            request.schema(),
+            request.operation(),
+            request.columnsAdded(),
+            request.columnsAltered(),
+            request.columnsDropped(),
+            updatedBy));
   }
 
   private SyncVersionResponse toSyncVersionResponse(LanceVersionDAO versionDAO) {
@@ -207,5 +247,25 @@ public class LanceRestMetadataSyncService {
       @JsonProperty("created_at") String createdAt,
       @JsonProperty("created_by") String createdBy,
       @JsonProperty("updated_at") String updatedAt,
+      @JsonProperty("updated_by") String updatedBy) {}
+
+  public record SyncSchemaRequest(
+      Long version,
+      Object schema,
+      String operation,
+      @JsonProperty("columns_added") Object columnsAdded,
+      @JsonProperty("columns_altered") Object columnsAltered,
+      @JsonProperty("columns_dropped") Object columnsDropped,
+      Object stats,
+      @JsonProperty("created_by") String createdBy) {}
+
+  @JsonInclude(JsonInclude.Include.NON_NULL)
+  public record SyncSchemaResponse(
+      Long version,
+      Object schema,
+      String operation,
+      @JsonProperty("columns_added") Object columnsAdded,
+      @JsonProperty("columns_altered") Object columnsAltered,
+      @JsonProperty("columns_dropped") Object columnsDropped,
       @JsonProperty("updated_by") String updatedBy) {}
 }
