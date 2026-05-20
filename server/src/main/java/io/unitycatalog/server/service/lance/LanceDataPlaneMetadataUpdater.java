@@ -136,6 +136,24 @@ class LanceDataPlaneMetadataUpdater {
     return result;
   }
 
+  LanceExecutionResult afterDeleteVersions(
+      ResolvedLanceTable table, LanceExecutionContext context, LanceExecutionResult result) {
+    if (table.legacyBridge()) {
+      return result;
+    }
+    // deleteVersions physically removes version files from Lance storage.
+    // The UC metadata table should be updated by the caller using syncVersion API
+    // if needed to reflect the deletion. This method just updates table stats.
+    Map<String, Object> payload = result.payload();
+    if (payload.containsKey("stats")) {
+      tableRepository.updateTableStats(
+          table.assetDAO().getId(),
+          statsPayloadJson(payload),
+          updatedBy(table, context));
+    }
+    return result;
+  }
+
   private String updatedBy(ResolvedLanceTable table, LanceExecutionContext context) {
     String principal = context.principal();
     if (principal != null && !principal.isBlank()) {

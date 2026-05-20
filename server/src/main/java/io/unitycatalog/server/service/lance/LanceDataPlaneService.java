@@ -4,7 +4,7 @@ import com.linecorp.armeria.common.HttpRequest;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.model.Privileges;
-import io.unitycatalog.server.service.lance.backend.LanceExecutionBackend;
+import io.unitycatalog.server.service.lance.backend.LanceAdvancedExecutionBackend;
 import io.unitycatalog.server.service.lance.backend.LanceExecutionCommand;
 import io.unitycatalog.server.service.lance.backend.LanceExecutionContext;
 import io.unitycatalog.server.service.lance.backend.LanceExecutionResult;
@@ -16,7 +16,7 @@ import java.util.Optional;
 import java.util.stream.Collectors;
 
 class LanceDataPlaneService {
-  private final LanceExecutionBackend backend;
+  private final LanceAdvancedExecutionBackend backend;
   private final LanceTableResolver tableResolver;
   private final LanceStorageOptionsService storageOptionsService;
   private final LanceDataPlaneAuthorizer authorizer;
@@ -25,7 +25,7 @@ class LanceDataPlaneService {
   private final boolean legacyReadEnabled;
 
   LanceDataPlaneService(
-      LanceExecutionBackend backend,
+      LanceAdvancedExecutionBackend backend,
       LanceTableResolver tableResolver,
       LanceStorageOptionsService storageOptionsService,
       LanceDataPlaneAuthorizer authorizer,
@@ -232,6 +232,30 @@ class LanceDataPlaneService {
         prepared.table(),
         () -> metadataUpdater.afterWrite(
             "create", prepared.table(), context, backend.create(prepared.command())));
+  }
+
+  // ========== Phase 3: Version Operations ==========
+
+  LanceExecutionResult deleteVersions(
+      String id,
+      Optional<String> delimiter,
+      LanceExecutionContext context,
+      Map<String, Object> attributes) {
+    PreparedCommand prepared =
+        command(
+            "delete_versions",
+            id,
+            delimiter,
+            context,
+            attributes,
+            true,
+            AuthorizationScope.DATA_WRITE);
+    return observability.observe(
+        prepared.command(),
+        prepared.table(),
+        () ->
+            metadataUpdater.afterDeleteVersions(
+                prepared.table(), context, backend.deleteVersions(prepared.command())));
   }
 
   private PreparedCommand command(

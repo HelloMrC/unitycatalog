@@ -20,7 +20,7 @@ import io.unitycatalog.server.auth.UnityCatalogAuthorizer;
 import io.unitycatalog.server.exception.BaseException;
 import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.Repositories;
-import io.unitycatalog.server.service.lance.backend.LanceExecutionBackend;
+import io.unitycatalog.server.service.lance.backend.LanceAdvancedExecutionBackend;
 import io.unitycatalog.server.service.lance.backend.LanceExecutionContext;
 import io.unitycatalog.server.service.lance.backend.LanceExecutionResult;
 import io.unitycatalog.server.service.lance.backend.WorkerHttpLanceExecutionBackend;
@@ -45,7 +45,7 @@ public class LanceRestTableDataService {
   private static final String IDEMPOTENCY_KEY_HEADER = "idempotency-key";
   private static final String DEADLINE_MS_HEADER = "x-lance-deadline-ms";
 
-  private final LanceExecutionBackend backend;
+  private final LanceAdvancedExecutionBackend backend;
   private final LanceDataPlaneService dataPlaneService;
   private final LanceReconcileService reconcileService;
   private final ServerProperties serverProperties;
@@ -54,7 +54,7 @@ public class LanceRestTableDataService {
 
   public LanceRestTableDataService(
       Repositories repositories,
-      LanceExecutionBackend backend,
+      LanceAdvancedExecutionBackend backend,
       UnityCatalogAuthorizer authorizer,
       ServerProperties serverProperties) {
     this.backend = backend;

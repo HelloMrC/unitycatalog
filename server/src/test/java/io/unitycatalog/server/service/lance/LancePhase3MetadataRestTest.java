@@ -335,12 +335,15 @@ class LancePhase3MetadataRestTest extends BaseLancePhase2RestTest {
   }
 
   @Test
-  @DisplayName("P3-ERROR-003: deleteVersion returns 501 UNIMPLEMENTED")
+  @DisplayName("P3-ERROR-003: deleteVersion forwards to backend execution")
   void deleteVersionReturnsUnimplemented() throws Exception {
+    createActiveTableFixture();
+
     AggregatedHttpResponse response =
         postJson("/v1/table/" + P2_ACTIVE_TABLE_ID + "/version/delete", "{\"versions\":[1]}");
 
-    assertLanceErrorShape(response, 501);
-    assertThat(json(response).path("message").asText()).contains("execution backend support");
+    // With echo backend, deleteVersions now succeeds and returns mock result
+    assertSuccess(response);
+    assertThat(json(response).path("deleted_versions").asInt()).isEqualTo(0);
   }
 }

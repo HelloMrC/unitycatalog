@@ -66,7 +66,7 @@ import io.unitycatalog.server.service.lance.LanceRestTableService;
 import io.unitycatalog.server.service.lance.LanceRestTagService;
 import io.unitycatalog.server.service.lance.LanceRestTransactionService;
 import io.unitycatalog.server.service.lance.LanceRestVersionService;
-import io.unitycatalog.server.service.lance.backend.LanceExecutionBackend;
+import io.unitycatalog.server.service.lance.backend.LanceAdvancedExecutionBackend;
 import io.unitycatalog.server.service.lance.backend.LanceExecutionBackendFactory;
 import io.unitycatalog.server.utils.OptionParser;
 import io.unitycatalog.server.utils.ServerProperties;
@@ -200,8 +200,11 @@ public class UnityCatalogServer {
         new LanceRestNamespaceService(repositories, authorizer);
     LanceRestTableService lanceRestTableService =
         new LanceRestTableService(repositories, authorizer);
+    LanceAdvancedExecutionBackend lanceExecutionBackend =
+        LanceExecutionBackendFactory.create(serverProperties);
     LanceRestVersionService lanceRestVersionService =
-        new LanceRestVersionService(repositories, authorizer);
+        new LanceRestVersionService(
+            repositories, authorizer, lanceExecutionBackend, serverProperties);
     LanceRestTagService lanceRestTagService = new LanceRestTagService(repositories, authorizer);
     LanceRestMetadataSyncService lanceRestMetadataSyncService =
         new LanceRestMetadataSyncService(repositories, authorizer);
@@ -209,16 +212,11 @@ public class UnityCatalogServer {
         new LanceRestIndexService(repositories, authorizer);
     LanceRestTransactionService lanceRestTransactionService =
         new LanceRestTransactionService(repositories, authorizer);
-    LanceExecutionBackend lanceExecutionBackend =
-        LanceExecutionBackendFactory.create(unityCatalogServerBuilder.serverProperties);
     // Lance data endpoints stay on the Lance route family because their wire format and backend
     // dispatch are Lance REST concepts, not UC table API extensions.
     LanceRestTableDataService lanceRestTableDataService =
         new LanceRestTableDataService(
-            repositories,
-            lanceExecutionBackend,
-            authorizer,
-            unityCatalogServerBuilder.serverProperties);
+            repositories, lanceExecutionBackend, authorizer, serverProperties);
     // TODO: combine these into a single service in a follow-up PR
     TemporaryTableCredentialsService temporaryTableCredentialsService =
         new TemporaryTableCredentialsService(storageCredentialVendor, repositories);
