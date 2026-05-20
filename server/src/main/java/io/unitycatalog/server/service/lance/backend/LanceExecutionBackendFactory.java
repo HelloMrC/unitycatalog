@@ -10,7 +10,7 @@ import java.lang.reflect.InvocationTargetException;
 public final class LanceExecutionBackendFactory {
   private LanceExecutionBackendFactory() {}
 
-  public static LanceExecutionBackend create(ServerProperties serverProperties) {
+  public static LanceAdvancedExecutionBackend create(ServerProperties serverProperties) {
     String backendType = serverProperties.get(Property.LANCE_EXECUTION_BACKEND_TYPE);
     if ("worker-http".equalsIgnoreCase(backendType)) {
       return new WorkerHttpLanceExecutionBackend(serverProperties);
@@ -25,14 +25,14 @@ public final class LanceExecutionBackendFactory {
     return new DisabledLanceExecutionBackend();
   }
 
-  private static LanceExecutionBackend createConfiguredBackend(
+  private static LanceAdvancedExecutionBackend createConfiguredBackend(
       String backendClassName, ServerProperties serverProperties) {
     try {
       Class<?> backendClass = Class.forName(backendClassName);
-      if (!LanceExecutionBackend.class.isAssignableFrom(backendClass)) {
+      if (!LanceAdvancedExecutionBackend.class.isAssignableFrom(backendClass)) {
         throw new BaseException(
             ErrorCode.INVALID_ARGUMENT,
-            "Configured Lance execution backend does not implement LanceExecutionBackend: "
+            "Configured Lance execution backend does not implement LanceAdvancedExecutionBackend: "
                 + backendClassName);
       }
       return instantiate(backendClass, serverProperties);
@@ -55,18 +55,18 @@ public final class LanceExecutionBackendFactory {
     }
   }
 
-  private static LanceExecutionBackend instantiate(
+  private static LanceAdvancedExecutionBackend instantiate(
       Class<?> backendClass, ServerProperties serverProperties)
       throws NoSuchMethodException, InvocationTargetException, InstantiationException,
           IllegalAccessException {
     try {
       Constructor<?> constructor = backendClass.getDeclaredConstructor(ServerProperties.class);
       constructor.setAccessible(true);
-      return (LanceExecutionBackend) constructor.newInstance(serverProperties);
+      return (LanceAdvancedExecutionBackend) constructor.newInstance(serverProperties);
     } catch (NoSuchMethodException ignored) {
       Constructor<?> constructor = backendClass.getDeclaredConstructor();
       constructor.setAccessible(true);
-      return (LanceExecutionBackend) constructor.newInstance();
+      return (LanceAdvancedExecutionBackend) constructor.newInstance();
     }
   }
 }

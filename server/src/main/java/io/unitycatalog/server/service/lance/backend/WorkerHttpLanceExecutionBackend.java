@@ -26,7 +26,7 @@ import java.util.Map;
 import java.util.concurrent.CompletionException;
 import java.util.function.Supplier;
 
-public class WorkerHttpLanceExecutionBackend implements LanceExecutionBackend {
+public class WorkerHttpLanceExecutionBackend implements LanceAdvancedExecutionBackend {
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
   private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
   private static final MediaType ARROW_FILE = MediaType.parse("application/vnd.apache.arrow.file");
@@ -124,6 +124,61 @@ public class WorkerHttpLanceExecutionBackend implements LanceExecutionBackend {
   @Override
   public LanceExecutionResult create(LanceExecutionCommand command) {
     return arrowCommand("create", command);
+  }
+
+  // ========== Phase 3: Index Operations ==========
+
+  @Override
+  public LanceExecutionResult createIndex(LanceExecutionCommand command) {
+    return jsonCommand("create_index", command, false, false);
+  }
+
+  @Override
+  public LanceExecutionResult dropIndex(LanceExecutionCommand command) {
+    return jsonCommand("drop_index", command, false, false);
+  }
+
+  // ========== Phase 3: Version Operations ==========
+
+  @Override
+  public LanceExecutionResult deleteVersions(LanceExecutionCommand command) {
+    return jsonCommand("delete_versions", command, false, false);
+  }
+
+  // ========== Phase 3: Transaction Operations ==========
+
+  @Override
+  public LanceExecutionResult batchCommit(LanceExecutionCommand command) {
+    return arrowCommand("batch_commit", command);
+  }
+
+  @Override
+  public LanceExecutionResult alterTransaction(LanceExecutionCommand command) {
+    return jsonCommand("alter_transaction", command, false, false);
+  }
+
+  // ========== Phase 3: Schema Evolution ==========
+
+  @Override
+  public LanceExecutionResult addColumns(LanceExecutionCommand command) {
+    return jsonCommand("add_columns", command, false, false);
+  }
+
+  @Override
+  public LanceExecutionResult alterColumns(LanceExecutionCommand command) {
+    return jsonCommand("alter_columns", command, false, false);
+  }
+
+  @Override
+  public LanceExecutionResult dropColumns(LanceExecutionCommand command) {
+    return jsonCommand("drop_columns", command, false, false);
+  }
+
+  // ========== Phase 3: Restore ==========
+
+  @Override
+  public LanceExecutionResult restoreTable(LanceExecutionCommand command) {
+    return jsonCommand("restore_table", command, false, false);
   }
 
   public WorkerHealthStatus health() {

@@ -6,7 +6,7 @@ import io.unitycatalog.server.exception.ErrorCode;
 import java.util.LinkedHashMap;
 import java.util.Map;
 
-public class LanceTestEchoExecutionBackend implements LanceExecutionBackend {
+public class LanceTestEchoExecutionBackend implements LanceAdvancedExecutionBackend {
 
   @Override
   public LanceExecutionResult query(LanceExecutionCommand command) {
@@ -65,6 +65,66 @@ public class LanceTestEchoExecutionBackend implements LanceExecutionBackend {
   @Override
   public LanceExecutionResult create(LanceExecutionCommand command) {
     return result(command, writePayload("create"));
+  }
+
+  // ========== Phase 3: Index Operations ==========
+
+  @Override
+  public LanceExecutionResult createIndex(LanceExecutionCommand command) {
+    return result(
+        command,
+        Map.of(
+            "index_name", "test-index",
+            "index_type", "vector",
+            "status", "READY"));
+  }
+
+  @Override
+  public LanceExecutionResult dropIndex(LanceExecutionCommand command) {
+    return result(command, Map.of("dropped", true));
+  }
+
+  // ========== Phase 3: Version Operations ==========
+
+  @Override
+  public LanceExecutionResult deleteVersions(LanceExecutionCommand command) {
+    return result(command, Map.of("deleted_versions", 0));
+  }
+
+  // ========== Phase 3: Transaction Operations ==========
+
+  @Override
+  public LanceExecutionResult batchCommit(LanceExecutionCommand command) {
+    return result(command, writePayload("batch_commit"));
+  }
+
+  @Override
+  public LanceExecutionResult alterTransaction(LanceExecutionCommand command) {
+    return result(command, Map.of("transaction_key", "test-tx", "status", "SUCCEEDED"));
+  }
+
+  // ========== Phase 3: Schema Evolution ==========
+
+  @Override
+  public LanceExecutionResult addColumns(LanceExecutionCommand command) {
+    return result(command, Map.of("version", 1, "columns_added", 1));
+  }
+
+  @Override
+  public LanceExecutionResult alterColumns(LanceExecutionCommand command) {
+    return result(command, Map.of("version", 1, "columns_altered", 1));
+  }
+
+  @Override
+  public LanceExecutionResult dropColumns(LanceExecutionCommand command) {
+    return result(command, Map.of("version", 1, "columns_dropped", 1));
+  }
+
+  // ========== Phase 3: Restore ==========
+
+  @Override
+  public LanceExecutionResult restoreTable(LanceExecutionCommand command) {
+    return result(command, Map.of("version", 1, "restored", true));
   }
 
   private LanceExecutionResult result(LanceExecutionCommand command, Map<String, Object> payload) {
