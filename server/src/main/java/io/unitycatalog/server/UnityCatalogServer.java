@@ -64,6 +64,7 @@ import io.unitycatalog.server.service.lance.LanceRestNamespaceService;
 import io.unitycatalog.server.service.lance.LanceRestTableDataService;
 import io.unitycatalog.server.service.lance.LanceRestTableService;
 import io.unitycatalog.server.service.lance.LanceRestTagService;
+import io.unitycatalog.server.service.lance.LanceRestTransactionService;
 import io.unitycatalog.server.service.lance.LanceRestVersionService;
 import io.unitycatalog.server.service.lance.backend.LanceExecutionBackend;
 import io.unitycatalog.server.service.lance.backend.LanceExecutionBackendFactory;
@@ -206,6 +207,8 @@ public class UnityCatalogServer {
         new LanceRestMetadataSyncService(repositories, authorizer);
     LanceRestIndexService lanceRestIndexService =
         new LanceRestIndexService(repositories, authorizer);
+    LanceRestTransactionService lanceRestTransactionService =
+        new LanceRestTransactionService(repositories, authorizer);
     LanceExecutionBackend lanceExecutionBackend =
         LanceExecutionBackendFactory.create(unityCatalogServerBuilder.serverProperties);
     // Lance data endpoints stay on the Lance route family because their wire format and backend
@@ -289,6 +292,7 @@ public class UnityCatalogServer {
         .annotatedService(LANCE_PATH, lanceRestTagService, requestConverterFunction)
         .annotatedService(LANCE_PATH, lanceRestMetadataSyncService, requestConverterFunction)
         .annotatedService(LANCE_PATH, lanceRestIndexService, requestConverterFunction)
+        .annotatedService(LANCE_PATH, lanceRestTransactionService, requestConverterFunction)
         .annotatedService(LANCE_PATH, lanceRestTableDataService, requestConverterFunction);
     addIcebergApiServices(
         armeriaServerBuilder,

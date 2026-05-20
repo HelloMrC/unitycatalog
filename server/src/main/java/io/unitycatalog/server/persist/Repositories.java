@@ -35,6 +35,7 @@ public class Repositories {
   private final LanceVersionRepository lanceVersionRepository;
   private final LanceTagRepository lanceTagRepository;
   private final LanceIndexRepository lanceIndexRepository;
+  private final LanceTransactionRepository lanceTransactionRepository;
 
   private final KeyMapper keyMapper;
 
@@ -62,6 +63,7 @@ public class Repositories {
     this.lanceVersionRepository = new LanceVersionRepository(this, sessionFactory);
     this.lanceTagRepository = new LanceTagRepository(this, sessionFactory);
     this.lanceIndexRepository = new LanceIndexRepository(this, sessionFactory);
+    this.lanceTransactionRepository = new LanceTransactionRepository(this, sessionFactory);
 
     // KeyMapper uses all the repositories above.
     this.keyMapper = new KeyMapper(this);
