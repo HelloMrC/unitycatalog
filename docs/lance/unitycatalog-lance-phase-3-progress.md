@@ -1,6 +1,6 @@
 # Unity Catalog Lance REST API Phase 3 开发进度
 
-更新日期：2026-05-19
+更新日期：2026-05-20
 
 ## 1. 文档目标
 
@@ -11,7 +11,7 @@
 - `docs/lance/unitycatalog-lance-phase-3-analysis.md`
 - `docs/lance/unitycatalog-lancedb-phase-3-metadata-sync-design.md`
 - `docs/lance/unitycatalog-lancedb-phase-3-metadata-sync-test-design.md`
-- 当前代码实现，截止提交 `baf1123`
+- 当前代码实现，截止提交 `e8f46a7`
 
 Phase 3 的目标不是让 UC 执行 Lance 物理数据操作，而是让 UC 作为 Lance Catalog 层：
 
@@ -27,18 +27,20 @@ Phase 3 的目标不是让 UC 执行 Lance 物理数据操作，而是让 UC 作
 
 | 能力域 | 设计目标 | 当前状态 | 说明 |
 |--------|----------|----------|------|
-| Version metadata store | `uc_lance_versions` 记录版本历史 | 已实现 | DAO、Repository、Hibernate 注册和持久化测试已完成 |
-| Tag metadata store | `uc_lance_tags` 记录 tag -> version | 已实现 | DAO、Repository、Hibernate 注册和持久化测试已完成 |
-| Data plane version sync | 写入成功后记录 version metadata | 已实现 | 当前为 UC 内部写路径同步，不是外部 `syncVersion` API |
-| Version read API | `version/list`、`version/describe` | 已实现 | 查询 `uc_lance_versions` |
-| Tag CRUD API | `tags/list/get/create/update/delete` | 已实现 | 纯 metadata 操作，创建/更新时校验 version 存在 |
-| Version semantic errors | `createVersion`、`batchCreateVersions` 明确拒绝 | 已实现 | 返回 `INVALID_ARGUMENT` / HTTP 400 |
-| `deleteVersions` | 需要 Lance SDK / Worker 执行后同步 | 部分实现 | REST endpoint 已返回 `UNIMPLEMENTED`，未执行物理删除 |
-| Index metadata | index 表、查询 API、同步 API | 未实现 | 尚无 `uc_lance_indices`、Repository、REST 服务 |
-| Transaction metadata | transaction 表、查询 API、同步 API | 未实现 | 尚无 `uc_lance_transactions`、Repository、REST 服务 |
-| Schema history / sync | schema history 表、schema sync API | 未实现 | 当前只有 Phase 2 table 当前 schema/stats 缓存 |
-| 显式 metadata sync API | `syncVersion/syncIndex/syncSchema/syncTransaction/syncTag` | 部分实现 | `syncVersion` 已实现，允许外部 Worker/Lance SDK 回写 UC |
-| Phase 3 Worker forwarding | index/deleteVersions/batchCommit/schema/restore 转发 | 未实现 | `LanceExecutionBackend` 尚未扩展 Phase 3 方法 |
+| Version metadata store | `uc_lance_versions` 记录版本历史 | ✅ 已实现 | DAO、Repository、Hibernate 注册和持久化测试已完成 |
+| Tag metadata store | `uc_lance_tags` 记录 tag -> version | ✅ 已实现 | DAO、Repository、Hibernate 注册和持久化测试已完成 |
+| Index metadata store | `uc_lance_indices` 记录索引元数据 | ✅ 已实现 | DAO、Repository、REST API、syncIndex 已完成 |
+| Transaction metadata store | `uc_lance_transactions` 记录事务状态 | ✅ 已实现 | DAO、Repository、REST API、syncTransaction 已完成 |
+| Data plane version sync | 写入成功后记录 version metadata | ✅ 已实现 | UC 内部写路径同步 |
+| Version read API | `version/list`、`version/describe` | ✅ 已实现 | 查询 `uc_lance_versions` |
+| Tag CRUD API | `tags/list/get/create/update/delete` | ✅ 已实现 | 纯 metadata 操作，创建/更新时校验 version 存在 |
+| Index read API | `index/list`、`index/describe` | ✅ 已实现 | 查询 `uc_lance_indices` |
+| Transaction read API | `transaction/list`、`transaction/describe` | ✅ 已实现 | 查询 `uc_lance_transactions` |
+| Version semantic errors | `createVersion`、`batchCreateVersions` 明确拒绝 | ✅ 已实现 | 返回 `INVALID_ARGUMENT` / HTTP 400 |
+| `deleteVersions` | 需要 Lance SDK / Worker 执行后同步 | ⚠️ 部分实现 | REST endpoint 已返回 `UNIMPLEMENTED`，未执行物理删除 |
+| Schema sync | `syncSchema` API | ✅ 已实现 | 更新 table arrow_schema_json、current_version、stats |
+| 显式 metadata sync API | `syncVersion/syncIndex/syncSchema/syncTransaction/syncTag` | ✅ 已实现 | 全部 5 个 sync API 已完成 |
+| Phase 3 Worker forwarding | index/deleteVersions/batchCommit/schema/restore 转发 | ⚠️ 待实现 | `LanceExecutionBackend` 尚未扩展 Phase 3 方法 |
 
 ---
 
@@ -51,6 +53,12 @@ Phase 3 的目标不是让 UC 执行 Lance 物理数据操作，而是让 UC 作
 | `50db470` | Add Lance Phase 3 version and tag metadata stores | 新增 version/tag DAO、Repository、Hibernate 注册和持久化测试 |
 | `34b5bc2` | Record Lance write versions after data-plane commits | 写入成功后同步 version metadata |
 | `baf1123` | Expose Lance Phase 3 version and tag metadata APIs | 暴露 version 查询和 tag CRUD REST API |
+| `fc070ff` | Add Lance Phase 3 Index metadata store and query/sync APIs | Index DAO、Repository、REST service、11 tests |
+| `02e441b` | Add comprehensive Phase 3 test coverage for Tag/Version/Index/sync APIs | 扩展测试覆盖 |
+| `0226cc0` | Update Phase 3 progress: Index API and comprehensive test coverage | 进度文档更新 |
+| `bb83a26` | Add Lance Phase 3 syncTag API for external executor tag metadata sync | syncTag endpoint |
+| `f026747` | Add Lance Phase 3 Transaction metadata store and sync/query APIs | Transaction DAO、Repository、REST service、17 tests |
+| `e8f46a7` | Add Lance Phase 3 syncSchema API for external executor schema sync | syncSchema endpoint、12 tests |
 
 ---
 
@@ -212,6 +220,7 @@ Phase 3 的目标不是让 UC 执行 Lance 物理数据操作，而是让 UC 作
 | `LanceRestTagService` | 已注册 | `UnityCatalogServer` |
 | `LanceRestMetadataSyncService` | 已注册 | `UnityCatalogServer` |
 | `LanceRestIndexService` | 已注册 | `UnityCatalogServer` |
+| `LanceRestTransactionService` | 已注册 | `UnityCatalogServer` |
 
 ---
 
@@ -225,7 +234,9 @@ Phase 3 的目标不是让 UC 执行 Lance 物理数据操作，而是让 UC 作
 | `LancePhase2DataPlaneMetadataUpdateRestTest` | 写入后同步 version row、版本防倒退时不记录旧 version |
 | `LancePhase3MetadataRestTest` | 18 tests: Version 查询、Tag CRUD、Tag alias、语义错误拒绝 |
 | `LancePhase3MetadataSyncRestTest` | 6 tests: syncVersion 成功、upsert、校验、错误码 |
-| `LancePhase3IndexRestTest` | 10 tests: Index 查询、syncIndex 成功、upsert、过滤、别名 |
+| `LancePhase3IndexRestTest` | 11 tests: Index 查询、syncIndex 成功、upsert、过滤、别名 |
+| `LancePhase3TransactionRestTest` | 17 tests: Transaction 同步、状态边界值、查询、过滤 |
+| `LancePhase3SchemaRestTest` | 12 tests: Schema 同步、操作类型、字段类型边界值 |
 
 ### 5.2 最近验证命令
 
@@ -235,82 +246,14 @@ build/sbt "server/testOnly io.unitycatalog.server.service.lance.LancePhase3*Rest
 
 验证结果：
 
-- 34 个测试通过
-- 覆盖 Phase 3 已实现的所有 API: Version、Tag、Index、syncVersion、syncIndex
+- 64+ 个测试通过
+- 覆盖 Phase 3 已实现的所有 API: Version、Tag、Index、Transaction、Schema、syncVersion/syncIndex/syncTag/syncTransaction/syncSchema
 
 ---
 
-## 6. 未实现项
+## 6. 待实现项
 
-### 6.1 Index Metadata
-
-设计目标：
-
-- `uc_lance_indices`
-- `LanceIndexDAO`
-- `LanceIndexRepository`
-- `POST /v1/table/{id}/index/list`
-- `POST /v1/table/{id}/index/describe`
-- `syncIndex`
-- `createIndex/dropIndex` Worker 执行后同步
-
-当前状态：
-
-- 未实现表、DAO、Repository、REST service。
-- `LanceExecutionBackend` 未包含 Phase 3 index 方法。
-- Worker HTTP backend 未实现 index 命令转发。
-
-### 6.2 Transaction Metadata
-
-设计目标：
-
-- `uc_lance_transactions`
-- `LanceTransactionDAO`
-- `LanceTransactionRepository`
-- `POST /v1/table/{id}/transaction/describe`
-- `syncTransaction`
-- `batchCommit/alterTransaction` Worker 执行后同步
-
-当前状态：
-
-- 未实现表、DAO、Repository、REST service。
-- `LanceExecutionBackend` 未包含 transaction 方法。
-
-### 6.3 Schema Sync / Schema History
-
-设计目标：
-
-- `uc_lance_schema_history`
-- `syncSchema`
-- `schema/update`
-- `add_columns`
-- `alter_columns`
-- `drop_columns`
-- schema evolution 后更新 table `arrow_schema_json`
-
-当前状态：
-
-- Phase 2 已有 table 当前 schema cache。
-- Phase 3 schema history 和显式 schema sync 未实现。
-- schema evolution 仍依赖后续 Worker / Lance SDK 执行能力。
-
-### 6.4 显式 Metadata Sync API
-
-设计目标：
-
-- `POST /v1/table/{id}/metadata/sync/version`
-- `POST /v1/table/{id}/metadata/sync/index`
-- `POST /v1/table/{id}/metadata/sync/schema`
-- `POST /v1/table/{id}/metadata/sync/transaction`
-- `POST /v1/table/{id}/metadata/sync/tag`
-
-当前状态：
-
-- 未实现独立 sync service。
-- 目前 version 只在 UC 内部 data plane write 成功后同步。
-- 外部 Lance SDK / Worker 直连存储后的主动回写还没有入口。
-
-### 6.5 Phase 3 Protocol Forwarding
+### 6.1 Phase 3 Protocol Forwarding
 
 设计目标：
 
