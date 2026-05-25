@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: Apache-2.0
+# Phase 1 Lance Client Smoke Test Dependencies
+#
+# This file specifies dependencies for running Phase 1 native client smoke tests.
+# Raw HTTP tests require minimal dependencies; native client tests are optional.
+#
+# Install: pip install -r requirements.txt
+
+# ==============================================================================
+# Raw HTTP Tests (Required)
+# ==============================================================================
+# These packages are required for raw HTTP smoke tests which verify
+# UC Lance REST endpoint behavior without relying on native LanceDB SDK.
+
+requests>=2.28.0       # HTTP client for raw REST API calls
+pytest>=7.0            # Test framework
+
+# ==============================================================================
+# Native Client Tests (Optional)
+# ==============================================================================
+# These packages are optional and used for native LanceDB client smoke tests.
+# Tests will be skipped gracefully if these packages are not available.
+# Raw HTTP tests serve as the primary validation mechanism.
+
+lancedb>=0.4.0         # LanceDB Python SDK (optional)
+lance-namespace>=0.3.2 # Lance namespace client for REST namespace (optional)
+pyarrow>=16            # Arrow support for schema/table operations (optional)
