@@ -25,3 +25,11 @@ pytest>=7.0            # Test framework
 lancedb>=0.4.0         # LanceDB Python SDK (optional)
 lance-namespace>=0.3.2 # Lance namespace client for REST namespace (optional)
 pyarrow>=16            # Arrow support for schema/table operations (optional)
+
+# ==============================================================================
+# Phase 2 S3 Storage Tests (Optional)
+# ==============================================================================
+# These packages are optional for S3-compatible storage smoke tests.
+# Tests will be skipped gracefully if MinIO/S3 environment is not available.
+
+minio>=7.0             # MinIO Python client for S3-compatible storage (optional)

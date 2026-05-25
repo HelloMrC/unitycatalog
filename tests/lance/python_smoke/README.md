@@ -14,11 +14,17 @@ These tests verify UC Lance REST endpoint behavior using two approaches:
 ```
 python_smoke/
 ├── requirements.txt              # Test dependencies
-├── phase1_raw_http_smoke.py      # Raw HTTP tests (required)
-├── phase1_native_client_smoke.py # Native client tests (optional)
-├── run_tests.sh                  # Test runner script
+├── pytest.ini                    # Pytest configuration
+├── phase1_raw_http_smoke.py      # Phase 1 Raw HTTP tests (required)
+├── phase1_native_client_smoke.py # Phase 1 Native client tests (optional)
+├── phase2_s3_storage_smoke.py    # Phase 2 S3 storage tests (optional)
+├── run_tests.sh                  # Phase 1 test runner script
+├── run_phase2_s3_tests.sh        # Phase 2 S3 test runner script
 ├── check_env.sh                  # Environment checker
-└── README.md                     # This file
+├── README.md                     # This file
+├── PROGRESS.md                   # Phase 1 progress tracker
+├── PHASE1_COVERAGE_ANALYSIS.md   # Phase 1 coverage analysis
+└── PHASE2_COVERAGE_ANALYSIS.md   # Phase 2 coverage analysis
 ```
 
 ## Quick Start
@@ -35,10 +41,10 @@ This verifies:
 - UC server running
 - Lance REST endpoint mounted
 
-### 2. Run Tests
+### 2. Run Phase 1 Tests
 
 ```bash
-# Run all tests
+# Run all Phase 1 tests
 ./run_tests.sh
 
 # Run only required tests (raw HTTP)
@@ -48,9 +54,19 @@ This verifies:
 ./run_tests.sh --native-only
 ```
 
+### 3. Run Phase 2 S3 Storage Tests
+
+```bash
+# Setup MinIO and run tests
+./run_phase2_s3_tests.sh --setup-minio
+
+# Run tests (MinIO must be running)
+./run_phase2_s3_tests.sh
+```
+
 ## Test Coverage
 
-### Raw HTTP Tests (Required)
+### Phase 1 Raw HTTP Tests (Required)
 
 These tests cover all Phase 1 endpoints per test design document Section 7.10:
 
@@ -67,7 +83,7 @@ Key verifications:
 - Declared-only table behavior
 - Storage credential vending
 
-### Native Client Tests (Optional)
+### Phase 1 Native Client Tests (Optional)
 
 These tests verify LanceDB Python SDK compatibility:
 
@@ -77,6 +93,25 @@ These tests verify LanceDB Python SDK compatibility:
 | P1-CLIENT-001 | Table: create/open/drop |
 
 Note: Native client tests are skipped gracefully if SDK unavailable.
+
+### Phase 2 S3 Storage Tests (Optional)
+
+These tests verify S3-compatible storage integration with Phase 2 data endpoints:
+
+| Test Case | Description |
+|-----------|-------------|
+| P2-STORAGE-001 | Storage template loaded into backend command |
+| P2-STORAGE-007 | Local FS table does not require cloud credentials |
+| P2-STORAGE-008 | S3-compatible storage smoke (MinIO) |
+| P2-DATA-001 | Query returns consumable Arrow IPC |
+| P2-DATA-009 | Count rows returns JSON integer |
+
+Prerequisites:
+- MinIO running at localhost:9000 (use `--setup-minio` option)
+- UC server with Lance routes enabled
+- lance-test bucket created in S3 storage
+
+Note: S3 tests are skipped gracefully if MinIO not available.
 
 ## Dependencies
 
@@ -90,6 +125,12 @@ pip install requests pytest
 
 ```bash
 pip install lancedb lance-namespace pyarrow
+```
+
+### Optional (Phase 2 S3 Storage Tests)
+
+```bash
+pip install minio
 ```
 
 ## Configuration
