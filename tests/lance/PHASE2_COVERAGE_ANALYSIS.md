@@ -235,18 +235,22 @@
 - P2-CLIENT-001/002/004/005: 使用最小协议客户端 (raw HTTP)，非官方 LanceDB SDK
 - P2-CLIENT-003/006: 需要官方 LanceDB Python SDK 环境支持，当前 disabled
 
-### 1.15 P2-SPARK Spark Connector Smoke ❌ 未实现
+### 1.15 P2-SPARK Spark Connector Smoke ✅ 部分覆盖
 
 | 用例 ID | 测试覆盖 | 状态 |
 |---------|----------|------|
-| P2-SPARK-001 | LancePhase2EcosystemSmokeTest | ❌ Disabled |
-| P2-SPARK-002 | LancePhase2EcosystemSmokeTest | ❌ Disabled |
-| P2-SPARK-003 | LancePhase2EcosystemSmokeTest | ❌ Disabled |
-| P2-SPARK-004 | LancePhase2EcosystemSmokeTest | ❌ Disabled |
-| P2-SPARK-005 | LancePhase2EcosystemSmokeTest | ❌ Disabled |
-| P2-SPARK-006 | LancePhase2EcosystemSmokeTest | ❌ Disabled |
-| P2-SPARK-007 | LancePhase2EcosystemSmokeTest | ❌ Disabled |
-| P2-SPARK-008 | LancePhase2EcosystemSmokeTest | ❌ Disabled |
+| P2-SPARK-001 | phase2_spark_smoke.py (Python) | ✅ Enabled (Spark session + lance-spark JAR) |
+| P2-SPARK-002 | LancePhase2EcosystemSmokeTest | ❌ Disabled (S3 write path) |
+| P2-SPARK-003 | LancePhase2EcosystemSmokeTest | ❌ Disabled (catalog integration) |
+| P2-SPARK-004 | phase2_spark_smoke.py (Python) | ✅ Enabled (SELECT/filter/SQL/aggregation/join) |
+| P2-SPARK-005 | LancePhase2EcosystemSmokeTest | ❌ Disabled (write operation) |
+| P2-SPARK-006 | LancePhase2EcosystemSmokeTest | ❌ Disabled (vector search) |
+| P2-SPARK-007 | LancePhase2EcosystemSmokeTest | ❌ Disabled (partition pruning) |
+| P2-SPARK-008 | LancePhase2EcosystemSmokeTest | ❌ Disabled (S3 read) |
+
+**说明：**
+- P2-SPARK-001/004: Python smoke 测试已实现，覆盖 Spark session 创建、Lance table 读取、SQL 查询、DataFrame 操作
+- P2-SPARK-002/003/005/006/007/008: 需配置 UC catalog integration 和 S3 write path，当前 disabled
 
 ### 1.16 P2-RAY Ray Connector Smoke ❌ 未实现
 
@@ -413,11 +417,11 @@
 | P2-ERROR | 18 | 11 | 7 | 0 | 100% |
 | P2-CONCURRENCY | 6 | 6 | 0 | 0 | 100% |
 | P2-CLIENT | 6 | 4 | 0 | 2 | 67% |
-| P2-SPARK | 8 | 0 | 0 | 8 | 0% |
+| P2-SPARK | 8 | 2 | 0 | 6 | 25% |
 | P2-RAY | 7 | 0 | 0 | 7 | 0% |
 | P2-LOCAL | 7 | 0 | 0 | 7 | 0% |
 | P2-REG | 10 | 3 | 7 | 0 | 100% |
-| **总计** | **158** | **91** | **50** | **17** | **协议层 100% / 生态层 0%** |
+| **总计** | **158** | **93** | **50** | **15** | **协议层 100% / 生态层 8%** |
 
 ### 4.2 完成状态评估
 
@@ -425,14 +429,16 @@
 |------|------|------|
 | **L0-L3 (PR 层)** | ✅ 完成 | fake backend + disabled backend + request mapping + Arrow IPC |
 | **L4 (Worker E2E)** | ✅ 完成 | fake worker + real LanceDB worker process |
-| **L5 (Ecosystem)** | ❌ 未完成 | Python/Java/Rust/Spark/Ray/DuckDB/Pandas connector |
+| **L5 (Ecosystem)** | ⚠️ 部分完成 | Spark read 已覆盖 (Python smoke)；Ray/DuckDB/Pandas/S3 write 未完成 |
 | **L6 (Resilience/NFR)** | ⚠️ 部分完成 | 并发/超时/backpressure/S3 已覆盖；PostgreSQL 未完成 |
 
 ### 4.3 下一步建议
 
 1. **Ecosystem Smoke (Nightly)**:
-   - 配置 Spark/Ray/DuckDB/Pandas 环境和 fixture
-   - 启用 LancePhase2EcosystemSmokeTest 中的 P2-SPARK/P2-RAY/P2-LOCAL
+   - ✅ Spark read 已完成：Python smoke 测试已实现 (`phase2_spark_smoke.py`)
+   - ❌ Spark write/S3 path 未完成：需配置 UC catalog integration
+   - ❌ Ray/DuckDB/Pandas 未完成：需配置环境和 fixture
+   - 启用 LancePhase2EcosystemSmokeTest 中的 P2-SPARK-002~008, P2-RAY, P2-LOCAL
 
 2. **Vector Query 边界值**:
    - 准备含 vector 字段和 vector index 的 Lance table
