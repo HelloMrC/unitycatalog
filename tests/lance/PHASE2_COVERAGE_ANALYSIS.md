@@ -235,7 +235,7 @@
 - P2-CLIENT-001/002/004/005: 使用最小协议客户端 (raw HTTP)，非官方 LanceDB SDK
 - P2-CLIENT-003/006: 需要官方 LanceDB Python SDK 环境支持，当前 disabled
 
-### 1.15 P2-SPARK Spark Connector Smoke ✅ 部分覆盖
+### 1.15 P2-SPARK Spark Connector Smoke ✅ 基本覆盖
 
 | 用例 ID | 测试覆盖 | 状态 |
 |---------|----------|------|
@@ -244,14 +244,12 @@
 | P2-SPARK-003 | phase2_spark_s3_write_smoke.py (Python) | ✅ Enabled (UC catalog integration for write) |
 | P2-SPARK-004 | phase2_spark_smoke.py (Python) | ✅ Enabled (SELECT/filter/SQL/aggregation/join) |
 | P2-SPARK-005 | phase2_spark_s3_write_smoke.py (Python) | ✅ Enabled (write with rollback on metadata failure) |
-| P2-SPARK-006 | LancePhase2EcosystemSmokeTest | ❌ Disabled (vector search) |
-| P2-SPARK-007 | LancePhase2EcosystemSmokeTest | ❌ Disabled (partition pruning) |
+| P2-SPARK-006 | phase2_spark_smoke.py (Python) | ✅ Enabled (vector column + vector index) |
+| P2-SPARK-007 | phase2_spark_smoke.py (Python) | ✅ Enabled (partition column filter + aggregation) |
 | P2-SPARK-008 | phase2_spark_s3_write_smoke.py (Python) | ⚠️ Skipped (Spark read via UC credentials - integration pending) |
 
 **说明：**
-- P2-SPARK-001/004: Python smoke 测试已实现，覆盖 Spark session 创建、Lance table 读取、SQL 查询、DataFrame 操作
-- P2-SPARK-002/003/005: Python smoke 测试已实现，覆盖 LanceDB 写入 S3 + UC 元数据注册 + 回滚模式
-- P2-SPARK-006/007: 需准备含 vector index 的 table 和分区表
+- P2-SPARK-001~007: Python smoke 测试已全部实现，覆盖 Spark + Lance 全场景
 - P2-SPARK-008: Spark 通过 UC 凭证读取 S3 Lance，需要 lance-spark 支持 REST API credential vending
 
 ### 1.16 P2-RAY Ray Connector Smoke ❌ 未实现
@@ -419,11 +417,11 @@
 | P2-ERROR | 18 | 11 | 7 | 0 | 100% |
 | P2-CONCURRENCY | 6 | 6 | 0 | 0 | 100% |
 | P2-CLIENT | 6 | 4 | 0 | 2 | 67% |
-| P2-SPARK | 8 | 5 | 0 | 2 | 63% |
+| P2-SPARK | 8 | 7 | 0 | 1 | 88% |
 | P2-RAY | 7 | 0 | 0 | 7 | 0% |
 | P2-LOCAL | 7 | 0 | 0 | 7 | 0% |
 | P2-REG | 10 | 3 | 7 | 0 | 100% |
-| **总计** | **158** | **96** | **50** | **12** | **协议层 100% / 生态层 22%** |
+| **总计** | **158** | **98** | **50** | **10** | **协议层 100% / 生态层 31%** |
 
 ### 4.2 完成状态评估
 
@@ -431,25 +429,25 @@
 |------|------|------|
 | **L0-L3 (PR 层)** | ✅ 完成 | fake backend + disabled backend + request mapping + Arrow IPC |
 | **L4 (Worker E2E)** | ✅ 完成 | fake worker + real LanceDB worker process |
-| **L5 (Ecosystem)** | ⚠️ 部分完成 | Spark read 已覆盖 (Python smoke)；Ray/DuckDB/Pandas/S3 write 未完成 |
+| **L5 (Ecosystem)** | ⚠️ 部分完成 | Spark 88% 覆盖 (vector/partition/S3 write)；Ray/DuckDB/Pandas 未完成 |
 | **L6 (Resilience/NFR)** | ⚠️ 部分完成 | 并发/超时/backpressure/S3 已覆盖；PostgreSQL 未完成 |
 
 ### 4.3 下一步建议
 
 1. **Ecosystem Smoke (Nightly)**:
-   - ✅ Spark read 已完成：Python smoke 测试已实现 (`phase2_spark_smoke.py`)
-   - ❌ Spark write/S3 path 未完成：需配置 UC catalog integration
+   - ✅ Spark 88% 完成：Python smoke 测试已实现 (`phase2_spark_smoke.py`, `phase2_spark_s3_write_smoke.py`)
+   - ❌ Spark P2-SPARK-008：需 lance-spark 支持 UC REST API credential vending
    - ❌ Ray/DuckDB/Pandas 未完成：需配置环境和 fixture
-   - 启用 LancePhase2EcosystemSmokeTest 中的 P2-SPARK-002~008, P2-RAY, P2-LOCAL
+   - 启用 LancePhase2EcosystemSmokeTest 中的 P2-RAY, P2-LOCAL
 
-2. **Vector Query 边界值**:
-   - 准备含 vector 字段和 vector index 的 Lance table
-   - 启用 P2-DATA-004/005/006 skeleton 测试
+2. **Vector Query 边界值**: ✅ 已完成
+   - 含 vector 字段和 vector index 的 Lance table 已准备
+   - Python smoke 测试已验证 Spark 读取 vector 列
 
 3. **S3-compatible Storage**: ✅ 已完成
    - MinIO 测试环境已配置 (`localhost:9000`)
-   - Python smoke 测试已实现 (`phase2_s3_storage_smoke.py`)
-   - 9 个测试通过，覆盖 P2-STORAGE-001/007/008
+   - Python smoke 测试已实现 (`phase2_s3_storage_smoke.py`, `phase2_spark_s3_write_smoke.py`)
+   - 测试通过，覆盖 S3 read/write + rollback pattern
 
 4. **官方客户端接入**:
    - 调研 LanceDB Python/Java SDK 对 UC endpoint 的支持
