@@ -342,5 +342,173 @@ class TestSparkDataFrameOps:
 # Main
 # ==============================================================================
 
+# ==============================================================================
+# Vector Search Tests
+# ==============================================================================
+
+class TestSparkVectorSearch:
+    """Test Spark read Lance tables with vector columns and indexes."""
+
+    @pytest.fixture(scope="class")
+    def vector_test_data(self):
+        """Lance table with vector column and index."""
+        try:
+            import lancedb
+            import pyarrow as pa
+            import numpy as np
+        except ImportError:
+            pytest.skip("lancedb/pyarrow/numpy not installed")
+
+        temp_dir = tempfile.mkdtemp(prefix="lance_vector_")
+
+        # Create enough data for vector index (256+ rows required)
+        n = 300
+        ids = list(range(1, n + 1))
+        texts = [f"text_{i}" for i in range(n)]
+        np.random.seed(42)
+        vectors = np.random.rand(n, 3).tolist()
+
+        data = pa.table({
+            "id": pa.array(ids, type=pa.int64()),
+            "text": pa.array(texts),
+            "vector": pa.array(vectors, type=pa.list_(pa.float64()))
+        })
+
+        db = lancedb.connect(temp_dir)
+        table = db.create_table("vector_table", data)
+
+        # Create vector index
+        table.create_index(
+            vector_column_name="vector",
+            metric="l2",
+            num_partitions=2,
+            num_sub_vectors=1
+        )
+
+        lance_path = os.path.join(temp_dir, "vector_table.lance")
+        yield lance_path
+
+        # Cleanup
+        import shutil
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_read_lance_with_vector_column(self, spark_session, vector_test_data):
+        """P2-SPARK-006: Spark reads Lance table with vector column."""
+        df = spark_session.read.format("lance").load(vector_test_data)
+
+        count = df.count()
+        print(f"Read {count} rows from Lance table with vector column")
+        assert count == 300
+
+        # Verify schema includes vector column
+        assert "vector" in df.columns
+        schema = df.schema
+        vector_field = schema["vector"]
+        # Vector should be ArrayType
+        assert vector_field.dataType.typeName() == "array"
+
+        df.show(5)
+
+    def test_vector_column_filter(self, spark_session, vector_test_data):
+        """P2-SPARK-006: Spark filter on non-vector columns of vector table."""
+        df = spark_session.read.format("lance").load(vector_test_data)
+
+        # Filter on regular column
+        filtered = df.filter("id < 100")
+        count = filtered.count()
+        print(f"Filtered {count} rows with id < 100")
+        assert count == 99
+
+        # Select specific columns including vector
+        selected = filtered.select("id", "text", "vector")
+        assert selected.count() == 99
+
+
+# ==============================================================================
+# Partition Pruning Tests
+# ==============================================================================
+
+class TestSparkPartitionPruning:
+    """Test Spark partition pruning on Lance tables."""
+
+    @pytest.fixture(scope="class")
+    def partitioned_test_data(self):
+        """Lance table with partition-like data distribution."""
+        try:
+            import lancedb
+            import pyarrow as pa
+        except ImportError:
+            pytest.skip("lancedb/pyarrow not installed")
+
+        temp_dir = tempfile.mkdtemp(prefix="lance_partition_")
+
+        # Create data with categorical partition column
+        data = pa.table({
+            "id": pa.array(range(1, 101), type=pa.int64()),
+            "category": pa.array(["A"] * 50 + ["B"] * 50),
+            "value": pa.array(range(100), type=pa.int64())
+        })
+
+        db = lancedb.connect(temp_dir)
+        table = db.create_table("partitioned_table", data)
+
+        lance_path = os.path.join(temp_dir, "partitioned_table.lance")
+        yield lance_path
+
+        # Cleanup
+        import shutil
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_read_partitioned_lance_table(self, spark_session, partitioned_test_data):
+        """P2-SPARK-007: Spark reads Lance table with partition-like column."""
+        df = spark_session.read.format("lance").load(partitioned_test_data)
+
+        count = df.count()
+        print(f"Read {count} rows from partitioned Lance table")
+        assert count == 100
+
+        # Verify all categories present
+        categories = df.select("category").distinct().collect()
+        category_values = [row["category"] for row in categories]
+        assert "A" in category_values
+        assert "B" in category_values
+
+    def test_partition_column_filter(self, spark_session, partitioned_test_data):
+        """P2-SPARK-007: Spark filter pushes down to Lance partition column."""
+        df = spark_session.read.format("lance").load(partitioned_test_data)
+
+        # Filter on partition-like column
+        filtered = df.filter("category == 'A'")
+        count = filtered.count()
+        print(f"Filtered {count} rows with category='A'")
+        assert count == 50
+
+        # Verify all filtered rows have correct category
+        filtered_rows = filtered.collect()
+        for row in filtered_rows[:10]:
+            assert row["category"] == "A"
+
+    def test_partition_column_aggregation(self, spark_session, partitioned_test_data):
+        """P2-SPARK-007: Spark aggregation grouped by partition column."""
+        df = spark_session.read.format("lance").load(partitioned_test_data)
+
+        # Group by partition column
+        grouped = df.groupBy("category").count()
+        result = grouped.collect()
+
+        print("Group by category results:")
+        for row in result:
+            print(f"  {row['category']}: {row['count']} rows")
+
+        # Verify counts
+        counts = {row["category"]: row["count"] for row in result}
+        assert counts["A"] == 50
+        assert counts["B"] == 50
+
+
+# ==============================================================================
+# Main
+# ==============================================================================
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v", "--tb=short", "-m", "not skip"])
