@@ -18,8 +18,10 @@ python_smoke/
 ├── phase1_raw_http_smoke.py      # Phase 1 Raw HTTP tests (required)
 ├── phase1_native_client_smoke.py # Phase 1 Native client tests (optional)
 ├── phase2_s3_storage_smoke.py    # Phase 2 S3 storage tests (optional)
+├── phase2_spark_smoke.py         # Phase 2 Spark connector tests (optional)
 ├── run_tests.sh                  # Phase 1 test runner script
 ├── run_phase2_s3_tests.sh        # Phase 2 S3 test runner script
+├── run_phase2_spark_tests.sh     # Phase 2 Spark test runner script
 ├── check_env.sh                  # Environment checker
 ├── README.md                     # This file
 ├── PROGRESS.md                   # Phase 1 progress tracker
@@ -62,6 +64,18 @@ This verifies:
 
 # Run tests (MinIO must be running)
 ./run_phase2_s3_tests.sh
+```
+
+### 4. Run Phase 2 Spark Connector Tests
+
+```bash
+# Download lance-spark JAR (if not present)
+mkdir -p tests/lance/spark_jars
+curl -L 'https://maven.aliyun.com/repository/public/com/lancedb/lance-spark-bundle-4.0_2.13/0.0.15/lance-spark-bundle-4.0_2.13-0.0.15.jar' \
+    -o tests/lance/spark_jars/lance-spark-bundle.jar
+
+# Run tests
+./run_phase2_spark_tests.sh
 ```
 
 ## Test Coverage
@@ -112,6 +126,29 @@ Prerequisites:
 - lance-test bucket created in S3 storage
 
 Note: S3 tests are skipped gracefully if MinIO not available.
+
+### Phase 2 Spark Connector Tests (Optional)
+
+These tests verify Spark can read Lance format tables:
+
+| Test Case | Description |
+|-----------|-------------|
+| P2-SPARK-001 | Spark session with lance-spark JAR created |
+| P2-SPARK-004 | Spark SELECT returns expected rows from Lance table |
+| P2-LOCAL-006 | Verify Lance schema in Spark DataFrame |
+
+Key verifications:
+- Lance table read via `spark.read.format("lance").load(path)`
+- SQL queries on Lance tables
+- DataFrame operations: filter, aggregation, join
+- Schema type mapping: int64→long, float64→double, string→string
+
+Prerequisites:
+- PySpark installed (pip install pyspark)
+- lance-spark-bundle JAR downloaded (260MB)
+- LanceDB installed for test data creation
+
+Note: Spark tests are skipped gracefully if JAR or PySpark not available.
 
 ## Dependencies
 
