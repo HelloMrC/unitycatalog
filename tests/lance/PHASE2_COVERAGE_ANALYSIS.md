@@ -235,22 +235,29 @@
 - P2-CLIENT-001/002/004/005: 使用最小协议客户端 (raw HTTP)，非官方 LanceDB SDK
 - P2-CLIENT-003/006: 需要官方 LanceDB Python SDK 环境支持，当前 disabled
 
-### 1.15 P2-SPARK Spark Connector Smoke ✅ 基本覆盖
+### 1.15 P2-SPARK Spark Connector Smoke ⚠️ 部分覆盖
 
 | 用例 ID | 测试覆盖 | 状态 |
 |---------|----------|------|
 | P2-SPARK-001 | phase2_spark_smoke.py (Python) | ✅ Enabled (Spark session + lance-spark JAR) |
-| P2-SPARK-002 | phase2_spark_s3_write_smoke.py (Python) | ✅ Enabled (LanceDB write to S3) |
-| P2-SPARK-003 | phase2_spark_s3_write_smoke.py (Python) | ✅ Enabled (UC catalog integration for write) |
+| P2-SPARK-002 | LancePhase2EcosystemSmokeTest | ⚠️ Disabled (CREATE TABLE 需 catalog plugin) |
+| P2-SPARK-003 | LancePhase2EcosystemSmokeTest | ⚠️ Disabled (INSERT INTO 需 catalog plugin) |
 | P2-SPARK-004 | phase2_spark_smoke.py (Python) | ✅ Enabled (SELECT/filter/SQL/aggregation/join) |
-| P2-SPARK-005 | phase2_spark_s3_write_smoke.py (Python) | ✅ Enabled (write with rollback on metadata failure) |
-| P2-SPARK-006 | phase2_spark_smoke.py (Python) | ✅ Enabled (vector column + vector index) |
-| P2-SPARK-007 | phase2_spark_smoke.py (Python) | ✅ Enabled (partition column filter + aggregation) |
-| P2-SPARK-008 | phase2_spark_s3_write_smoke.py (Python) | ⚠️ Skipped (Spark read via UC credentials - integration pending) |
+| P2-SPARK-005 | phase2_spark_smoke.py (Python) | ⚠️ Disabled (UPDATE/DELETE lance-spark 不支持) |
+| P2-SPARK-006 | phase2_spark_smoke.py (Python) | ✅ Enabled (多层 namespace 读测试) |
+| P2-SPARK-007 | LancePhase2EcosystemSmokeTest | ❌ Disabled (header/auth 透传) |
+| P2-SPARK-008 | LancePhase2EcosystemSmokeTest | ❌ Disabled (错误语义) |
 
 **说明：**
-- P2-SPARK-001~007: Python smoke 测试已全部实现，覆盖 Spark + Lance 全场景
-- P2-SPARK-008: Spark 通过 UC 凭证读取 S3 Lance，需要 lance-spark 支持 REST API credential vending
+- P2-SPARK-001/004/006: Python smoke 测试已实现，覆盖 Spark session 创建、SELECT 查询、多层 namespace
+- P2-SPARK-002/003: 需要 Spark catalog plugin 注册 UC catalog，当前 lance-spark 有兼容性问题
+- P2-SPARK-005: lance-spark connector 不支持 UPDATE/DELETE 操作
+- P2-SPARK-007: 需要 Spark context 配置 Bearer/API key 透传
+- P2-SPARK-008: 需验证 permission denied/backend disabled 可被 Spark 捕获
+
+**补充测试 (非设计定义)：**
+- phase2_spark_s3_write_smoke.py: LanceDB 写入 S3 + UC 注册（回滚模式）
+- phase2_spark_smoke.py: Vector column + Partition filter（非 P2-SPARK 设计定义）
 
 ### 1.16 P2-RAY Ray Connector Smoke ❌ 未实现
 
@@ -417,11 +424,11 @@
 | P2-ERROR | 18 | 11 | 7 | 0 | 100% |
 | P2-CONCURRENCY | 6 | 6 | 0 | 0 | 100% |
 | P2-CLIENT | 6 | 4 | 0 | 2 | 67% |
-| P2-SPARK | 8 | 7 | 0 | 1 | 88% |
+| P2-SPARK | 8 | 3 | 0 | 4 | 38% |
 | P2-RAY | 7 | 0 | 0 | 7 | 0% |
 | P2-LOCAL | 7 | 0 | 0 | 7 | 0% |
 | P2-REG | 10 | 3 | 7 | 0 | 100% |
-| **总计** | **158** | **98** | **50** | **10** | **协议层 100% / 生态层 31%** |
+| **总计** | **158** | **94** | **50** | **14** | **协议层 100% / 生态层 25%** |
 
 ### 4.2 完成状态评估
 
@@ -429,14 +436,15 @@
 |------|------|------|
 | **L0-L3 (PR 层)** | ✅ 完成 | fake backend + disabled backend + request mapping + Arrow IPC |
 | **L4 (Worker E2E)** | ✅ 完成 | fake worker + real LanceDB worker process |
-| **L5 (Ecosystem)** | ⚠️ 部分完成 | Spark 88% 覆盖 (vector/partition/S3 write)；Ray/DuckDB/Pandas 未完成 |
+| **L5 (Ecosystem)** | ⚠️ 部分完成 | Spark 38% 覆盖（多层 namespace/SELECT）；INSERT/UPDATE/auth透传需catalog plugin |
 | **L6 (Resilience/NFR)** | ⚠️ 部分完成 | 并发/超时/backpressure/S3 已覆盖；PostgreSQL 未完成 |
 
 ### 4.3 下一步建议
 
 1. **Ecosystem Smoke (Nightly)**:
-   - ✅ Spark 88% 完成：Python smoke 测试已实现 (`phase2_spark_smoke.py`, `phase2_spark_s3_write_smoke.py`)
-   - ❌ Spark P2-SPARK-008：需 lance-spark 支持 UC REST API credential vending
+   - ✅ Spark read 基础完成：P2-SPARK-001/004/006（session/SELECT/多层 namespace）
+   - ⚠️ Spark write 缺口：P2-SPARK-002/003/005 需要 Spark catalog plugin 注册 UC catalog
+   - ❌ Spark auth 缺口：P2-SPARK-007/008 需 header/auth 透传 + 错误语义验证
    - ❌ Ray/DuckDB/Pandas 未完成：需配置环境和 fixture
    - 启用 LancePhase2EcosystemSmokeTest 中的 P2-RAY, P2-LOCAL
 
@@ -456,3 +464,4 @@
 5. **发布前矩阵**:
    - PostgreSQL metadata DB
    - 真实 sidecar 压力测试
+   - Spark 版本矩阵（PySpark 3.x + lance-spark 不同版本）

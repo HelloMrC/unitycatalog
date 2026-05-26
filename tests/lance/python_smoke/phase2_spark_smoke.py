@@ -227,6 +227,46 @@ class TestSparkLanceRead:
         value_field = schema["value"]
         assert value_field.dataType.typeName() == "double"
 
+    def test_read_lance_multi_level_namespace(self, spark_session):
+        """P2-SPARK-006: Spark reads Lance table with multi-level namespace."""
+        import lancedb
+        import pyarrow as pa
+
+        # Create nested temp directory simulating multi-level namespace
+        temp_dir = tempfile.mkdtemp(prefix="lance_multilevel_")
+
+        # Create namespace-like path: /tmp/lance_multilevel/prod/team_a/embeddings.lance
+        nested_path = os.path.join(temp_dir, "prod", "team_a")
+        os.makedirs(nested_path, exist_ok=True)
+
+        # Create Lance table at nested path
+        data = pa.table({
+            "id": pa.array([1, 2, 3], type=pa.int64()),
+            "embedding_id": pa.array(["emb1", "emb2", "emb3"]),
+            "vector": pa.array([[0.1, 0.2], [0.3, 0.4], [0.5, 0.6]], type=pa.list_(pa.float64()))
+        })
+
+        db = lancedb.connect(nested_path)
+        table = db.create_table("embeddings", data)
+        lance_path = os.path.join(nested_path, "embeddings.lance")
+
+        # Read via Spark
+        df = spark_session.read.format("lance").load(lance_path)
+        count = df.count()
+
+        print(f"Read {count} rows from multi-level namespace Lance table")
+        assert count == 3
+
+        # Verify nested path doesn't cause issues
+        schema = df.schema
+        assert "embedding_id" in schema.fieldNames()
+
+        df.show()
+
+        # Cleanup
+        import shutil
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
 
 # ==============================================================================
 # UC Integration Tests
