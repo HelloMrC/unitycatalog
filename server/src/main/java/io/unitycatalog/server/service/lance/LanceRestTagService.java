@@ -18,6 +18,11 @@ import io.unitycatalog.server.persist.dao.LanceTagDAO;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * Tag APIs are pure UC metadata operations. They intentionally share LanceTagRepository with
+ * metadata sync so UC-originated tag edits and executor-originated tag callbacks produce the same
+ * table->tag->version view.
+ */
 @ExceptionHandler(LanceExceptionHandler.class)
 public class LanceRestTagService {
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
@@ -182,6 +187,8 @@ public class LanceRestTagService {
     if (version == null) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Lance tag version is required.");
     }
+    // A tag is only useful if it points at a version UC knows about. The version row may have been
+    // created either by data-plane write metadata capture or by an explicit syncVersion callback.
     if (!versionRepository.versionExists(table.assetDAO().getId(), version)) {
       throw new BaseException(ErrorCode.NOT_FOUND, "Lance version not found: " + version);
     }

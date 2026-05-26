@@ -17,6 +17,10 @@ import io.unitycatalog.server.persist.dao.LanceTransactionDAO;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * Transaction metadata endpoints. Transaction execution is delegated to Lance workers; UC records
+ * transaction state for discovery, audit, and retry/reconciliation workflows.
+ */
 @ExceptionHandler(LanceExceptionHandler.class)
 public class LanceRestTransactionService {
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
@@ -86,6 +90,8 @@ public class LanceRestTransactionService {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Lance transaction_key is required.");
     }
 
+    // Worker callbacks use transaction_key as the idempotent identity. Keeping this as an upsert
+    // lets a RUNNING transaction later converge to SUCCEEDED/FAILED without a separate update API.
     LanceTransactionDAO dao =
         transactionRepository.upsertTransaction(
             table.assetDAO().getId(),
@@ -112,6 +118,8 @@ public class LanceRestTransactionService {
   private ResolvedLanceTable resolveActiveNativeTable(
       String id, String delimiter, String operation) {
     ResolvedLanceTable table = resolveNativeTable(id, delimiter, operation);
+    // Transaction metadata is meaningful only after a native table has been materialized. Declared
+    // placeholders do not yet have a stable physical dataset for a worker transaction to target.
     if (table.tableRef().declaredOnly()) {
       throw new BaseException(
           ErrorCode.ABORTED, "Declared Lance table must be materialized before " + operation + ".");

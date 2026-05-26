@@ -26,6 +26,10 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
+/**
+ * Version metadata APIs expose worker-reported Lance commit history from UC. Creating versions is
+ * rejected because versions originate from physical Lance writes, not catalog-only mutations.
+ */
 @ExceptionHandler(LanceExceptionHandler.class)
 public class LanceRestVersionService {
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
@@ -133,6 +137,9 @@ public class LanceRestVersionService {
     LanceExecutionContext context =
         executionContext(request.headers(), serverProperties.getLanceExecutionRequestTimeoutMs());
 
+    // delete_versions crosses into the data plane because it physically changes Lance manifests.
+    // UC records only the worker response; any version tombstone/history policy belongs in sync
+    // metadata handling, not in this REST adapter.
     LanceExecutionResult result = dataPlaneService.deleteVersions(id, delimiter, context, payload);
     return json(result.payload());
   }

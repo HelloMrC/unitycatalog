@@ -1271,3 +1271,177 @@ public class LanceRestTagService {
 5. W3-4：Backend SPI 扩展
 6. W3-5：协议转发 REST Endpoint
 7. W3-6：语义错误拒绝
+
+## 14. 当前实现对照（2026-05-26）
+
+本节补充当前代码已经落地的第三阶段实现，并把“已实现 API”“已具备扩展点但未完全暴露”“当前阶段暂不实现”的边界拆开说明。
+
+## 14.1 开发情况摘要
+
+当前第三阶段已经落地以下内容：
+
+- `UnityCatalogServer` 已注册 `LanceRestVersionService`、`LanceRestTagService`、`LanceRestMetadataSyncService`、`LanceRestIndexService`、`LanceRestTransactionService`。
+- `Repositories` 已初始化 `LanceVersionRepository`、`LanceTagRepository`、`LanceIndexRepository`、`LanceTransactionRepository`。
+- 持久化 DAO 已覆盖 `uc_lance_versions`、`uc_lance_tags`、`uc_lance_indices`、`uc_lance_transactions`。
+- Tag 作为纯 metadata 能力已由 UC 独立实现 list/get/create/update/delete，并校验目标 version 已存在。
+- Version 已实现 list/describe，拒绝 create/batch-create；`delete_versions` 已接入数据面编排和 Worker backend。
+- Index 已实现 list/describe 以及 `metadata/sync/index` upsert。
+- Transaction 已实现 list/describe 以及 `metadata/sync/transaction` upsert。
+- `metadata/sync/version`、`metadata/sync/tag`、`metadata/sync/schema` 已实现；schema sync 当前更新 `uc_lance_tables.arrow_schema_json/current_version/stats_json`，还没有独立 `uc_lance_schema_history` 表。
+- `LanceAdvancedExecutionBackend` 和 `WorkerHttpLanceExecutionBackend` 已定义 Phase 3 高级 Worker 命令扩展点，包括 index、version delete、batch commit、transaction、schema evolution、restore。
+
+## 14.2 第三阶段类图
+
+```mermaid
+classDiagram
+  class UnityCatalogServer
+  class LanceRestVersionService
+  class LanceRestTagService
+  class LanceRestMetadataSyncService
+  class LanceRestIndexService
+  class LanceRestTransactionService
+  class LanceDataPlaneService
+  class LanceTableResolver
+  class LanceAuthorizationService
+  class LanceVersionRepository
+  class LanceTagRepository
+  class LanceIndexRepository
+  class LanceTransactionRepository
+  class LanceTableRepository
+  class LanceVersionDAO
+  class LanceTagDAO
+  class LanceIndexDAO
+  class LanceTransactionDAO
+  class LanceAdvancedExecutionBackend
+  class WorkerHttpLanceExecutionBackend
+  class DisabledLanceExecutionBackend
+
+  UnityCatalogServer --> LanceRestVersionService
+  UnityCatalogServer --> LanceRestTagService
+  UnityCatalogServer --> LanceRestMetadataSyncService
+  UnityCatalogServer --> LanceRestIndexService
+  UnityCatalogServer --> LanceRestTransactionService
+
+  LanceRestVersionService --> LanceTableResolver
+  LanceRestVersionService --> LanceAuthorizationService
+  LanceRestVersionService --> LanceVersionRepository
+  LanceRestVersionService --> LanceDataPlaneService : delete_versions
+
+  LanceRestTagService --> LanceTableResolver
+  LanceRestTagService --> LanceAuthorizationService
+  LanceRestTagService --> LanceTagRepository
+  LanceRestTagService --> LanceVersionRepository : version validation
+
+  LanceRestMetadataSyncService --> LanceTableResolver
+  LanceRestMetadataSyncService --> LanceAuthorizationService
+  LanceRestMetadataSyncService --> LanceVersionRepository
+  LanceRestMetadataSyncService --> LanceTagRepository
+  LanceRestMetadataSyncService --> LanceTableRepository
+
+  LanceRestIndexService --> LanceTableResolver
+  LanceRestIndexService --> LanceAuthorizationService
+  LanceRestIndexService --> LanceIndexRepository
+
+  LanceRestTransactionService --> LanceTableResolver
+  LanceRestTransactionService --> LanceAuthorizationService
+  LanceRestTransactionService --> LanceTransactionRepository
+
+  LanceVersionRepository --> LanceVersionDAO
+  LanceTagRepository --> LanceTagDAO
+  LanceIndexRepository --> LanceIndexDAO
+  LanceTransactionRepository --> LanceTransactionDAO
+  LanceAdvancedExecutionBackend <|.. WorkerHttpLanceExecutionBackend
+  LanceAdvancedExecutionBackend <|.. DisabledLanceExecutionBackend
+```
+
+## 14.3 元数据同步结构图
+
+```mermaid
+flowchart TB
+  Worker[Lance Worker or external executor] --> SyncAPI[metadata sync endpoint]
+  SyncAPI --> Resolve[LanceTableResolver]
+  Resolve --> Native{native Lance table?}
+  Native -->|legacy bridge| RejectLegacy[UNIMPLEMENTED]
+  Native -->|declared-only| RejectDeclared[ABORTED]
+  Native -->|ACTIVE| Authz[authorizeModifyTable]
+  Authz --> Validate[Validate request body]
+  Validate --> Upsert{sync type}
+  Upsert -->|version| VersionRepo[LanceVersionRepository.upsertVersion]
+  Upsert -->|tag| TagRepo[LanceTagRepository.upsertTag]
+  Upsert -->|schema| TableRepo[LanceTableRepository.updateTableSchema]
+  Upsert -->|index| IndexRepo[LanceIndexRepository.upsertIndex]
+  Upsert -->|transaction| TxRepo[LanceTransactionRepository.upsertTransaction]
+  VersionRepo --> Audit[Audit log with idempotency key hash]
+  TagRepo --> Audit
+  TableRepo --> Audit
+  IndexRepo --> Audit
+  TxRepo --> Audit
+  Audit --> Response[Protocol response]
+```
+
+同步入口统一只接受 ACTIVE 原生 Lance table。这样可以避免 legacy bridge 或 declared-only 元数据被 Worker 同步结果错误推进。
+
+## 14.4 当前 endpoint 完成度
+
+| 能力 | 路由 | 当前状态 | 实现类 |
+|------|------|----------|--------|
+| listVersions | `POST /v1/table/{id}/version/list` | 已实现，支持 `start_version`、`end_version`、`page_size`、`page_token` | `LanceRestVersionService` |
+| describeVersion | `POST /v1/table/{id}/version/describe` | 已实现，按 table asset + version 查询 | `LanceRestVersionService` |
+| createVersion | `POST /v1/table/{id}/version/create` | 已实现语义拒绝，version 只能由写入产生 | `LanceRestVersionService` |
+| batchCreateVersions | `POST /v1/table/batch-create-versions` | 已实现语义拒绝 | `LanceRestVersionService` |
+| deleteVersions | `POST /v1/table/{id}/version/delete` | 已接入数据面和 Worker `delete_versions` 命令；UC 侧只更新 stats，删除后的 version 记录同步需由调用方继续处理 | `LanceRestVersionService` + `LanceDataPlaneService` |
+| listTags | `POST /v1/table/{id}/tags/list` | 已实现，支持分页 | `LanceRestTagService` |
+| getTag | `POST /v1/table/{id}/tags/get` | 已实现 | `LanceRestTagService` |
+| getTagVersion | `POST /v1/table/{id}/tags/get-version`、`POST /v1/table/{id}/tags/version` | 已实现 alias | `LanceRestTagService` |
+| createTag | `POST /v1/table/{id}/tags/create` | 已实现，校验 version 存在 | `LanceRestTagService` |
+| updateTag | `POST /v1/table/{id}/tags/update` | 已实现，支持 `new_version`/`version` 和 `new_metadata`/`metadata` | `LanceRestTagService` |
+| deleteTag | `POST /v1/table/{id}/tags/delete` | 已实现 | `LanceRestTagService` |
+| listIndex | `POST /v1/table/{id}/index/list` | 已实现，支持 status/page_size 过滤 | `LanceRestIndexService` |
+| describeIndex | `POST /v1/table/{id}/index/describe` | 已实现，支持 `index_name` 或 `name` | `LanceRestIndexService` |
+| syncIndex | `POST /v1/table/{id}/metadata/sync/index` | 已实现 upsert，默认 status 为 `READY` | `LanceRestIndexService` |
+| listTransaction | `POST /v1/table/{id}/transaction/list` | 已实现，支持 status/page_size 过滤 | `LanceRestTransactionService` |
+| describeTransaction | `POST /v1/table/{id}/transaction/describe` | 已实现，支持 `transaction_key` 或 `key` | `LanceRestTransactionService` |
+| syncTransaction | `POST /v1/table/{id}/metadata/sync/transaction` | 已实现 upsert，status 校验在 repository 层完成 | `LanceRestTransactionService` |
+| syncVersion | `POST /v1/table/{id}/metadata/sync/version` | 已实现 upsert | `LanceRestMetadataSyncService` |
+| syncTag | `POST /v1/table/{id}/metadata/sync/tag` | 已实现 upsert | `LanceRestMetadataSyncService` |
+| syncSchema | `POST /v1/table/{id}/metadata/sync/schema` | 已实现当前 schema/stats/version 更新；未写 schema history 独立表 | `LanceRestMetadataSyncService` |
+
+## 14.5 元数据表与 Repository 对照
+
+| 表 | DAO | Repository | 唯一约束/查询方式 | 当前写入来源 |
+|----|-----|------------|-------------------|--------------|
+| `uc_lance_versions` | `LanceVersionDAO` | `LanceVersionRepository` | `UNIQUE(asset_id, version)`；按 version 倒序分页 | 数据面写入后自动 upsert，或 `syncVersion` |
+| `uc_lance_tags` | `LanceTagDAO` | `LanceTagRepository` | `UNIQUE(table_asset_id, tag_name)`；按 tag_name 分页 | Tag CRUD 或 `syncTag` |
+| `uc_lance_indices` | `LanceIndexDAO` | `LanceIndexRepository` | `UNIQUE(table_asset_id, index_name)`；按 status 过滤 | `syncIndex` |
+| `uc_lance_transactions` | `LanceTransactionDAO` | `LanceTransactionRepository` | `UNIQUE(transaction_key)`；按 table/status 查询 | `syncTransaction` |
+| `uc_lance_tables` | `LanceTableDAO` | `LanceTableRepository` | `asset_id` 主键 | `syncSchema`、数据面写入/stats 状态推进 |
+
+## 14.6 Worker 扩展点完成度
+
+`LanceAdvancedExecutionBackend` 当前已经定义以下高级执行接口，`WorkerHttpLanceExecutionBackend` 会转发到对应 Worker 内部命令：
+
+| Backend 方法 | Worker operation | 当前公开 REST 暴露情况 |
+|--------------|------------------|------------------------|
+| `createIndex` | `create_index` | 后端扩展点已实现；公开 REST 转发 endpoint 仍需补齐 |
+| `dropIndex` | `drop_index` | 后端扩展点已实现；公开 REST 转发 endpoint 仍需补齐 |
+| `deleteVersions` | `delete_versions` | 已通过 `POST /v1/table/{id}/version/delete` 暴露 |
+| `batchCommit` | `batch_commit` | 后端扩展点已实现；公开 REST 转发 endpoint 仍需补齐 |
+| `alterTransaction` | `alter_transaction` | 后端扩展点已实现；公开 REST 转发 endpoint 仍需补齐 |
+| `addColumns` | `add_columns` | 后端扩展点已实现；公开 REST 转发 endpoint 仍需补齐 |
+| `alterColumns` | `alter_columns` | 后端扩展点已实现；公开 REST 转发 endpoint 仍需补齐 |
+| `dropColumns` | `drop_columns` | 后端扩展点已实现；公开 REST 转发 endpoint 仍需补齐 |
+| `restoreTable` | `restore_table` | 后端扩展点已实现；当前 `LanceRestTableService.restoreTable` 仍返回 `NOT_IMPLEMENTED` |
+
+这意味着第三阶段当前已经具备 Worker command 层扩展基础，但除 `delete_versions` 外，多数执行类操作还没有完整贯通为 Lance REST 对外 endpoint。
+
+## 14.7 当前实现边界与后续演进要求
+
+- 目标仍是后续完全兼容 Lance API。对于只涉及 UC 可管理元数据的能力，即使当前 UC 原生模型不能一次性覆盖，也应保留可演进的表结构和服务边界。
+- 已实现的纯 metadata 能力包括 Tag CRUD、version/tag/index/transaction 查询、metadata sync upsert。
+- 依赖 LanceDB 物理存储或 Lance 文件格式操作的能力由 Worker 后端负责；UC 不直接操作 Lance 文件。
+- `syncSchema` 当前只维护 table 当前 schema，没有实现 `uc_lance_schema_history`。如果后续需要按 version 查询 schema，需要补充 schema history DAO/repository/API，而不是复用 `uc_lance_tables` 当前值。
+- `deleteVersions` 当前执行后只更新 table stats；version 记录删除、标记 tombstone 或保留历史，需要在后续设计中明确语义。
+- Index drop 当前 repository 有 `deleteIndex` 能力，但公开 sync/drop 语义还没有完整 endpoint；后续需要明确是物理 drop 后删除 metadata，还是保留 `DROPPED` 状态。
+- Transaction 当前状态限制为 `QUEUED`、`RUNNING`、`SUCCEEDED`、`FAILED`、`CANCELED`；如 Lance 上游状态集合变化，需要在 repository 层同步扩展。
+- 所有 sync endpoint 当前都拒绝 legacy bridge 和 declared-only table，避免把非原生或未物理化资产推进到不一致状态。
+- 幂等性当前主要依赖 repository upsert 和 audit 中记录 idempotency key hash；还没有独立的 idempotency 记录表。

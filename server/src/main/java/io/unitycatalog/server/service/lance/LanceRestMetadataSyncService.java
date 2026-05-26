@@ -20,6 +20,11 @@ import io.unitycatalog.server.persist.dao.LanceVersionDAO;
 import java.util.Date;
 import java.util.Optional;
 
+/**
+ * Metadata sync endpoints used after an external Lance executor or worker has committed physical
+ * changes. UC does not re-run the Lance file operation here; it records the executor-reported state
+ * into native uc_lance_* metadata so catalog reads, governance, and later retries converge.
+ */
 @ExceptionHandler(LanceExceptionHandler.class)
 public class LanceRestMetadataSyncService {
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
@@ -52,6 +57,7 @@ public class LanceRestMetadataSyncService {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Lance version is required.");
     }
 
+    // Upsert makes syncVersion safe for executor retries keyed by (table asset, version).
     LanceVersionDAO versionDAO =
         versionRepository.upsertVersion(
             table.assetDAO().getId(),
@@ -86,6 +92,8 @@ public class LanceRestMetadataSyncService {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Lance tag version is required.");
     }
 
+    // Tags are metadata-only in UC; external executors can still report tag movement through this
+    // path so UC-side CRUD and executor-side sync share the same repository semantics.
     LanceTagDAO tagDAO =
         tagRepository.upsertTag(
             table.assetDAO().getId(),
@@ -118,6 +126,8 @@ public class LanceRestMetadataSyncService {
             ? currentPrincipal(table)
             : request.createdBy();
 
+    // Current implementation stores only the latest schema on uc_lance_tables. A future
+    // schema-history table should be updated here, not hidden inside LanceTableRepository.
     tableRepository.updateTableSchema(
         table.assetDAO().getId(),
         schemaJson,
@@ -168,6 +178,8 @@ public class LanceRestMetadataSyncService {
   private ResolvedLanceTable resolveActiveNativeTable(
       String id, String delimiter, String operation) {
     ResolvedLanceTable table = tableResolver.resolve(id, delimiter);
+    // Sync APIs mutate native UC metadata. Legacy bridge rows and declared-only placeholders cannot
+    // safely accept executor-reported state because they do not own a complete uc_lance_* lifecycle.
     if (table.legacyBridge()) {
       throw new BaseException(
           ErrorCode.UNIMPLEMENTED, "Legacy bridge Lance tables do not support " + operation + ".");

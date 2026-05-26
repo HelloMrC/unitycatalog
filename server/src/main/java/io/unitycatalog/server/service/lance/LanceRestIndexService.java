@@ -17,6 +17,10 @@ import io.unitycatalog.server.persist.dao.LanceIndexDAO;
 import java.util.List;
 import java.util.Optional;
 
+/**
+ * Index metadata endpoints. Physical index build/drop remains a Lance worker responsibility; this
+ * service exposes the UC catalog view and accepts worker-reported sync state.
+ */
 @ExceptionHandler(LanceExceptionHandler.class)
 public class LanceRestIndexService {
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
@@ -82,6 +86,8 @@ public class LanceRestIndexService {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Lance index name is required.");
     }
 
+    // syncIndex is the boundary between Worker-owned index files and UC-owned catalog metadata.
+    // Upsert allows workers to retry completion callbacks without creating duplicate index rows.
     LanceIndexDAO indexDAO =
         indexRepository.upsertIndex(
             table.assetDAO().getId(),
@@ -111,6 +117,8 @@ public class LanceRestIndexService {
   private ResolvedLanceTable resolveActiveNativeTable(
       String id, String delimiter, String operation) {
     ResolvedLanceTable table = resolveNativeTable(id, delimiter, operation);
+    // A declared-only table has no guaranteed physical Lance dataset, so accepting index metadata
+    // would make UC advertise an index that the worker may not be able to serve.
     if (table.tableRef().declaredOnly()) {
       throw new BaseException(
           ErrorCode.ABORTED, "Declared Lance table must be materialized before " + operation + ".");

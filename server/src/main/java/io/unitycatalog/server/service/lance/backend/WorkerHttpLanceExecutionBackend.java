@@ -234,6 +234,9 @@ public class WorkerHttpLanceExecutionBackend implements LanceAdvancedExecutionBa
             .add(HttpHeaderNames.ACCEPT, acceptArrow ? ARROW_ACCEPT : MediaType.JSON.toString())
             .add("x-request-id", command.context().requestId())
             .build();
+    // The worker process is deliberately isolated from UC repositories. These headers carry the
+    // resolved table, storage binding, UC context, and command attributes across that module
+    // boundary so the worker can execute without a second catalog lookup.
     RequestHeaders requestHeaders = headers(command, headers);
     String commandPayload = writeJson(commandPayload(path, command));
     return execute(

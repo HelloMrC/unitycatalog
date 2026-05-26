@@ -1853,3 +1853,153 @@ Nightly 层：
 开发顺序上，先用 fake backend 把 endpoint、Arrow streaming、状态推进和错误映射做稳，再接真实 worker。这样可以避免一开始就被 Lance 执行环境、对象存储和 connector 版本矩阵绑住，也能更快发现 UC 协议层自身的问题。
 
 从工程边界看，第二阶段最关键的判断是：UC 仍然是治理与协议适配面，不是 Lance 执行引擎。只要这个边界守住，后续第三阶段引入 index、version、tag、transaction 和 batch commit 时，扩展点会比较自然。
+
+## 19. 当前实现对照（2026-05-26）
+
+本节补充当前代码已经落地的第二阶段数据面实现，用于明确 REST 入口、编排层、Worker 后端、元数据推进和错误模型之间的关系。
+
+## 19.1 开发情况摘要
+
+当前第二阶段已经形成“REST 适配层 -> UC 编排层 -> Lance 执行后端”的三层结构：
+
+- `LanceRestTableDataService` 暴露数据面 REST endpoint，负责请求体类型校验、body size 限制、Arrow/JSON 读写、请求上下文构造。
+- `LanceDataPlaneService` 负责统一编排：解析 table、授权、状态校验、storage binding、构造 `LanceExecutionCommand`、调用 backend。
+- `LanceExecutionBackend` 是基础执行接口，`LanceAdvancedExecutionBackend` 在 Phase 3 扩展高级操作；当前数据面统一依赖 advanced 接口以保持向后兼容。
+- `WorkerHttpLanceExecutionBackend` 将 UC 编排后的 command 转发到 Worker 内部 HTTP API；`DisabledLanceExecutionBackend` 在未配置 backend 时稳定返回 `UNIMPLEMENTED`。
+- `LanceDataPlaneMetadataUpdater` 在写入、stats、deleteVersions 等操作后推进 UC 侧 table/version 元数据。
+- `LanceDataPlaneAuthorizer` 将 Lance 数据面权限映射到当前 UC privilege：读数据兼容 `SELECT` 或 `READ_METADATA`，写数据使用 `MODIFY`。
+- `LanceExceptionHandler` 对 protocol error、backend observed error、backend 已提交但 UC 元数据更新失败等场景返回稳定 JSON 错误。
+
+## 19.2 数据面类图
+
+```mermaid
+classDiagram
+  class LanceRestTableDataService
+  class LanceDataPlaneService
+  class LanceTableResolver
+  class LanceStorageOptionsService
+  class LanceDataPlaneAuthorizer
+  class LanceDataPlaneMetadataUpdater
+  class LanceDataPlaneObservability
+  class LanceArrowRequestReader
+  class LanceArrowResponseWriter
+  class LanceExecutionBackend
+  class LanceAdvancedExecutionBackend
+  class WorkerHttpLanceExecutionBackend
+  class DisabledLanceExecutionBackend
+  class LanceExecutionCommand
+  class LanceExecutionContext
+  class LanceStorageBinding
+  class LanceExecutionResult
+
+  LanceRestTableDataService --> LanceDataPlaneService
+  LanceRestTableDataService --> LanceArrowRequestReader
+  LanceRestTableDataService --> LanceArrowResponseWriter
+  LanceDataPlaneService --> LanceTableResolver
+  LanceDataPlaneService --> LanceStorageOptionsService
+  LanceDataPlaneService --> LanceDataPlaneAuthorizer
+  LanceDataPlaneService --> LanceDataPlaneMetadataUpdater
+  LanceDataPlaneService --> LanceDataPlaneObservability
+  LanceDataPlaneService --> LanceExecutionCommand
+  LanceExecutionCommand --> LanceExecutionContext
+  LanceExecutionCommand --> LanceStorageBinding
+  LanceExecutionBackend <|-- LanceAdvancedExecutionBackend
+  LanceAdvancedExecutionBackend <|.. WorkerHttpLanceExecutionBackend
+  LanceAdvancedExecutionBackend <|.. DisabledLanceExecutionBackend
+  LanceDataPlaneService --> LanceAdvancedExecutionBackend
+  LanceAdvancedExecutionBackend --> LanceExecutionResult
+```
+
+## 19.3 请求编排结构图
+
+```mermaid
+flowchart TB
+  Client[Lance client] --> Rest[LanceRestTableDataService]
+  Rest --> Validate[Validate JSON or Arrow<br/>Content-Type and size]
+  Validate --> Context[Build LanceExecutionContext<br/>request id, principal, auth type, deadline, idempotency hash]
+  Context --> Orchestrator[LanceDataPlaneService]
+  Orchestrator --> Resolve[LanceTableResolver<br/>native first, legacy fallback]
+  Resolve --> Authorize[LanceDataPlaneAuthorizer]
+  Authorize --> State[Validate table state<br/>declared-only and legacy rules]
+  State --> Storage[LanceStorageOptionsService<br/>template + runtime options]
+  Storage --> Command[LanceExecutionCommand]
+  Command --> Backend{LanceAdvancedExecutionBackend}
+  Backend --> Worker[WorkerHttp backend]
+  Backend --> Disabled[Disabled backend]
+  Worker --> Update[LanceDataPlaneMetadataUpdater]
+  Disabled --> Error[LanceExceptionHandler]
+  Update --> Observe[LanceDataPlaneObservability]
+  Observe --> Response[JSON or Arrow response]
+```
+
+这条链路体现的核心设计约束是：UC 在数据面仍然只负责治理、授权、凭证/参数下发、协议适配和元数据状态推进，实际 Lance 文件格式读写由 Worker 或外部执行器完成。
+
+## 19.4 当前数据面路由与状态
+
+| 能力 | 路由 | 实现状态 | 关键实现 |
+|------|------|----------|----------|
+| query | `POST /v1/table/{id}/query` | 已实现入口 | JSON 请求，按 Accept 返回 JSON 或 Arrow |
+| countRows | `POST /v1/table/{id}/count_rows` | 已实现入口 | 返回 backend payload 中的 `count` 字段 |
+| stats | `POST /v1/table/{id}/stats` | 已实现入口 | 成功后更新 `uc_lance_tables.stats_json` |
+| insert | `POST /v1/table/{id}/insert` | 已实现入口 | Arrow stream 写入，成功后推进 table/version 元数据 |
+| mergeInsert | `POST /v1/table/{id}/merge_insert` | 已实现入口 | Arrow stream 写入，支持 `x-lance-merge-options` |
+| update | `POST /v1/table/{id}/update` | 已实现入口 | JSON 写入，成功后推进 table/version 元数据 |
+| delete | `POST /v1/table/{id}/delete` | 已实现入口 | JSON 写入，成功后推进 table/version 元数据 |
+| create | `POST /v1/table/{id}/create` | 已实现入口 | Arrow stream 创建/物理化 table，支持 `x-lance-create-options` |
+| explainPlan | `POST /v1/table/{id}/explain_plan` | 路由已实现，Worker backend 返回 `UNIMPLEMENTED` | 当前 LanceDB Python SDK 无原生 explain API |
+| analyzePlan | `POST /v1/table/{id}/analyze_plan` | 路由已实现，Worker backend 返回 `UNIMPLEMENTED` | 当前 LanceDB Python SDK 无原生 analyze API |
+| admin reconcile | `POST /admin/reconcile` | 已实现入口 | 基于 UC 元数据做 reconcile 辅助，不替代完整事务 |
+| worker health | `POST /admin/worker/health` | 已实现入口 | 仅 `WorkerHttpLanceExecutionBackend` 返回 Worker health |
+
+## 19.5 Worker 后端转发模型
+
+`WorkerHttpLanceExecutionBackend` 当前将编排后的 command 分成两类内部请求：
+
+| UC backend 方法 | Worker 内部路径 | 请求形态 |
+|-----------------|----------------|----------|
+| `query`、`count_rows`、`stats`、`update`、`delete` | `/internal/lance/v1/commands/{operation}` | JSON command |
+| `insert`、`merge_insert`、`create` | `/internal/lance/v1/arrow/{operation}` | Arrow body + command headers |
+
+转发到 Worker 时会携带以下 UC 生成的上下文头：
+
+- `x-uc-lance-command`
+- `x-uc-lance-context`
+- `x-uc-lance-table`
+- `x-uc-lance-storage`
+- `x-uc-lance-attributes`
+- `x-uc-request-id`
+
+这些 header 的职责是让 Worker 可以在不重新访问 UC 数据库的情况下获得 table ref、storage binding、请求上下文和操作参数。
+
+## 19.6 元数据状态推进
+
+```mermaid
+flowchart LR
+  BackendOK[Backend success] --> AfterWrite{write operation?}
+  AfterWrite -->|insert/create/update/delete/merge_insert| Version[Extract version/schema/stats]
+  Version --> Rollback{returned version below current_version?}
+  Rollback -->|yes| Warn[Return warning<br/>do not move UC version backwards]
+  Rollback -->|no| Materialize{declared-only?}
+  Materialize -->|yes| Mark[LanceTableRepository.markTableMaterialized]
+  Materialize -->|no| Update[LanceTableRepository.updateTableExecutionMetadata]
+  Mark --> UpsertVersion[LanceVersionRepository.upsertVersion]
+  Update --> UpsertVersion
+  AfterWrite -->|stats| Stats[LanceTableRepository.updateTableStats]
+```
+
+当前实现中的重要细节：
+
+- declared-only table 首次成功 `create` 或 `insert` 后，会通过 `markTableMaterialized` 推进为 ACTIVE，并把 `is_only_declared` 置为 false。
+- active table 写入成功后，通过 `updateTableExecutionMetadata` 只更新 Worker 返回的稀疏字段。
+- 如果 Worker 返回的 version 小于 UC 当前 `current_version`，UC 不回退元数据版本，而是在响应中追加 warning。
+- 写入成功但 UC 元数据更新失败时，`LanceBackendCommittedException` 会返回 `metadata_update_failed`，并标记 `backend_committed=true`、`reconcileRequired=true`。
+- stats 操作只作为元数据可见性缓存，不用于替代真实 query/count 的执行结果。
+
+## 19.7 当前实现边界
+
+- 未配置 `lance.execution.backend` 或 Worker base URL 时，数据面 endpoint 会通过 `DisabledLanceExecutionBackend` 返回稳定 `UNIMPLEMENTED`，不会在 UC 进程内执行 Lance 文件格式操作。
+- legacy bridge 表默认不允许数据面写入；读操作只有在 `lance.execution.legacy-read-enabled` 打开时才允许进入 Worker。
+- declared-only table 不能执行 query/count/stats 等读操作，必须先通过 create/insert 物理化。
+- 当前 `LanceStorageOptionsService` 的 runtime credential vending 主要支持测试用 `x-lance-*` 上下文分支；真实云凭证下发仍需要结合 UC credential 服务继续完善。
+- Arrow 请求按 `application/vnd.apache.arrow.stream` 校验并限制 body size；JSON 请求也有独立大小限制。
+- Phase 3 已经复用同一编排链路增加 `delete_versions`，但 index、batch commit、schema evolution 等高级协议转发的公开 REST endpoint 需要在第三阶段继续明确完成度。

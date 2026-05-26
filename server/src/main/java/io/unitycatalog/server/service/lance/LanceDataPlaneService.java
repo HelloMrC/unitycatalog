@@ -280,7 +280,9 @@ class LanceDataPlaneService {
       AuthorizationScope authorizationScope,
       HttpRequest binaryRequest) {
     // Every data-plane operation follows the same boundary: resolve governed metadata, authorize on
-    // the UC resource, validate Lance table state, vend runtime storage options, then dispatch.
+    // the UC resource, validate Lance table state, vend runtime storage options, then dispatch. The
+    // backend receives only a LanceExecutionCommand, so this method is the cross-module handoff
+    // point between UC governance state and the Lance worker/execution layer.
     ResolvedLanceTable table = tableResolver.resolve(id, delimiter.orElse(null));
     LanceDataPlaneAuthorizer.AuthorizationDecision authorizationDecision =
         authorize(authorizationScope, table);
@@ -295,6 +297,9 @@ class LanceDataPlaneService {
     if (binaryRequest != null) {
       commandAttributes.remove(LanceArrowRequestReader.ARROW_BODY_ATTRIBUTE);
     }
+    // These attributes let worker implementations preserve UC semantics without re-querying UC:
+    // declared tables may need physical materialization, legacy bridge tables remain constrained,
+    // and the required/compatible privileges are captured for downstream audit.
     commandAttributes.put("materializeDeclaredTable", table.tableRef().declaredOnly());
     commandAttributes.put("legacyBridge", table.tableRef().legacyBridge());
     commandAttributes.put("requiredPrivilege", authorizationDecision.requiredPrivilege());

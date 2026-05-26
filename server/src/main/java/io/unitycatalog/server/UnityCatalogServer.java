@@ -212,8 +212,9 @@ public class UnityCatalogServer {
         new LanceRestIndexService(repositories, authorizer);
     LanceRestTransactionService lanceRestTransactionService =
         new LanceRestTransactionService(repositories, authorizer);
-    // Lance data endpoints stay on the Lance route family because their wire format and backend
-    // dispatch are Lance REST concepts, not UC table API extensions.
+    // The Lance services are split by responsibility but share one route prefix and one
+    // Repositories instance. That keeps auth context, metadata lookups, sync APIs, and data-plane
+    // backend dispatch aligned on the same native uc_lance_* resource graph.
     LanceRestTableDataService lanceRestTableDataService =
         new LanceRestTableDataService(
             repositories, lanceExecutionBackend, authorizer, serverProperties);
@@ -284,6 +285,8 @@ public class UnityCatalogServer {
             BASE_PATH + "delta/preview/commits", deltaCommitsService, requestConverterFunction)
         .annotatedService(
             BASE_PATH + "external-locations", externalLocationService, requestConverterFunction)
+        // Keep every Lance endpoint under LANCE_PATH so LanceAuthDecorator can normalize Lance API
+        // keys, Bearer tokens, and x-lance-* context headers before these service modules interact.
         .annotatedService(LANCE_PATH, lanceRestNamespaceService, requestConverterFunction)
         .annotatedService(LANCE_PATH, lanceRestTableService, requestConverterFunction)
         .annotatedService(LANCE_PATH, lanceRestVersionService, requestConverterFunction)

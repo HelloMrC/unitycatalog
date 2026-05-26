@@ -651,3 +651,128 @@ flowchart LR
 - 原生 client metadata 路径不再频繁变更
 
 在这些条件满足前，不建议提前把 `LanceExecutionBackend`、Arrow IPC 和 DML 混入本阶段实现。
+
+## 11. 当前实现对照（2026-05-26）
+
+本节补充当前代码已经落地的第一阶段实现，用于把设计目标和实际类、路由、持久化模型对齐。
+
+## 11.1 开发情况摘要
+
+当前第一阶段已经形成独立于 UC 三层 catalog/schema/table 的 Lance 原生元数据模型：
+
+- `UnityCatalogServer` 将 Lance 路由统一挂载到 `/api/2.1/unity-catalog/lance/`，并对该前缀单独应用 `LanceAuthDecorator`。
+- `LanceRestNamespaceService` 和 `LanceRestTableService` 作为 REST 入口，核心业务集中在 `LanceMetadataService`。
+- `LanceIdentifierCodec` 负责 Lance 多级 namespace identifier 的编码、解码和 delimiter 兼容；内部 `path_key` 固定使用 `/` 分隔，外部默认 delimiter 为 `$`。
+- `LanceNamespaceRepository`、`LanceTableRepository` 和 `LanceApiKeyRepository` 负责第一阶段持久化；`Repositories` 已集中初始化这些 repository。
+- `LanceAuthorizationService` 在 Lance namespace/table 创建、读取、修改、删除时调用 UC authorizer，并维护 Lance 资源与父资源之间的授权层级关系。
+- legacy bridge 仅作为兼容读取路径：当原生 `uc_lance_*` 中没有命中时，才回退查找 UC `EXTERNAL TEXT` 且 `properties.table_type=lance` 的表。
+
+## 11.2 服务与持久化类图
+
+```mermaid
+classDiagram
+  class UnityCatalogServer
+  class LanceAuthDecorator
+  class LanceRestNamespaceService
+  class LanceRestTableService
+  class LanceMetadataService
+  class LanceIdentifierCodec
+  class LanceAuthorizationService
+  class LanceNamespaceRepository
+  class LanceTableRepository
+  class LanceApiKeyRepository
+  class LanceNamespaceDAO
+  class LanceAssetDAO
+  class LanceTableDAO
+  class LanceApiKeyDAO
+  class TableRepository
+  class MetastoreRepository
+
+  UnityCatalogServer --> LanceAuthDecorator : routeDecorator(LANCE_PATH)
+  UnityCatalogServer --> LanceRestNamespaceService : annotatedService
+  UnityCatalogServer --> LanceRestTableService : annotatedService
+  LanceRestNamespaceService --> LanceMetadataService
+  LanceRestTableService --> LanceMetadataService
+  LanceMetadataService --> LanceIdentifierCodec
+  LanceMetadataService --> LanceAuthorizationService
+  LanceMetadataService --> LanceNamespaceRepository
+  LanceMetadataService --> LanceTableRepository
+  LanceMetadataService --> TableRepository : legacy bridge fallback
+  LanceMetadataService --> MetastoreRepository : root scope
+  LanceNamespaceRepository --> LanceNamespaceDAO
+  LanceTableRepository --> LanceAssetDAO
+  LanceTableRepository --> LanceTableDAO
+  LanceApiKeyRepository --> LanceApiKeyDAO
+```
+
+## 11.3 请求处理结构图
+
+```mermaid
+flowchart LR
+  Client[Lance client] --> Route[/LANCE_PATH/]
+  Route --> Auth[LanceAuthDecorator]
+  Auth --> NS[LanceRestNamespaceService]
+  Auth --> TB[LanceRestTableService]
+  NS --> Meta[LanceMetadataService]
+  TB --> Meta
+  Meta --> Codec[LanceIdentifierCodec]
+  Meta --> Authz[LanceAuthorizationService]
+  Meta --> Native[(uc_lance_namespaces<br/>uc_lance_assets<br/>uc_lance_tables)]
+  Meta --> Legacy[(UC tables legacy bridge)]
+  Native --> Resp[Protocol response]
+  Legacy --> Resp
+```
+
+该结构的关键约束是：原生 Lance 路径优先，legacy bridge 只做读取兼容，不把 UC table 强行映射成可写的 Lance 原生资产。
+
+## 11.4 当前路由与实现类
+
+| 能力 | 路由 | 实现类 | 当前实现说明 |
+|------|------|--------|--------------|
+| createNamespace | `POST /v1/namespace/{id}/create` | `LanceRestNamespaceService` -> `LanceMetadataService.createNamespace` | 创建多级 Lance namespace，写入 `uc_lance_namespaces` |
+| describeNamespace | `POST /v1/namespace/{id}/describe` | `LanceMetadataService.describeNamespace` | 读取原生 namespace；`GET` 显式返回 method not allowed |
+| namespaceExists | `POST /v1/namespace/{id}/exists` | `LanceMetadataService.namespaceExists` | 命中后执行读权限校验 |
+| listNamespaces | `GET /v1/namespace/{id}/list` | `LanceMetadataService.listNamespaces` | 支持 `limit` 和 `pageToken` |
+| dropNamespace | `POST /v1/namespace/{id}/drop` | `LanceMetadataService.dropNamespace` | 当前仅支持 restrict；存在子 namespace/table/legacy table 时返回 `ABORTED` |
+| listTables | `GET /v1/namespace/{id}/table/list` | `LanceMetadataService.listTables` | 原生表与 legacy bridge 表合并返回；原生分页时 legacy 只在第一页追加 |
+| registerTable | `POST /v1/table/{id}/register` | `LanceMetadataService.registerTable` | 创建 ACTIVE 原生 Lance table 元数据 |
+| declareTable | `POST /v1/table/{id}/declare` | `LanceMetadataService.declareTable` | 创建 DECLARED table，后续由数据面物理化 |
+| createEmptyTable | `POST /v1/table/{id}/create-empty` | `LanceMetadataService.declareTable` | 当前作为 `declare` 的兼容 alias，响应中标记 `protocol_variant=create-empty` |
+| describeTable | `POST /v1/table/{id}/describe` | `LanceMetadataService.describeTable` | 原生优先，未命中时查 legacy bridge |
+| tableExists | `POST /v1/table/{id}/exists` | `LanceMetadataService.tableExists` | 原生或 legacy bridge 任一命中即返回存在 |
+| dropTable | `POST /v1/table/{id}/drop` | `LanceMetadataService.dropTable` | 当前仅支持 declared-only 元数据删除 |
+| deregisterTable | `POST /v1/table/{id}/deregister` | `LanceMetadataService.deregisterTable` | metadata-only 注销；`delete_physical_data=true` 返回 `UNIMPLEMENTED` |
+| renameTable | `POST /v1/table/{id}/rename` | `LanceMetadataService.renameTable` | 更新 `path_key`、`canonical_identifier`、`name`、`namespace_id`，不移动物理数据 |
+| restoreTable | `POST /v1/table/{id}/restore` | `LanceRestTableService.restoreTable` | 当前明确返回 `NOT_IMPLEMENTED`，物理 restore 留给后续执行后端 |
+
+## 11.5 当前表模型与生命周期
+
+```mermaid
+flowchart TB
+  NS[(uc_lance_namespaces)] --> Asset[(uc_lance_assets)]
+  Asset --> Table[(uc_lance_tables)]
+  Asset --> Prop[(uc_properties<br/>resource_type=LANCE_TABLE)]
+
+  Declared[DECLARE table] --> StateDeclared[uc_lance_assets.state=DECLARED<br/>uc_lance_tables.is_only_declared=true]
+  Register[REGISTER table] --> StateActive[uc_lance_assets.state=ACTIVE<br/>uc_lance_tables.is_only_declared=false]
+  StateDeclared --> Drop[DROPPED tombstone<br/>dropDeclaredTable]
+  StateActive --> Dereg[DEREGISTERED tombstone<br/>deregisterTable]
+```
+
+当前 `uc_lance_assets` 是 namespace 下所有 Lance asset 的公共身份表，`uc_lance_tables` 通过 `asset_id` 扩展表级字段。第一阶段实际使用的状态包括：
+
+| 状态 | 写入位置 | 触发操作 | 语义 |
+|------|----------|----------|------|
+| `DECLARED` | `uc_lance_assets.state` | `declare` / `create-empty` | 只有 UC 元数据，不保证物理 Lance dataset 已存在 |
+| `ACTIVE` | `uc_lance_assets.state` | `register` | 已注册外部 Lance table 元数据 |
+| `DROPPED` | `uc_lance_assets.state` | `drop` declared-only table | 删除详情和属性，保留 asset tombstone |
+| `DEREGISTERED` | `uc_lance_assets.state` | `deregister` active table | 仅注销 UC 元数据，不删除物理数据 |
+
+## 11.6 已固化的实现边界
+
+- Lance 原生 namespace 可以超过 UC `catalog.schema.table` 的三层限制；legacy bridge 受 UC table 模型限制，只在 `catalog.schema` 下 list table，只对 `catalog.schema.table` 做 describe/exists。
+- legacy bridge 仅支持读取兼容，不支持 drop、deregister、rename、data-plane write、metadata sync 等会修改 Lance 原生状态的能力。
+- `storage_options_template` 只持久化 region/endpoint 等稳定非密钥配置；包含 `token`、`session`、`secret`、`expires`、`access_key` 等片段的字段会被过滤。
+- `vend_credentials=true` 当前返回的是经清洗的模板配置，真实 runtime credential vending 在第二阶段数据面链路中处理。
+- `dropNamespace` 当前只支持 restrict；cascade 需要在后续阶段明确物理数据删除和子树事务语义后再实现。
+- `dropTable` 当前只支持 declared-only 表；已注册表建议使用 `deregister`，物理删除不在第一阶段承诺范围内。

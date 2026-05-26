@@ -36,6 +36,9 @@ class LanceDataPlaneMetadataUpdater {
 
     Map<String, Object> payload = result.payload();
     try {
+      // The worker owns the physical Lance commit; UC only records the commit metadata the worker
+      // reports back. Keep this update narrow so a partial worker payload cannot erase existing
+      // schema/stats fields.
       Long returnedVersion = longValue(payload.get("version"));
       if (!table.tableRef().declaredOnly()
           && isVersionRollback(table.tableDAO().getCurrentVersion(), returnedVersion)) {
@@ -92,6 +95,8 @@ class LanceDataPlaneMetadataUpdater {
     if (returnedVersion == null) {
       return;
     }
+    // Version rows bridge Phase 2 writes into the Phase 3 metadata API. The same repository is used
+    // by explicit syncVersion calls, so retries converge on (table asset, version).
     versionRepository.upsertVersion(
         table.assetDAO().getId(),
         returnedVersion,
