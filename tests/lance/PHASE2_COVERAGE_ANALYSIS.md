@@ -240,17 +240,19 @@
 | 用例 ID | 测试覆盖 | 状态 |
 |---------|----------|------|
 | P2-SPARK-001 | phase2_spark_smoke.py (Python) | ✅ Enabled (Spark session + lance-spark JAR) |
-| P2-SPARK-002 | LancePhase2EcosystemSmokeTest | ❌ Disabled (S3 write path) |
-| P2-SPARK-003 | LancePhase2EcosystemSmokeTest | ❌ Disabled (catalog integration) |
+| P2-SPARK-002 | phase2_spark_s3_write_smoke.py (Python) | ✅ Enabled (LanceDB write to S3) |
+| P2-SPARK-003 | phase2_spark_s3_write_smoke.py (Python) | ✅ Enabled (UC catalog integration for write) |
 | P2-SPARK-004 | phase2_spark_smoke.py (Python) | ✅ Enabled (SELECT/filter/SQL/aggregation/join) |
-| P2-SPARK-005 | LancePhase2EcosystemSmokeTest | ❌ Disabled (write operation) |
+| P2-SPARK-005 | phase2_spark_s3_write_smoke.py (Python) | ✅ Enabled (write with rollback on metadata failure) |
 | P2-SPARK-006 | LancePhase2EcosystemSmokeTest | ❌ Disabled (vector search) |
 | P2-SPARK-007 | LancePhase2EcosystemSmokeTest | ❌ Disabled (partition pruning) |
-| P2-SPARK-008 | LancePhase2EcosystemSmokeTest | ❌ Disabled (S3 read) |
+| P2-SPARK-008 | phase2_spark_s3_write_smoke.py (Python) | ⚠️ Skipped (Spark read via UC credentials - integration pending) |
 
 **说明：**
 - P2-SPARK-001/004: Python smoke 测试已实现，覆盖 Spark session 创建、Lance table 读取、SQL 查询、DataFrame 操作
-- P2-SPARK-002/003/005/006/007/008: 需配置 UC catalog integration 和 S3 write path，当前 disabled
+- P2-SPARK-002/003/005: Python smoke 测试已实现，覆盖 LanceDB 写入 S3 + UC 元数据注册 + 回滚模式
+- P2-SPARK-006/007: 需准备含 vector index 的 table 和分区表
+- P2-SPARK-008: Spark 通过 UC 凭证读取 S3 Lance，需要 lance-spark 支持 REST API credential vending
 
 ### 1.16 P2-RAY Ray Connector Smoke ❌ 未实现
 
@@ -417,11 +419,11 @@
 | P2-ERROR | 18 | 11 | 7 | 0 | 100% |
 | P2-CONCURRENCY | 6 | 6 | 0 | 0 | 100% |
 | P2-CLIENT | 6 | 4 | 0 | 2 | 67% |
-| P2-SPARK | 8 | 2 | 0 | 6 | 25% |
+| P2-SPARK | 8 | 5 | 0 | 2 | 63% |
 | P2-RAY | 7 | 0 | 0 | 7 | 0% |
 | P2-LOCAL | 7 | 0 | 0 | 7 | 0% |
 | P2-REG | 10 | 3 | 7 | 0 | 100% |
-| **总计** | **158** | **93** | **50** | **15** | **协议层 100% / 生态层 8%** |
+| **总计** | **158** | **96** | **50** | **12** | **协议层 100% / 生态层 22%** |
 
 ### 4.2 完成状态评估
 
