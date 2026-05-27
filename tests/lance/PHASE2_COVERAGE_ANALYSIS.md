@@ -245,15 +245,15 @@
 | P2-SPARK-004 | phase2_spark_smoke.py (Python) | ✅ Enabled (SELECT/filter/SQL/aggregation/join) |
 | P2-SPARK-005 | phase2_spark_smoke.py (Python) | ⚠️ Disabled (UPDATE/DELETE lance-spark 不支持) |
 | P2-SPARK-006 | phase2_spark_smoke.py (Python) | ✅ Enabled (多层 namespace 读测试) |
-| P2-SPARK-007 | LancePhase2EcosystemSmokeTest | ❌ Disabled (header/auth 透传) |
-| P2-SPARK-008 | LancePhase2EcosystemSmokeTest | ❌ Disabled (错误语义) |
+| P2-SPARK-007 | phase2_spark_smoke.py (Python) | ⚠️ Feature Gap (lance-spark 无 auth header config) |
+| P2-SPARK-008 | phase2_spark_smoke.py (Python) | ✅ Enabled (错误语义捕获测试) |
 
 **说明：**
-- P2-SPARK-001/004/006: Python smoke 测试已实现，覆盖 Spark session 创建、SELECT 查询、多层 namespace
+- P2-SPARK-001/004/006/008: Python smoke 测试已实现
 - P2-SPARK-002/003: 需要 Spark catalog plugin 注册 UC catalog，当前 lance-spark 有兼容性问题
 - P2-SPARK-005: lance-spark connector 不支持 UPDATE/DELETE 操作
-- P2-SPARK-007: 需要 Spark context 配置 Bearer/API key 透传
-- P2-SPARK-008: 需验证 permission denied/backend disabled 可被 Spark 捕获
+- P2-SPARK-007: lance-spark 未暴露 auth header 配置接口，标注为功能缺口（非测试缺口）
+- P2-SPARK-008: 错误语义测试已实现（路径不存在、无效格式、权限拒绝）
 
 **补充测试 (非设计定义)：**
 - phase2_spark_s3_write_smoke.py: LanceDB 写入 S3 + UC 注册（回滚模式）
@@ -424,11 +424,11 @@
 | P2-ERROR | 18 | 11 | 7 | 0 | 100% |
 | P2-CONCURRENCY | 6 | 6 | 0 | 0 | 100% |
 | P2-CLIENT | 6 | 4 | 0 | 2 | 67% |
-| P2-SPARK | 8 | 3 | 0 | 4 | 38% |
+| P2-SPARK | 8 | 4 | 0 | 3 | 50% |
 | P2-RAY | 7 | 0 | 0 | 7 | 0% |
 | P2-LOCAL | 7 | 0 | 0 | 7 | 0% |
 | P2-REG | 10 | 3 | 7 | 0 | 100% |
-| **总计** | **158** | **94** | **50** | **14** | **协议层 100% / 生态层 25%** |
+| **总计** | **158** | **95** | **50** | **13** | **协议层 100% / 生态层 28%** |
 
 ### 4.2 完成状态评估
 

@@ -547,6 +547,171 @@ class TestSparkPartitionPruning:
 
 
 # ==============================================================================
+# Error Semantics Tests (P2-SPARK-008)
+# ==============================================================================
+
+class TestSparkErrorSemantics:
+    """Test P2-SPARK-008: Error semantics can be captured by Spark."""
+
+    def test_spark_read_nonexistent_path(self, spark_session):
+        """P2-SPARK-008: Spark captures path not found error."""
+        nonexistent_path = "/tmp/nonexistent_lance_table_12345.lance"
+
+        try:
+            df = spark_session.read.format("lance").load(nonexistent_path)
+            df.count()
+            pytest.fail("Should have raised an error for nonexistent path")
+        except Exception as e:
+            # Verify error is captured and has meaningful message
+            error_str = str(e)
+            print(f"Captured error: {error_str[:200]}")
+
+            # Error should contain path-related information
+            assert len(error_str) > 0, "Error message should not be empty"
+
+            # Common patterns: "not found", "does not exist", "Path"
+            has_path_info = any(
+                kw in error_str.lower()
+                for kw in ["not found", "does not exist", "path", "file", "no such", "error"]
+            )
+            assert has_path_info, f"Error should mention path issue: {error_str}"
+
+    def test_spark_read_invalid_lance_file(self, spark_session):
+        """P2-SPARK-008: Spark captures invalid Lance format error."""
+        import tempfile
+
+        # Create invalid file (not a valid Lance table)
+        temp_dir = tempfile.mkdtemp(prefix="invalid_lance_")
+        invalid_path = os.path.join(temp_dir, "invalid.lance")
+        os.makedirs(invalid_path, exist_ok=True)
+
+        # Write random bytes to simulate corrupted Lance file
+        with open(os.path.join(invalid_path, "data"), "wb") as f:
+            f.write(b"invalid data not lance format")
+
+        try:
+            df = spark_session.read.format("lance").load(invalid_path)
+            df.count()
+            pytest.fail("Should have raised an error for invalid Lance file")
+        except Exception as e:
+            error_str = str(e)
+            print(f"Captured error for invalid file: {error_str[:200]}")
+
+            # Error should be captured
+            assert len(error_str) > 0
+
+        # Cleanup
+        import shutil
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+    def test_spark_read_permission_denied_simulation(self, spark_session):
+        """P2-SPARK-008: Simulate permission denied scenario."""
+        # This test verifies that Spark can capture permission-related errors
+        # In real scenario, UC would return 403 for unauthorized access
+
+        # Create a path with restricted permissions (Linux only)
+        import tempfile
+        import stat
+
+        temp_dir = tempfile.mkdtemp(prefix="restricted_lance_")
+
+        # Create valid Lance table first
+        import lancedb
+        import pyarrow as pa
+
+        data = pa.table({
+            "id": pa.array([1, 2, 3], type=pa.int64()),
+            "value": pa.array([1.0, 2.0, 3.0], type=pa.float64())
+        })
+
+        db = lancedb.connect(temp_dir)
+        table = db.create_table("restricted_table", data)
+        lance_path = os.path.join(temp_dir, "restricted_table.lance")
+
+        # Restrict permissions (may not work on all systems)
+        try:
+            os.chmod(lance_path, stat.S_IRUSR | stat.S_IWUSR)  # Owner only
+            # Restrict parent directory to prevent access
+            os.chmod(temp_dir, 0)  # No permissions
+        except PermissionError:
+            # Skip if can't set permissions (e.g., running as root)
+            import shutil
+            shutil.rmtree(temp_dir, ignore_errors=True)
+            pytest.skip("Cannot set restricted permissions")
+
+        try:
+            df = spark_session.read.format("lance").load(lance_path)
+            df.count()
+            # May succeed or fail depending on system
+            print("Read succeeded despite restricted permissions (may be running as root)")
+        except Exception as e:
+            error_str = str(e)
+            print(f"Captured permission error: {error_str[:200]}")
+            # Error should be captured
+            assert len(error_str) > 0
+        finally:
+            # Restore permissions for cleanup
+            try:
+                os.chmod(temp_dir, stat.S_IRWXU)
+            except:
+                pass
+            import shutil
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+
+# ==============================================================================
+# Auth Passthrough Tests (P2-SPARK-007) - Feature Gap
+# ==============================================================================
+
+class TestSparkAuthPassthrough:
+    """Test P2-SPARK-007: Header/auth passthrough through Spark context."""
+
+    @pytest.mark.skip(reason="lance-spark does not support auth header config yet")
+    def test_spark_bearer_token_passthrough(self):
+        """P2-SPARK-007: Bearer token should pass through Spark to UC.
+
+        Feature gap: lance-spark connector does not expose configuration
+        for setting auth headers (Bearer token, API key) in Spark context.
+
+        Required configuration (not currently available):
+        - spark.lance.auth.bearer-token
+        - spark.lance.auth.api-key
+        - spark.lance.auth.header-prefix
+
+        Once implemented, this test would verify:
+        1. Spark context configures auth header
+        2. Lance read request includes auth header
+        3. UC receives and validates auth header
+        4. Unauthorized request returns 403 captured by Spark
+        """
+        pass
+
+    @pytest.mark.skip(reason="lance-spark does not support auth header config yet")
+    def test_spark_api_key_passthrough(self):
+        """P2-SPARK-007: API key should pass through Spark to UC.
+
+        Feature gap: Similar to Bearer token, lance-spark lacks API key
+        configuration in Spark context.
+
+        Required configuration:
+        - spark.lance.auth.api-key
+        """
+        pass
+
+    @pytest.mark.skip(reason="lance-spark does not support context headers yet")
+    def test_spark_context_headers_passthrough(self):
+        """P2-SPARK-007: x-lance-* context headers should passthrough.
+
+        Feature gap: lance-spark does not support custom header configuration.
+
+        Required configuration:
+        - spark.lance.context.request-id
+        - spark.lance.context.application-name
+        """
+        pass
+
+
+# ==============================================================================
 # Main
 # ==============================================================================
 

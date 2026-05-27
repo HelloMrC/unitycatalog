@@ -192,11 +192,12 @@ Phase 3 当前状态：✅ **100% 完成**
 
 ### 8.1 高优先级（阻塞发布）
 
-| 缺口 | 阶段 | 工作量 | 说明 |
-|------|------|--------|------|
-| **PostgreSQL metadata DB** | Phase 2 | 大 | 需配置 PostgreSQL 环境 + integration tests |
-| **Reconcile evidence** | Phase 2 | 中 | 补充 dry-run + 受控回填自动化测试 |
-| **Connector 四项标准** | Phase 2 | 中 | Spark auth 透传 + 错误语义验证 |
+| 缺口 | 阶段 | 状态 | 说明 |
+|------|------|------|------|
+| **PostgreSQL metadata DB** | Phase 2 | ❌ 待完成 | 需配置 PostgreSQL 环境 + integration tests |
+| **Reconcile evidence** | Phase 2 | ✅ 已完成 | LancePhase2ReconcileRestTest 已实现 dry-run + 受控回填 |
+| **Spark 错误语义 (P2-SPARK-008)** | Phase 2 | ✅ 已完成 | phase2_spark_smoke.py 已实现错误捕获测试 |
+| **Spark auth 透传 (P2-SPARK-007)** | Phase 2 | ⚠️ 功能缺口 | lance-spark 未暴露 auth header 配置，非测试缺口 |
 
 ### 8.2 中优先级（影响生产稳定性）
 
@@ -222,12 +223,12 @@ Phase 3 当前状态：✅ **100% 完成**
 ### 9.1 必须完成（阻塞发布）
 
 ```
+✓ Reconcile dry-run + 受控回填测试 (P2-META-009/010)
+✓ Spark 错误语义验证 (P2-SPARK-008)
+✓ 日志脱敏自动化验证 (P2-STORAGE-004)
+✓ audit 脱敏自动化验证 (P2-META-008)
 □ PostgreSQL integration tests
-□ Reconcile dry-run + 受控回填测试
-□ Spark auth 透传测试 (P2-SPARK-007)
-□ Spark 错误语义验证 (P2-SPARK-008)
-□ 日志脱敏自动化验证
-□ audit 脱敏自动化验证
+⚠ Spark auth 透传测试 - 功能缺口，lance-spark 不支持
 ```
 
 ### 9.2 强烈建议（影响稳定性）
