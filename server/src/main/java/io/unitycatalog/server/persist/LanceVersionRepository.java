@@ -64,6 +64,9 @@ public class LanceVersionRepository {
     if (version == null) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Lance version is required.");
     }
+    if (version < 0) {
+      throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Lance version must be non-negative.");
+    }
     if (operation == null || operation.isBlank()) {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Lance version operation is required.");
     }

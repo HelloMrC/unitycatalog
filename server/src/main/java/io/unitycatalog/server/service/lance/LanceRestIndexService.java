@@ -14,8 +14,14 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.LanceIndexRepository;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.dao.LanceIndexDAO;
+import io.unitycatalog.server.service.lance.util.LanceHeaderUtil;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.List;
 import java.util.Optional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Index metadata endpoints. Physical index build/drop remains a Lance worker responsibility; this
@@ -23,6 +29,7 @@ import java.util.Optional;
  */
 @ExceptionHandler(LanceExceptionHandler.class)
 public class LanceRestIndexService {
+  private static final Logger LOGGER = LoggerFactory.getLogger(LanceRestIndexService.class);
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
   private final LanceTableResolver tableResolver;
@@ -86,6 +93,11 @@ public class LanceRestIndexService {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Lance index name is required.");
     }
 
+    String createdBy =
+        request.createdBy() == null || request.createdBy().isBlank()
+            ? currentPrincipal(table)
+            : request.createdBy();
+
     // syncIndex is the boundary between Worker-owned index files and UC-owned catalog metadata.
     // Upsert allows workers to retry completion callbacks without creating duplicate index rows.
     LanceIndexDAO indexDAO =
@@ -98,9 +110,14 @@ public class LanceRestIndexService {
             toJson(request.buildParams(), "index build params"),
             toJson(request.stats(), "index stats"),
             request.status() == null ? "READY" : request.status(),
-            request.createdBy() == null || request.createdBy().isBlank()
-                ? currentPrincipal(table)
-                : request.createdBy());
+            createdBy);
+
+    auditSyncOperation(
+        "syncIndex",
+        table.assetDAO().getId(),
+        request.indexName(),
+        createdBy,
+        LanceHeaderUtil.getIdempotencyKey());
 
     return HttpResponse.ofJson(toIndexView(indexDAO));
   }
@@ -140,6 +157,44 @@ public class LanceRestIndexService {
       return principal;
     }
     return table.assetDAO().getOwner();
+  }
+
+  private void auditSyncOperation(
+      String operation,
+      Object resourceId,
+      Object keyInfo,
+      String principal,
+      String idempotencyKey) {
+    String idempotencyKeyHash = sha256Hash(idempotencyKey);
+    LOGGER.info(
+        "Lance sync API: operation={}, resourceId={}, key={}, principal={}, idempotencyKeyHash={}",
+        operation,
+        resourceId,
+        keyInfo,
+        principal,
+        idempotencyKeyHash != null ? idempotencyKeyHash : "none");
+  }
+
+  private String sha256Hash(String value) {
+    if (value == null || value.isBlank()) {
+      return null;
+    }
+    try {
+      MessageDigest md = MessageDigest.getInstance("SHA-256");
+      byte[] hash = md.digest(value.getBytes(StandardCharsets.UTF_8));
+      StringBuilder hexString = new StringBuilder();
+      for (byte b : hash) {
+        String hex = Integer.toHexString(0xff & b);
+        if (hex.length() == 1) {
+          hexString.append('0');
+        }
+        hexString.append(hex);
+      }
+      return hexString.toString();
+    } catch (NoSuchAlgorithmException e) {
+      LOGGER.warn("SHA-256 algorithm not available for idempotency key hashing");
+      return null;
+    }
   }
 
   private IndexView toIndexView(LanceIndexDAO indexDAO) {

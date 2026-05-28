@@ -1386,16 +1386,37 @@ public interface LanceExecutionBackend {
 | 方法类型 | 说明 |
 |---------|------|
 | Phase 2 数据面 | Worker 执行 query/insert 等，返回结果给 UC |
-| Phase 3 协议转发 | UC 转发请求到 Worker，Worker 执行后调用 UC 同步 API |
+| Phase 3 元数据同步 | Lance SDK 直连执行后调用 UC sync API，UC 存储元数据 |
+| Phase 3 Forwarding (deleteVersions) | UC 转发 deleteVersions 到 Worker，Worker 执行物理删除 |
 | 纯 metadata | Tag CRUD 由 UC 直接实现，不经过 backend |
 
 **元数据同步机制**：
 
-Worker 执行 Phase 3 操作成功后，需要调用 UC 的同步 API：
-- `syncVersion`：写入操作成功后同步 version 信息
-- `syncIndex`：创建/删除索引后同步索引元数据
-- `syncSchema`：schema 变化后同步 schema 信息
-- `syncTransaction`：事务执行后同步事务状态
+UC 作为元数据唯一事实来源（Single Source of Truth）。Lance SDK/Worker 直连 Lance 存储执行操作，成功后调用 UC sync API：
+
+- `syncVersion`：Lance SDK 写入成功后调用，存储 version 元数据
+- `syncIndex`：Lance SDK 创建/删除索引后调用，存储 index 元数据
+- `syncSchema`：Lance SDK schema 变化后调用，更新 `arrow_schema_json`
+- `syncTransaction`：Lance SDK 事务执行后调用，存储 transaction 状态
+- `syncTag`：Lance SDK 创建 tag 后调用，存储 tag 元数据
+
+**不需要 UC forwarding endpoint 的操作**：
+
+以下操作 Lance SDK 直连 Lance 存储执行，完成后调用 UC sync API，无需 UC 作为协议转发层：
+
+| 操作 | Lance SDK 执行 | 完成后调用 UC |
+|------|----------------|---------------|
+| createIndex | Lance SDK 创建索引 | syncIndex |
+| dropIndex | Lance SDK 删除索引 | syncIndex |
+| addColumns | Lance SDK 添加列 | syncSchema |
+| alterColumns | Lance SDK 修改列 | syncSchema |
+| dropColumns | Lance SDK 删除列 | syncSchema |
+| batchCommit | Lance SDK 执行批量提交 | syncVersion + syncTransaction |
+| alterTransaction | Lance SDK 操作事务 | syncTransaction |
+
+**唯一需要 forwarding endpoint**：
+
+- `deleteVersions`：需要 Worker 执行物理 Lance manifest 操作，UC 转发请求
 
 ### 8.4.2 通用参数对象
 

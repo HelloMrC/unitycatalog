@@ -118,11 +118,32 @@ public class HibernateConfigurator {
 
     // TODO: use dependency injection for test hibernate properties
     if ("test".equals(serverProperties.get(Property.SERVER_ENV))) {
-      hibernateProperties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
-      hibernateProperties.setProperty(
-          "hibernate.connection.url", "jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1");
-      hibernateProperties.setProperty("hibernate.hbm2ddl.auto", "create-drop");
-      LOGGER.debug("Hibernate configuration set for testing");
+      // Check if PostgreSQL test mode is enabled
+      String pgTestMode = serverProperties.getProperty("postgresql.test.enabled");
+      if ("true".equals(pgTestMode)) {
+        LOGGER.info("Using PostgreSQL for testing");
+        hibernateProperties.setProperty(
+            "hibernate.connection.driver_class", "org.postgresql.Driver");
+        String pgUrl = serverProperties.getProperty("postgresql.connection.url");
+        hibernateProperties.setProperty(
+            "hibernate.connection.url",
+            pgUrl != null ? pgUrl : "jdbc:postgresql://localhost:5432/ucdb");
+        String pgUser = serverProperties.getProperty("postgresql.connection.username");
+        hibernateProperties.setProperty(
+            "hibernate.connection.username", pgUser != null ? pgUser : "uc_default_user");
+        String pgPassword = serverProperties.getProperty("postgresql.connection.password");
+        hibernateProperties.setProperty(
+            "hibernate.connection.password",
+            pgPassword != null ? pgPassword : "uc_default_password");
+        hibernateProperties.setProperty("hibernate.hbm2ddl.auto", "create-drop");
+      } else {
+        // Default H2 for unit tests
+        hibernateProperties.setProperty("hibernate.connection.driver_class", "org.h2.Driver");
+        hibernateProperties.setProperty(
+            "hibernate.connection.url", "jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1");
+        hibernateProperties.setProperty("hibernate.hbm2ddl.auto", "create-drop");
+        LOGGER.debug("Hibernate configuration set for testing");
+      }
     }
     return hibernateProperties;
   }

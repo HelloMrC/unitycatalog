@@ -269,44 +269,59 @@ Phase 3 的 index/version/transaction 元数据表数据来源于执行器同步
 | 主要断言 | Tag CRUD 作为治理对象可被授权和审计；tag 不影响 Lance 物理数据 |
 | 自动化级别 | PR 必跑 |
 
-### 7.10 `TD-ADV` Phase 3 高级能力测试（Protocol Forwarding + Query API）
+### 7.10 `TD-ADV` Phase 3 元数据同步与查询测试
 
-**Phase 3 UC 提供的查询 API（元数据来源于执行器同步）**：
+**设计原则**：UC 作为元数据唯一事实来源（Single Source of Truth）
 
-| API | UC 实现方式 | 数据来源 | 测试套件 |
-|---|---|---|---|
-| `listIndices` / `describeIndexStats` | 查询 `uc_lance_indices` 表 | 执行器创建索引后同步 | `TD-ADV-001`、`TD-ADV-002` |
-| `listVersions` / `describeVersion` | 查询 `uc_lance_versions` 表 | 执行器写入后同步 | `TD-ADV-003`、`TD-ADV-004` |
-| `describeTransaction` | 查询 `uc_lance_transactions` 表 | 执行器执行事务后同步 | `TD-ADV-005` |
+- Lance SDK/Worker 直连 Lance 存储执行物理操作
+- 执行成功后调用 UC sync API 存储元数据
+- UC 不从 Lance 物理存储同步数据
+- UC 提供 sync API 接收执行器传入的元数据
 
-**Phase 3 UC 提供的协议转发能力（Worker 执行后同步元数据）**：
+**Phase 3 UC 提供的查询 API**：
 
-| 操作 | 执行方式 | 元数据同步 | 测试套件 |
-|---|---|---|---|
-| `createIndex` / `dropIndex` | Worker 执行 | 调用 `syncIndex` API | `TD-ADV-006`、`TD-ADV-007` |
-| `deleteVersions` | Worker 执行 | 调用 `syncVersion` API | `TD-ADV-008` |
-| `batchCommit` | Worker 执行 | 调用 `syncVersion` / `syncTransaction` | `TD-ADV-009` |
-| `alterTransaction` | Worker 执行 | 调用 `syncTransaction` API | `TD-ADV-010` |
-| `addColumns` / `alterColumns` / `dropColumns` | Worker 执行 | 调用 `syncSchema` API | `TD-ADV-011`、`TD-ADV-012`、`TD-ADV-013` |
-| `restoreTable` | Worker 执行 | Lance 文件格式操作 | `TD-ADV-014` |
+| API | UC 实现方式 | 数据来源 | 测试套件 | 状态 |
+|---|---|---|---|---|
+| `listIndices` / `describeIndexStats` | 查询 `uc_lance_indices` 表 | Lance SDK 调用 syncIndex | `TD-ADV-001`、`TD-ADV-002` | ✅ 已实现 |
+| `listVersions` / `describeVersion` | 查询 `uc_lance_versions` 表 | Lance SDK 调用 syncVersion | `TD-ADV-003`、`TD-ADV-004` | ✅ 已实现 |
+| `listTransactions` / `describeTransaction` | 查询 `uc_lance_transactions` 表 | Lance SDK 调用 syncTransaction | `TD-ADV-005` | ✅ 已实现 |
+
+**元数据同步 API**：
+
+| API | 调用时机 | UC 行为 | 测试套件 | 状态 |
+|---|----------|---------|----------|---|
+| `syncVersion` | Lance SDK 写入成功后 | 存储到 `uc_lance_versions` | `TD-ADV-017` | ✅ 已实现 |
+| `syncIndex` | Lance SDK 创建/删除索引后 | 存储到 `uc_lance_indices` | `TD-ADV-018` | ✅ 已实现 |
+| `syncSchema` | Lance SDK schema 变化后 | 更新 `arrow_schema_json` | `TD-ADV-019` | ✅ 已实现 |
+| `syncTransaction` | Lance SDK 事务执行后 | 存储到 `uc_lance_transactions` | `TD-ADV-020` | ✅ 已实现 |
+| `syncTag` | Lance SDK 创建 tag 后 | 存储到 `uc_lance_tags` | `TD-ADV-021` | ✅ 已实现 |
+
+**不需要 UC forwarding endpoint 的操作**：
+
+以下操作 Lance SDK 直连 Lance 存储执行，完成后调用 UC sync API：
+
+| 操作 | Lance SDK 执行 | 完成后调用 UC | 说明 |
+|------|----------------|---------------|------|
+| `createIndex` / `dropIndex` | Lance SDK 直连存储 | syncIndex | 无 UC forwarding endpoint |
+| `addColumns` / `alterColumns` / `dropColumns` | Lance SDK 直连存储 | syncSchema | 无 UC forwarding endpoint |
+| `batchCommit` | Lance SDK 直连存储 | syncVersion + syncTransaction | 无 UC forwarding endpoint |
+| `alterTransaction` | Lance SDK 直连存储 | syncTransaction | 无 UC forwarding endpoint |
+
+**唯一需要 forwarding endpoint**：
+
+| 操作 | 执行方式 | 元数据同步 | 测试套件 | 状态 |
+|---|----------|-----------|----------|---|
+| `deleteVersions` | UC 转发到 Worker | Worker 执行物理删除 | `TD-ADV-008` | ✅ 已实现 |
 
 **UC 拒绝的语义错误请求**：
 
-| API | 原因 | UC 处理 | 测试套件 |
-|---|---|---|---|
-| `createVersion` | Lance version 由写入自动产生，不能手动创建 | 400 BAD_REQUEST | `TD-ADV-015` |
-| `batchCreateVersions` | 同上 | 400 BAD_REQUEST | `TD-ADV-016` |
+| API | 原因 | UC 处理 | 测试套件 | 状态 |
+|---|------|---------|----------|---|
+| `createVersion` | Lance version 由写入自动产生 | 400 BAD_REQUEST | `TD-ADV-015` | ✅ 已实现 |
+| `batchCreateVersions` | 同上 | 400 BAD_REQUEST | `TD-ADV-016` | ✅ 已实现 |
+| `restoreTable` | Lance 文件格式操作，超出 UC 治理范围 | 501 UNIMPLEMENTED | `TD-ADV-014` | ✅ 已实现 |
 
-**元数据同步 API 测试**：
-
-| API | 调用时机 | 测试套件 |
-|---|---|---|
-| `syncIndex` | Lance 创建索引成功后 | `TD-ADV-017` |
-| `syncVersion` | Lance 写入成功后 | `TD-ADV-018` |
-| `syncSchema` | Lance schema 变化后 | `TD-ADV-019` |
-| `syncTransaction` | Lance 事务执行后 | `TD-ADV-020` |
-
-**自动化级别**：Phase 3 必跑
+**自动化级别**：Phase 3 PR 必跑（139 tests 全部通过）
 
 ### 7.11 `TD-CRED` `storage_options` 与 credential vending
 

@@ -340,23 +340,33 @@ build/sbt "server/testOnly io.unitycatalog.server.service.lance.LancePhase3*Rest
 
 | 准出项 | 状态 | 说明 |
 |--------|------|------|
-| Tag CRUD 可用 | 通过 | `LancePhase3MetadataRestTest` 覆盖 |
-| Version 查询可用 | 通过 | `LancePhase3MetadataRestTest` 覆盖 |
-| 写入后 version metadata 可同步 | 通过 | `LancePhase2DataPlaneMetadataUpdateRestTest` 覆盖 |
-| Version/tag repository 行为稳定 | 通过 | `LanceVersionAndTagRepositoryTest` 覆盖 |
-| Index 查询可用 | 未通过 | 未实现 |
-| Transaction 查询可用 | 未通过 | 未实现 |
-| 显式 metadata sync API 可用 | 未通过 | 未实现 |
-| Phase 3 Worker forwarding 可用 | 未通过 | 未实现 |
+| Tag CRUD 可用 | ✅ 通过 | `LancePhase3MetadataRestTest` 覆盖 |
+| Version 查询可用 | ✅ 通过 | `LancePhase3MetadataRestTest` 覆盖 |
+| 写入后 version metadata 可同步 | ✅ 通过 | `LancePhase2DataPlaneMetadataUpdateRestTest` 覆盖 |
+| Version/tag repository 行为稳定 | ✅ 通过 | `LanceVersionAndTagRepositoryTest` 覆盖 |
+| Index 查询可用 | ✅ 通过 | `LancePhase3IndexRestTest` 覆盖 |
+| Transaction 查询可用 | ✅ 通过 | `LancePhase3TransactionRestTest` 覆盖 |
+| 显式 metadata sync API 可用 | ✅ 通过 | `LancePhase3MetadataSyncRestTest` + 各专项测试覆盖 |
+| Schema sync API 可用 | ✅ 通过 | `LancePhase3SchemaRestTest` 覆盖 |
+| deleteVersions forwarding 可用 | ✅ 通过 | `LanceRestVersionService` 实现 |
+| 语义错误正确拒绝 | ✅ 通过 | createVersion/batchCreateVersions 返回 400 |
+| 边界/集成测试覆盖 | ✅ 通过 | 139 tests 全部通过 |
 
-当前结论：
+**当前结论**：
 
-Phase 3 已完成“可本地实现且不依赖 LanceDB 物理存储执行”的第一批能力：
+Phase 3 已全部完成，按”UC 作为元数据唯一事实来源”设计原则实现：
 
-- version metadata persistence
-- write 后 version sync
-- version read API
-- tag metadata CRUD
-- version write semantic rejection
+- ✅ 所有 sync API（syncVersion/syncIndex/syncSchema/syncTransaction/syncTag）
+- ✅ 所有元数据查询 API（version/index/transaction/tags）
+- ✅ Tag CRUD（纯 metadata，UC 独立实现）
+- ✅ deleteVersions forwarding（转发到 Worker 执行）
+- ✅ 语义错误正确拒绝
+- ✅ 139 个测试全部通过
 
-下一阶段应优先补齐外部执行器回写 UC 所需的显式 sync API，然后再扩展 index / transaction / schema / protocol forwarding。
+**不需要额外 forwarding endpoint**：
+
+以下操作 Lance SDK 直连存储执行，完成后调用 UC sync API：
+- createIndex/dropIndex → syncIndex
+- addColumns/alterColumns/dropColumns → syncSchema
+- batchCommit → syncVersion + syncTransaction
+- alterTransaction → syncTransaction

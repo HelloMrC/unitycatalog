@@ -17,8 +17,14 @@ import io.unitycatalog.server.persist.LanceVersionRepository;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.dao.LanceTagDAO;
 import io.unitycatalog.server.persist.dao.LanceVersionDAO;
+import io.unitycatalog.server.service.lance.util.LanceHeaderUtil;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.Date;
 import java.util.Optional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Metadata sync endpoints used after an external Lance executor or worker has committed physical
@@ -27,6 +33,7 @@ import java.util.Optional;
  */
 @ExceptionHandler(LanceExceptionHandler.class)
 public class LanceRestMetadataSyncService {
+  private static final Logger LOGGER = LoggerFactory.getLogger(LanceRestMetadataSyncService.class);
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
   private final LanceTableResolver tableResolver;
@@ -57,6 +64,11 @@ public class LanceRestMetadataSyncService {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Lance version is required.");
     }
 
+    String createdBy =
+        request.createdBy() == null || request.createdBy().isBlank()
+            ? currentPrincipal(table)
+            : request.createdBy();
+
     // Upsert makes syncVersion safe for executor retries keyed by (table asset, version).
     LanceVersionDAO versionDAO =
         versionRepository.upsertVersion(
@@ -69,9 +81,14 @@ public class LanceRestMetadataSyncService {
             request.etag(),
             toJson(request.metadata(), "version metadata"),
             toJson(request.stats(), "version stats"),
-            request.createdBy() == null || request.createdBy().isBlank()
-                ? currentPrincipal(table)
-                : request.createdBy());
+            createdBy);
+
+    auditSyncOperation(
+        "syncVersion",
+        table.assetDAO().getId(),
+        request.version(),
+        createdBy,
+        LanceHeaderUtil.getIdempotencyKey());
 
     return HttpResponse.ofJson(toSyncVersionResponse(versionDAO));
   }
@@ -92,6 +109,11 @@ public class LanceRestMetadataSyncService {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Lance tag version is required.");
     }
 
+    String createdBy =
+        request.createdBy() == null || request.createdBy().isBlank()
+            ? currentPrincipal(table)
+            : request.createdBy();
+
     // Tags are metadata-only in UC; external executors can still report tag movement through this
     // path so UC-side CRUD and executor-side sync share the same repository semantics.
     LanceTagDAO tagDAO =
@@ -100,9 +122,14 @@ public class LanceRestMetadataSyncService {
             request.tagName(),
             request.version(),
             toJson(request.metadata(), "tag metadata"),
-            request.createdBy() == null || request.createdBy().isBlank()
-                ? currentPrincipal(table)
-                : request.createdBy());
+            createdBy);
+
+    auditSyncOperation(
+        "syncTag",
+        table.assetDAO().getId(),
+        request.tagName(),
+        createdBy,
+        LanceHeaderUtil.getIdempotencyKey());
 
     return HttpResponse.ofJson(toSyncTagResponse(tagDAO));
   }
@@ -134,6 +161,13 @@ public class LanceRestMetadataSyncService {
         request.version(),
         toJson(request.stats(), "table stats"),
         updatedBy);
+
+    auditSyncOperation(
+        "syncSchema",
+        table.assetDAO().getId(),
+        request.version(),
+        updatedBy,
+        LanceHeaderUtil.getIdempotencyKey());
 
     return HttpResponse.ofJson(
         new SyncSchemaResponse(
@@ -178,8 +212,9 @@ public class LanceRestMetadataSyncService {
   private ResolvedLanceTable resolveActiveNativeTable(
       String id, String delimiter, String operation) {
     ResolvedLanceTable table = tableResolver.resolve(id, delimiter);
-    // Sync APIs mutate native UC metadata. Legacy bridge rows and declared-only placeholders cannot
-    // safely accept executor-reported state because they do not own a complete uc_lance_* lifecycle.
+    // Sync APIs mutate native UC metadata. Legacy bridge rows and declared-only placeholders
+    // cannot safely accept executor-reported state because they do not own a complete
+    // uc_lance_* lifecycle.
     if (table.legacyBridge()) {
       throw new BaseException(
           ErrorCode.UNIMPLEMENTED, "Legacy bridge Lance tables do not support " + operation + ".");
@@ -197,6 +232,44 @@ public class LanceRestMetadataSyncService {
       return principal;
     }
     return table.assetDAO().getOwner();
+  }
+
+  private void auditSyncOperation(
+      String operation,
+      Object resourceId,
+      Object keyInfo,
+      String principal,
+      String idempotencyKey) {
+    String idempotencyKeyHash = sha256Hash(idempotencyKey);
+    LOGGER.info(
+        "Lance sync API: operation={}, resourceId={}, key={}, principal={}, idempotencyKeyHash={}",
+        operation,
+        resourceId,
+        keyInfo,
+        principal,
+        idempotencyKeyHash != null ? idempotencyKeyHash : "none");
+  }
+
+  private String sha256Hash(String value) {
+    if (value == null || value.isBlank()) {
+      return null;
+    }
+    try {
+      MessageDigest md = MessageDigest.getInstance("SHA-256");
+      byte[] hash = md.digest(value.getBytes(StandardCharsets.UTF_8));
+      StringBuilder hexString = new StringBuilder();
+      for (byte b : hash) {
+        String hex = Integer.toHexString(0xff & b);
+        if (hex.length() == 1) {
+          hexString.append('0');
+        }
+        hexString.append(hex);
+      }
+      return hexString.toString();
+    } catch (NoSuchAlgorithmException e) {
+      LOGGER.warn("SHA-256 algorithm not available for idempotency key hashing");
+      return null;
+    }
   }
 
   private Object parseJson(String json, String fieldName) {

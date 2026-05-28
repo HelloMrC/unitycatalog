@@ -2,7 +2,7 @@
 
 副标题：Metadata Sync & Tag CRUD 测试设计
 
-更新日期：2026-05-16
+更新日期：2026-05-21
 
 关联文档：
 
@@ -17,19 +17,24 @@
 
 本文档用于把 "Phase 3：Metadata Sync & Tag CRUD" 设计展开为可执行的详细测试设计。
 
-**文档分为两个切片：**
+**核心设计原则**：
+- UC 作为元数据唯一事实来源（Single Source of Truth）
+- Lance SDK/Worker 直连 Lance 存储执行物理操作
+- 执行成功后调用 UC sync API 存储元数据
+- UC 不从 Lance 物理存储同步数据
+- UC 提供 sync API 接收执行器传入的元数据并存储
 
-1. **当前已实现切片**：已在代码中实现的 endpoint，作为 PR 必跑门禁
-2. **Phase 3 终态切片**：设计文档定义的完整能力，作为 Nightly/发布前门禁或未来迭代目标
-
-Phase 3 测试的核心目标是验证 UC 作为 Lance Catalog 层的元数据治理能力。
+**Phase 3 测试范围**：
+- sync API：接收 Lance SDK 传入的元数据并存储
+- 元数据查询 API：查询 UC 存储的元数据
+- Tag CRUD：纯 metadata 操作，UC 独立实现
+- deleteVersions forwarding：转发到 Worker 执行物理删除
 
 本文回答以下问题：
 
 - 当前哪些 endpoint 已实现，哪些作为 PR 必跑
-- Phase 3 终态哪些能力作为 Nightly 或未来目标
+- Phase 3 完整能力测试覆盖
 - PR、Nightly、发布前分别跑哪些测试
-- 每个测试套件的用例 ID、前置条件、步骤、主要断言和建议落位
 
 ---
 
@@ -39,30 +44,34 @@ Phase 3 测试的核心目标是验证 UC 作为 Lance Catalog 层的元数据�
 
 | 能力 | 实现状态 | 测试门禁 |
 |------|----------|----------|
-| Tag CRUD | ✅ 已实现 | PR 必跑 |
-| Tag alias（get-version/version） | ✅ 已实现 | PR 必跑 |
+| Tag CRUD (list/get/create/update/delete) | ✅ 已实现 | PR 必跑 |
+| Tag alias (get-version/version) | ✅ 已实现 | PR 必跑 |
 | Version list/describe | ✅ 已实现 | PR 必跑 |
-| Version metadata（写入后记录） | ✅ 已实现（Phase 2 write 已同步 version） | PR 必跑 |
-| createVersion 拒绝 | ✅ 已实现（400 BAD_REQUEST） | PR 必跑 |
-| batchCreateVersions 拒绝 | ✅ 已实现（400 BAD_REQUEST） | PR 必跑 |
-| deleteVersion 语义 | ✅ 已实现（501 UNIMPLEMENTED） | PR 必跑 |
+| Version metadata (写入后记录) | ✅ 已实现 | PR 必跑 |
+| createVersion/batchCreateVersions 拒绝 | ✅ 已实现 (400 BAD_REQUEST) | PR 必跑 |
+| deleteVersions forwarding | ✅ 已实现 | PR 必跑 |
+| syncVersion API | ✅ 已实现 | PR 必跑 |
+| syncIndex API | ✅ 已实现 | PR 必跑 |
+| syncSchema API | ✅ 已实现 | PR 必跑 |
+| syncTransaction API | ✅ 已实现 | PR 必跑 |
+| syncTag API | ✅ 已实现 | PR 必跑 |
+| Index 查询 (list/describe) | ✅ 已实现 | PR 必跑 |
+| Transaction 查询 (list/describe) | ✅ 已实现 | PR 必跑 |
 
-### 2.2 Phase 3 后续实现（Nightly/未来门禁）
+### 2.2 不需要实现的（设计决策）
 
-| 能力 | 实现状态 | 测试门禁 |
-|------|----------|----------|
-| syncVersion API | ⚠️ 待实现 | Nightly/发布前 |
-| syncIndex API | ⚠️ 待实现 | Nightly/发布前 |
-| syncSchema API | ⚠️ 待实现 | Nightly/发布前 |
-| syncTransaction API | ⚠️ 待实现 | Nightly/发布前 |
-| syncTag API | ⚠️ 待实现 | Nightly/发布前 |
-| Index 查询（listIndices/describeIndexStats） | ⚠️ 待实现 | Nightly/发布前 |
-| Transaction 查询（describeTransaction） | ⚠️ 待实现 | Nightly/发布前 |
-| createIndex/dropIndex（协议转发） | ⚠️ 待实现 | Nightly/发布前 |
-| deleteVersions（协议转发） | ⚠️ 待实现 | Nightly/发布前 |
-| batchCommit（协议转发） | ⚠️ 待实现 | Nightly/发布前 |
-| Schema Evolution（协议转发） | ⚠️ 待实现 | Nightly/发布前 |
-| restoreTable（协议转发） | ⚠️ 待实现 | Nightly/发布前 |
+| 能力 | 原因 | UC 处理 |
+|------|------|---------|
+| createIndex forwarding endpoint | Lance SDK 直连存储执行，完成后调用 syncIndex | 仅提供 syncIndex API |
+| dropIndex forwarding endpoint | 同上 | 仅提供 syncIndex API |
+| addColumns forwarding endpoint | Lance SDK 直连存储执行，完成后调用 syncSchema | 仅提供 syncSchema API |
+| alterColumns forwarding endpoint | 同上 | 仅提供 syncSchema API |
+| dropColumns forwarding endpoint | 同上 | 仅提供 syncSchema API |
+| batchCommit forwarding endpoint | Lance SDK 执行，完成后调用 syncVersion/syncTransaction | 仅提供 sync API |
+| alterTransaction forwarding endpoint | Lance SDK 执行，完成后调用 syncTransaction | 仅提供 syncTransaction API |
+| restoreTable | Lance 文件格式操作，超出 UC 元数据治理范围 | 501 UNIMPLEMENTED |
+
+**设计原则**：UC 是元数据存储层，不是执行转发层。Lance SDK 直连 Lance 存储执行操作，完成后调用 UC sync API 存储元数据。
 
 ### 2.3 测试分层策略
 
@@ -70,13 +79,12 @@ Phase 3 测试的核心目标是验证 UC 作为 Lance Catalog 层的元数据�
 |------|----------|----------|
 | L0 静态评审 | PR | DDL、设计审查 |
 | L1 Unit | PR | Repository、codec |
-| L2 Component | PR | 已实现 endpoint（Tag CRUD、Version 查询） |
+| L2 Component | PR | sync API、元数据查询 endpoint |
 | L3 Protocol | PR | 已实现 endpoint raw HTTP、错误码固定 |
-| L4 Sync API | Nightly | syncVersion/syncIndex/syncTag/syncSchema/syncTransaction |
-| L5 Protocol Forward | Nightly | createIndex/dropIndex/deleteVersions/batchCommit |
-| L6 Index/Transaction Query | Nightly | listIndices/describeTransaction |
-| L7 Regression | PR | Phase 1/2 endpoint |
-| L8 Resilience/NFR | 发布前 | 并发、权限、审计 |
+| L4 Integration | PR | sync → query 链路验证 |
+| L5 Boundary | PR | 边界值、错误处理 |
+| L6 Regression | PR | Phase 1/2 endpoint |
+| L7 Resilience/NFR | 发布前 | 并发、权限、审计 |
 
 ---
 
@@ -658,19 +666,28 @@ Phase 3 使用以下编号：
 
 ---
 
-## 19. 测试类命名建议
+## 19. 测试类命名与当前状态
 
-| 测试套件 | 建议类名 |
-|---|---|
-| Tag CRUD | `LancePhase3TagCrudRestTest` |
-| Version 查询 | `LancePhase3VersionQueryRestTest` |
-| 语义错误 | `LancePhase3SemanticErrorRestTest` |
-| 认证授权 | `LancePhase3AuthGovernanceRestTest` |
-| Regression | `LancePhase3RegressionRestTest` |
-| Metadata Sync（未来） | `LancePhase3SyncApiRestTest` |
-| Index 查询（未来） | `LancePhase3IndexQueryRestTest` |
-| Transaction 查询（未来） | `LancePhase3TransactionQueryRestTest` |
-| 协议转发（未来） | `LancePhase3ProtocolForwardRestTest` |
+| 测试套件 | 类名 | 测试数 | 状态 |
+|---|---|---|---|
+| Tag CRUD + Version Query | `LancePhase3MetadataRestTest` | 18 | ✅ 已实现 |
+| Metadata Sync | `LancePhase3MetadataSyncRestTest` | 11 | ✅ 已实现 |
+| Index Sync + Query | `LancePhase3IndexRestTest` | 11 | ✅ 已实现 |
+| Transaction Sync + Query | `LancePhase3TransactionRestTest` | 17 | ✅ 已实现 |
+| Schema Sync | `LancePhase3SchemaRestTest` | 12 | ✅ 已实现 |
+| Boundary & Edge | `LancePhase3BoundaryAndEdgeRestTest` | 49 | ✅ 已实现 |
+| Integration | `LancePhase3IntegrationRestTest` | 22 | ✅ 已实现 |
+| **总计** | - | **139** | ✅ 全部通过 |
+
+**测试覆盖矩阵**：
+
+| 能力 | sync API | query API | CRUD API | 边界/错误 |
+|------|----------|-----------|----------|-----------|
+| Version | ✅ syncVersion | ✅ list/describe | ❌ (语义不支持) | ✅ 400 拒绝 |
+| Index | ✅ syncIndex | ✅ list/describe | ❌ (无 forwarding) | ✅ 边界覆盖 |
+| Tag | ✅ syncTag | ✅ list/get | ✅ create/update/delete | ✅ 404/409 |
+| Transaction | ✅ syncTransaction | ✅ list/describe | ❌ (无 forwarding) | ✅ 状态机边界 |
+| Schema | ✅ syncSchema | ✅ describe | ❌ (无 forwarding) | ✅ 操作类型 |
 
 ---
 
@@ -730,22 +747,47 @@ Phase 3 使用以下编号：
 
 ## 22. 总结
 
-### 22.1 当前切片核心结论
+### 22.1 Phase 3 实现完成状态
 
-**PR 必跑测试：**
-1. **Tag CRUD**：纯 metadata，不依赖 Backend
-2. **Tag alias**：get-version/version 与 get 一致
-3. **Version 查询**：list/describe 返回 UC 元数据表数据
-4. **语义错误**：createVersion/batchCreateVersions → 400；deleteVersion → 501
-5. **权限**：READ_METADATA（read）/ MODIFY（write）/ owner
-6. **错误码固定**：404、409、400、501
+**已完成（139 个测试全部通过）：**
+1. **sync API**：syncVersion/syncIndex/syncSchema/syncTransaction/syncTag - Lance SDK 调用后存储元数据
+2. **元数据查询 API**：version/list/describe、index/list/describe、transaction/list/describe、tags CRUD
+3. **deleteVersions forwarding**：转发到 Worker 执行物理删除
+4. **语义错误拒绝**：createVersion/batchCreateVersions → 400 BAD_REQUEST
+5. **边界测试**：49 个边界/错误场景覆盖
+6. **集成测试**：22 个 E2E 流程验证
 
-### 22.2 终态切片后续目标
+### 22.2 设计决策说明
 
-**Nightly/未来：**
-1. **sync API**：syncVersion/syncIndex/syncSchema/syncTransaction/syncTag
-2. **Index/Transaction 查询**：listIndices/describeIndexStats/describeTransaction
-3. **协议转发**：createIndex/dropIndex/deleteVersions/batchCommit/Schema Evolution
+**UC 作为元数据唯一事实来源**：
+- Lance SDK/Worker 直连 Lance 存储执行物理操作
+- 执行成功后调用 UC sync API 存储元数据
+- UC 不从 Lance 物理存储同步数据
+- UC 是元数据查询的唯一来源
+
+**不需要 forwarding endpoint 的操作**：
+- createIndex/dropIndex：Lance SDK 执行 → 调用 syncIndex
+- addColumns/alterColumns/dropColumns：Lance SDK 执行 → 调用 syncSchema
+- batchCommit：Lance SDK 执行 → 调用 syncVersion/syncTransaction
+- alterTransaction：Lance SDK 执行 → 调用 syncTransaction
+
+**唯一需要 forwarding endpoint**：
+- deleteVersions：需要 Worker 执行物理 Lance manifest 操作，UC 转发
+
+### 22.3 测试命令
+
+```bash
+# PR 必跑：所有 Phase 3 测试
+build/sbt "server/testOnly *LancePhase3*"
+
+# 结果：139 tests, 0 failed
+```
+
+### 22.4 与 Phase 2 的关系
+
+Phase 2 数据面操作（query/insert/update/delete 等）已有完整的 forwarding 链路。
+Phase 3 元数据操作采用 sync API 模式，Lance SDK 执行后调用 UC 存储元数据。
+两种模式并存，UC 作为统一的治理与元数据后端。
 
 ### 22.3 测试实施顺序
 

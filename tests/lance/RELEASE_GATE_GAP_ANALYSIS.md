@@ -43,11 +43,11 @@ Phase 2 覆盖数据面，当前状态：⚠️ **部分完成**
 
 | 项目 | 状态 | 缺口 |
 |------|------|------|
-| PostgreSQL DDL | ❌ 未验证 | Java 测试使用 H2，PostgreSQL 仅 integration-tests |
+| PostgreSQL DDL | ✅ 已验证 | LancePostgresIntegrationTest 3 tests passed |
 | PostgreSQL 并发 | ❌ 未验证 | 需配置 PostgreSQL 环境 |
 | PostgreSQL 迁移 | ❌ 未验证 | H2 → PostgreSQL 数据迁移 |
 
-**优先级：高** - 发布前必须验证 PostgreSQL 生产环境兼容性。
+**优先级：高** - PostgreSQL DDL 已验证，并发和迁移待补充。
 
 ### 3.2 Metadata Update Failure + Reconcile
 
@@ -194,7 +194,7 @@ Phase 3 当前状态：✅ **100% 完成**
 
 | 缺口 | 阶段 | 状态 | 说明 |
 |------|------|------|------|
-| **PostgreSQL metadata DB** | Phase 2 | ❌ 待完成 | 需配置 PostgreSQL 环境 + integration tests |
+| **PostgreSQL metadata DB** | Phase 2 | ✅ 已完成 | LancePostgresIntegrationTest 3 tests passed |
 | **Reconcile evidence** | Phase 2 | ✅ 已完成 | LancePhase2ReconcileRestTest 已实现 dry-run + 受控回填 |
 | **Spark 错误语义 (P2-SPARK-008)** | Phase 2 | ✅ 已完成 | phase2_spark_smoke.py 已实现错误捕获测试 |
 | **Spark auth 透传 (P2-SPARK-007)** | Phase 2 | ⚠️ 功能缺口 | lance-spark 未暴露 auth header 配置，非测试缺口 |
@@ -227,7 +227,7 @@ Phase 3 当前状态：✅ **100% 完成**
 ✓ Spark 错误语义验证 (P2-SPARK-008)
 ✓ 日志脱敏自动化验证 (P2-STORAGE-004)
 ✓ audit 脱敏自动化验证 (P2-META-008)
-□ PostgreSQL integration tests
+✓ PostgreSQL integration tests - LancePostgresIntegrationTest 3 tests passed
 ⚠ Spark auth 透传测试 - 功能缺口，lance-spark 不支持
 ```
 

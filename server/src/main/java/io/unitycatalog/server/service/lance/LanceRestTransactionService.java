@@ -14,8 +14,14 @@ import io.unitycatalog.server.exception.ErrorCode;
 import io.unitycatalog.server.persist.LanceTransactionRepository;
 import io.unitycatalog.server.persist.Repositories;
 import io.unitycatalog.server.persist.dao.LanceTransactionDAO;
+import io.unitycatalog.server.service.lance.util.LanceHeaderUtil;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.util.List;
 import java.util.Optional;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Transaction metadata endpoints. Transaction execution is delegated to Lance workers; UC records
@@ -23,6 +29,7 @@ import java.util.Optional;
  */
 @ExceptionHandler(LanceExceptionHandler.class)
 public class LanceRestTransactionService {
+  private static final Logger LOGGER = LoggerFactory.getLogger(LanceRestTransactionService.class);
   private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
   private final LanceTableResolver tableResolver;
@@ -90,6 +97,11 @@ public class LanceRestTransactionService {
       throw new BaseException(ErrorCode.INVALID_ARGUMENT, "Lance transaction_key is required.");
     }
 
+    String createdBy =
+        request.createdBy() == null || request.createdBy().isBlank()
+            ? currentPrincipal(table)
+            : request.createdBy();
+
     // Worker callbacks use transaction_key as the idempotent identity. Keeping this as an upsert
     // lets a RUNNING transaction later converge to SUCCEEDED/FAILED without a separate update API.
     LanceTransactionDAO dao =
@@ -99,9 +111,14 @@ public class LanceRestTransactionService {
             request.status(),
             toJson(request.actions(), "transaction actions"),
             toJson(request.commitMetadata(), "transaction commit metadata"),
-            request.createdBy() == null || request.createdBy().isBlank()
-                ? currentPrincipal(table)
-                : request.createdBy());
+            createdBy);
+
+    auditSyncOperation(
+        "syncTransaction",
+        table.assetDAO().getId(),
+        request.transactionKey(),
+        createdBy,
+        LanceHeaderUtil.getIdempotencyKey());
 
     return HttpResponse.ofJson(toTransactionView(dao));
   }
@@ -141,6 +158,44 @@ public class LanceRestTransactionService {
       return principal;
     }
     return table.assetDAO().getOwner();
+  }
+
+  private void auditSyncOperation(
+      String operation,
+      Object resourceId,
+      Object keyInfo,
+      String principal,
+      String idempotencyKey) {
+    String idempotencyKeyHash = sha256Hash(idempotencyKey);
+    LOGGER.info(
+        "Lance sync API: operation={}, resourceId={}, key={}, principal={}, idempotencyKeyHash={}",
+        operation,
+        resourceId,
+        keyInfo,
+        principal,
+        idempotencyKeyHash != null ? idempotencyKeyHash : "none");
+  }
+
+  private String sha256Hash(String value) {
+    if (value == null || value.isBlank()) {
+      return null;
+    }
+    try {
+      MessageDigest md = MessageDigest.getInstance("SHA-256");
+      byte[] hash = md.digest(value.getBytes(StandardCharsets.UTF_8));
+      StringBuilder hexString = new StringBuilder();
+      for (byte b : hash) {
+        String hex = Integer.toHexString(0xff & b);
+        if (hex.length() == 1) {
+          hexString.append('0');
+        }
+        hexString.append(hex);
+      }
+      return hexString.toString();
+    } catch (NoSuchAlgorithmException e) {
+      LOGGER.warn("SHA-256 algorithm not available for idempotency key hashing");
+      return null;
+    }
   }
 
   private TransactionView toTransactionView(LanceTransactionDAO dao) {

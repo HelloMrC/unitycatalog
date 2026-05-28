@@ -430,8 +430,12 @@ public class ServerProperties {
     return getProperty(property.key);
   }
 
-  /** Get a property value by key name. */
-  private String getProperty(String key) {
+  /**
+   * Get a property value by key name (public for arbitrary properties not in the Property enum).
+   *
+   * <p>Lookup order: System property, Environment variable, server.properties file.
+   */
+  public String getProperty(String key) {
     if (System.getProperty(key) != null) {
       return System.getProperty(key);
     }

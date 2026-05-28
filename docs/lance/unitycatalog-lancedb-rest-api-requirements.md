@@ -572,20 +572,28 @@ UC 必须支持已有 Unity 集成形态的 Lance 表被发现、描述和迁移
 
 ### 10.6 版本、标签、索引、事务能力
 
-UC 作为 Catalog 层，提供元数据查询 API，元数据由执行器同步。
+UC 作为元数据唯一事实来源（Single Source of Truth），提供元数据存储与查询 API。
+
+**设计原则**：
+- Lance SDK/Worker 直连 Lance 物理存储执行操作
+- 执行成功后调用 UC sync API 将元数据存储到 UC
+- UC 不从 Lance 物理存储同步数据，只接收执行器传入的元数据
+- UC 作为元数据查询的唯一来源
 
 **Version 能力**：
 
-- `version/list`：查询版本历史 - ✅ UC 提供，数据由执行器同步到 `uc_lance_versions`
+- `version/list`：查询版本历史 - ✅ UC 提供，查询 `uc_lance_versions`
 - `version/describe`：查询版本详情 - ✅ UC 提供
-- `version/create`、`version/batch-create`：❌ 语义不支持（Lance version 由写入自动生成）
-- `version/delete`：需 Lance SDK 执行，完成后同步到 UC
+- `version/create`、`version/batch-create`：❌ 语义不支持（Lance version 由写入自动生成），返回 400 BAD_REQUEST
+- `version/delete`：✅ UC 提供 forwarding endpoint（转发到 Worker 执行物理删除）
+- `syncVersion`：✅ Lance SDK 写入成功后调用，存储 version 元数据到 UC
 
 **Index 能力**：
 
-- `index/list`：查询索引列表 - ✅ UC 提供，数据由执行器同步到 `uc_lance_indices`
+- `index/list`：查询索引列表 - ✅ UC 提供，查询 `uc_lance_indices`
 - `index/describe`：查询索引统计 - ✅ UC 提供
-- `index/create`、`index/drop`：需 Lance SDK 执行，完成后同步到 UC
+- `syncIndex`：✅ Lance SDK 创建/删除索引后调用，存储 index 元数据到 UC
+- **无 forwarding endpoint**：Lance SDK 直连存储执行，完成后调用 syncIndex
 
 **Tag 能力**：
 
@@ -594,33 +602,41 @@ UC 作为 Catalog 层，提供元数据查询 API，元数据由执行器同步�
 - `tags/create`：创建 tag 到 version 的映射 - ✅ UC 独立实现（纯 metadata）
 - `tags/update`：更新 tag 指向的 version - ✅ UC 独立实现
 - `tags/delete`：删除 tag - ✅ UC 独立实现
+- `syncTag`：✅ Lance SDK 创建 tag 后调用，存储到 UC（与 UC createTag 结果一致）
 
 Tag CRUD 是纯 metadata 操作，UC 可独立实现，不影响 Lance 物理数据。
 
 **Transaction 能力**：
 
-- `transaction/describe`：查询事务状态 - ✅ UC 提供，数据由执行器同步
-- `transaction/alter`：需 Lance SDK 执行，完成后同步到 UC
+- `transaction/list`：查询事务列表 - ✅ UC 提供，查询 `uc_lance_transactions`
+- `transaction/describe`：查询事务状态 - ✅ UC 提供
+- `syncTransaction`：✅ Lance SDK 事务执行后调用，存储 transaction 元数据到 UC
+- **无 forwarding endpoint**：Lance SDK 执行事务，完成后调用 syncTransaction
 
 **Batch Commit**：
 
-- `table/batch-commit`：需 Lance SDK 执行，完成后同步到 UC
+- `syncVersion` + `syncTransaction`：✅ Lance SDK 执行 batch commit 后调用
+- **无 forwarding endpoint**：Lance SDK 执行，完成后调用 sync API
 
 **Schema Evolution**：
 
-- `schema/update`、`add_columns`、`alter_columns`、`drop_columns`：需 Lance SDK 执行，完成后同步 schema 到 UC
+- `syncSchema`：✅ Lance SDK schema 变化后调用，更新 `arrow_schema_json`
+- **无 forwarding endpoint**：Lance SDK 执行 addColumns/alterColumns/dropColumns，完成后调用 syncSchema
 
 **Restore Table**：
 
-- `restore table by version/tag`：需 Lance SDK 执行（修改物理 Lance manifest）
+- ❌ 不提供 forwarding endpoint：Lance 文件格式操作超出 UC 元数据治理范围
+- Lance SDK 可自行执行 restore，但 UC 不作为协议转发层
 
-**元数据同步机制**：
+**元数据同步机制总结**：
 
-执行器（Lance SDK / Worker）操作成功后，需要调用 UC 的同步 API 将元数据同步到 UC：
-- `syncVersion`：写入操作成功后同步 version 信息
-- `syncIndex`：创建/删除索引后同步索引元数据
-- `syncSchema`：schema 变化后同步 schema 信息
-- `syncTransaction`：事务执行后同步事务状态
+| API | 调用时机 | UC 行为 |
+|-----|----------|---------|
+| `syncVersion` | Lance SDK 写入成功后 | 存储 version 元数据到 `uc_lance_versions` |
+| `syncIndex` | Lance SDK 创建/删除索引后 | 存储/更新 index 元数据到 `uc_lance_indices` |
+| `syncSchema` | Lance SDK schema 变化后 | 更新 `arrow_schema_json`、`current_version` |
+| `syncTransaction` | Lance SDK 事务执行后 | 存储 transaction 状态到 `uc_lance_transactions` |
+| `syncTag` | Lance SDK 创建 tag 后 | 存储 tag 元数据到 `uc_lance_tags` |
 
 ### 10.7 身份、认证与上下文透传
 
